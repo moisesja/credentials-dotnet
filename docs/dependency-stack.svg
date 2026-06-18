@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" width="760" height="560" role="img" aria-labelledby="title desc">
+<title id="title">.NET library dependency stack with dependency arrows</title>
+<desc id="desc">Four layers, each depending only on layers at or beneath it; arrows point from a subsystem to each of its dependencies. Composition: net-wallet-sdk (exists). Capability libraries: credentials-dotnet (new), zcap-dotnet, DidComm (exist). Identity and proofs: NetDid (exists) and DataProofsDotnet (new). Cryptographic foundation: NetCrypto (new) and NetCid (exists). The wallet depends on the three capability libraries and on NetDid; each capability library depends on NetDid and DataProofsDotnet, and credentials-dotnet also depends on NetCrypto; NetDid and DataProofsDotnet each depend on NetCrypto and NetCid; NetCrypto depends on NetCid. Dashed borders mark libraries to build; solid borders mark existing ones.</desc>
+<defs>
+  <marker id="dep" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1,1 L9,5 L1,9" fill="none" stroke="#94908b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+</defs>
+<style>
+  .lbl  { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 600; fill: #8a857f; letter-spacing: 0.3px; }
+  .name { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 600; fill: #1c1917; }
+  .sub  { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 11.5px; fill: #57534e; }
+  .band { fill: #f7f6f4; }
+  .box  { fill: #ffffff; stroke: #d6d3d1; stroke-width: 1.2; }
+  .new  { fill: #ffffff; stroke: #57534e; stroke-width: 1.6; stroke-dasharray: 5 4; }
+  .edge { fill: none; stroke: #94908b; stroke-width: 1.4; }
+</style>
+
+<rect x="0" y="0" width="760" height="560" fill="#ffffff"/>
+
+<!-- Bands -->
+<rect class="band" x="20" y="30"  width="720" height="94" rx="12"/>
+<text class="lbl" x="34" y="50">COMPOSITION</text>
+<rect class="band" x="20" y="158" width="720" height="94" rx="12"/>
+<text class="lbl" x="34" y="178">CAPABILITY LIBRARIES</text>
+<rect class="band" x="20" y="290" width="720" height="94" rx="12"/>
+<text class="lbl" x="34" y="310">IDENTITY &amp; PROOFS</text>
+<rect class="band" x="20" y="422" width="720" height="94" rx="12"/>
+<text class="lbl" x="34" y="442">CRYPTOGRAPHIC FOUNDATION</text>
+
+<!-- Dependency edges (arrow points from a subsystem to its dependency) -->
+<!-- composition -> capabilities -->
+<path class="edge" marker-end="url(#dep)" d="M330,104 C268,134 196,152 152,176"/>
+<path class="edge" marker-end="url(#dep)" d="M380,104 L380,176"/>
+<path class="edge" marker-end="url(#dep)" d="M430,104 C492,134 564,152 608,176"/>
+<!-- composition -> NetDid (skip, through the gap between boxes) -->
+<path class="edge" marker-end="url(#dep)" d="M345,104 C302,150 270,205 268,255 C266,288 258,308 255,308"/>
+<!-- capabilities -> identity & proofs -->
+<path class="edge" marker-end="url(#dep)" d="M150,232 C172,262 192,292 200,308"/>
+<path class="edge" marker-end="url(#dep)" d="M172,232 C268,272 392,288 475,308"/>
+<path class="edge" marker-end="url(#dep)" d="M358,232 C320,264 290,292 278,308"/>
+<path class="edge" marker-end="url(#dep)" d="M402,232 C448,264 494,292 505,308"/>
+<path class="edge" marker-end="url(#dep)" d="M592,232 C468,272 360,290 300,308"/>
+<path class="edge" marker-end="url(#dep)" d="M626,232 C597,264 573,292 560,308"/>
+<!-- credentials -> crypto (skip, down the left channel) -->
+<path class="edge" marker-end="url(#dep)" d="M70,206 C40,214 34,252 34,332 C34,396 114,440 190,440"/>
+<!-- identity & proofs -> foundation -->
+<path class="edge" marker-end="url(#dep)" d="M232,364 C229,392 226,422 225,440"/>
+<path class="edge" marker-end="url(#dep)" d="M272,364 C346,392 430,416 490,440"/>
+<path class="edge" marker-end="url(#dep)" d="M488,364 C410,392 330,416 255,440"/>
+<path class="edge" marker-end="url(#dep)" d="M528,364 C531,392 537,422 540,440"/>
+<!-- crypto -> NetCid -->
+<path class="edge" marker-end="url(#dep)" d="M320,470 L436,470"/>
+
+<!-- Boxes -->
+<rect class="box" x="285" y="52" width="190" height="52" rx="8"/>
+<text class="name" x="380" y="80" text-anchor="middle">net-wallet-sdk</text>
+<text class="sub" x="380" y="96" text-anchor="middle">composes the stack</text>
+
+<rect class="new" x="70" y="180" width="160" height="52" rx="8"/>
+<text class="name" font-size="13" x="150" y="208" text-anchor="middle">credentials-dotnet</text>
+<text class="sub" x="150" y="224" text-anchor="middle">VCs &amp; VPs · new</text>
+<rect class="box" x="305" y="180" width="150" height="52" rx="8"/>
+<text class="name" font-size="13" x="380" y="208" text-anchor="middle">zcap-dotnet</text>
+<text class="sub" x="380" y="224" text-anchor="middle">ZCAP-LD caps</text>
+<rect class="box" x="530" y="180" width="160" height="52" rx="8"/>
+<text class="name" font-size="13" x="610" y="208" text-anchor="middle">DidComm</text>
+<text class="sub" x="610" y="224" text-anchor="middle">DIDComm v2.1</text>
+
+<rect class="box" x="150" y="312" width="170" height="52" rx="8"/>
+<text class="name" x="235" y="340" text-anchor="middle">NetDid</text>
+<text class="sub" x="235" y="356" text-anchor="middle">DIDs &amp; methods</text>
+<rect class="new" x="430" y="312" width="190" height="52" rx="8"/>
+<text class="name" x="525" y="340" text-anchor="middle">DataProofsDotnet</text>
+<text class="sub" x="525" y="356" text-anchor="middle">embedded + enveloping · new</text>
+
+<rect class="new" x="150" y="444" width="170" height="52" rx="8"/>
+<text class="name" x="235" y="472" text-anchor="middle">NetCrypto</text>
+<text class="sub" x="235" y="488" text-anchor="middle">BBS, BLS12-381, EdDSA · new</text>
+<rect class="box" x="440" y="444" width="170" height="52" rx="8"/>
+<text class="name" x="525" y="472" text-anchor="middle">NetCid</text>
+<text class="sub" x="525" y="488" text-anchor="middle">multibase · multihash · CID</text>
+
+<!-- Legend -->
+<rect x="34" y="524" width="22" height="14" rx="4" fill="#ffffff" stroke="#57534e" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text class="sub" x="64" y="535">new — to build</text>
+<rect x="200" y="524" width="22" height="14" rx="4" fill="#ffffff" stroke="#d6d3d1" stroke-width="1.2"/>
+<text class="sub" x="230" y="535">exists today</text>
+<path class="edge" marker-end="url(#dep)" d="M332,531 L362,531"/>
+<text class="sub" x="372" y="535">points to its dependency</text>
+</svg>

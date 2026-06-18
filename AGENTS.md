@@ -10,7 +10,9 @@ This file provides instructions for AI agents and human contributors working in 
 
 Three top-level docs carry the design context. Read them in this order:
 
-1. [`docs/credentials-dotnet-prd.md`](docs/credentials-dotnet-prd.md) — the engineering PRD / requirements spec. The target the implementation is measured against. The PRD aims to fulfill the desired functionality as specified in [`docs/credentials-dotnet-concept.md`](docs/credentials-dotnet-concept.md). If the PRD is incomplete, ask questions. After figuring out the answer, the PRD should be updated.
+1. [`docs/architectural-path.md`](docs/architectural-path.md) — the whole `net-wallet-sdk` wallet ecosystem we're targeting: the layered stack (wallet → capability libraries → identity & proofs → cryptographic foundation), where `credentials-dotnet` sits within it, and the standards and build-vs-reuse decisions behind the shared foundation (`NetCid`, `NetCrypto`, `DataProofsDotnet`). This is the ecosystem-level context the other two docs assume; start here. (Renders the `docs/dependency-stack.svg` diagram — keep the two files together.)
+2. [`docs/credentials-dotnet-concept.md`](docs/credentials-dotnet-concept.md) — the concept document for this library: what `credentials-dotnet` is, its scope, and the agreed decisions (D1–D12). Assumes the stack in `architectural-path.md`.
+3. [`docs/credentials-dotnet-prd.md`](docs/credentials-dotnet-prd.md) — the engineering PRD / requirements spec. The target the implementation is measured against. The PRD aims to fulfill the desired functionality as specified in the concept document. If the PRD is incomplete, ask questions. After figuring out the answer, the PRD should be updated.
 
 Maintenance rules:
 
