@@ -1,0 +1,212 @@
+using Credentials.Securing;
+using Credentials.Verification;
+
+namespace Credentials.Roles;
+
+/// <summary>
+/// The default <see cref="IVerifier"/>. Runs the M1 checks — proof, structure, validity — each wrapped
+/// so that operational faults become <see cref="CheckStatus.Indeterminate"/> while a definitive
+/// negative (e.g. a bad signature) is <see cref="CheckStatus.Failed"/>; malformed input and programming
+/// errors propagate (FR-045). Status, schema, and issuer-trust report <see cref="CheckStatus.Skipped"/>
+/// until later milestones.
+/// </summary>
+internal sealed class DefaultVerifier : IVerifier
+{
+    private readonly SecuringMechanismRegistry _registry;
+
+    public DefaultVerifier(SecuringMechanismRegistry registry) =>
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+
+    public ValueTask<CredentialVerificationResult> VerifyCredentialAsync(
+        ReadOnlyMemory<byte> credential,
+        CredentialVerificationOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Parsing malformed input throws CredentialFormatException — that is the contract.
+        var parsed = Credential.Parse(credential);
+        return VerifyCredentialAsync(parsed, options, cancellationToken);
+    }
+
+    public async ValueTask<CredentialVerificationResult> VerifyCredentialAsync(
+        Credential credential,
+        CredentialVerificationOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(credential);
+        options ??= new CredentialVerificationOptions();
+
+        var checks = new List<CheckResult>
+        {
+            await SafeRunAsync(CheckKinds.Proof, () => CheckProofAsync(credential, options, cancellationToken)).ConfigureAwait(false),
+            SafeRun(CheckKinds.Structure, () => CheckStructure(credential, options)),
+            SafeRun(CheckKinds.Validity, () => CheckValidity(credential, options)),
+            CheckResult.Skipped(CheckKinds.Status, "Credential status is not evaluated in this milestone."),
+            CheckResult.Skipped(CheckKinds.Schema, "Credential schema validation is not evaluated in this milestone."),
+            CheckResult.Skipped(CheckKinds.IssuerTrust, "No issuer-trust policy is configured."),
+        };
+
+        var decision = DecisionComposer.Compose(checks, options.Policy);
+        return new CredentialVerificationResult(decision, checks, credential.Version, credential.Securing);
+    }
+
+    private async Task<CheckResult> CheckProofAsync(Credential credential, CredentialVerificationOptions options, CancellationToken ct)
+    {
+        if (!credential.HasEmbeddedProof)
+        {
+            return NoProof();
+        }
+
+        var mechanism = _registry.GetMechanism(SecuringForm.DataIntegrity);
+        if (mechanism is null)
+        {
+            return CheckResult.Indeterminate(CheckKinds.Proof, "mechanism_unavailable",
+                "No Data Integrity securing mechanism is available.");
+        }
+
+        var request = new VerifyRequest
+        {
+            Document = credential.AsElement(),
+            ExpectedProofPurpose = options.ExpectedProofPurpose ?? ProofPurpose.AssertionMethod,
+            VerificationTime = options.VerificationTime,
+        };
+
+        var result = await mechanism.VerifyAsync(request, ct).ConfigureAwait(false);
+        return result.Status switch
+        {
+            SecuringVerificationStatus.Verified => BindIssuer(credential, result),
+            SecuringVerificationStatus.Invalid => CheckResult.Failed(CheckKinds.Proof, MapProofProblems(result.Problems)),
+            SecuringVerificationStatus.Unresolvable => CheckResult.Indeterminate(CheckKinds.Proof,
+                "verification_method_unresolvable", "The proof's verification method could not be resolved."),
+            SecuringVerificationStatus.NoProof => NoProof(),
+            _ => CheckResult.Indeterminate(CheckKinds.Proof, "unknown", "The proof verification status is unknown."),
+        };
+    }
+
+    private static CheckResult NoProof() =>
+        CheckResult.Failed(CheckKinds.Proof, "no_proof", "The credential has no embedded proof.");
+
+    // Issuer binding: a cryptographically valid proof is only meaningful if its verification method
+    // belongs to the credential's issuer. We bind on the BASE DID of each proof's verificationMethod
+    // identifier (the DID where the signing key lives) — not on a resolver-supplied controller field,
+    // which an attacker-influenced DID document (e.g. did:web) can forge. To claim issuer = victim, an
+    // attacker would have to sign under a verificationMethod whose base DID is the victim's, which
+    // requires the victim's key (the signature would otherwise fail). Without this, anyone could sign a
+    // credential claiming any issuer with their own key and have it verify.
+    private static CheckResult BindIssuer(Credential credential, SecuringVerificationResult result)
+    {
+        var issuerId = credential.Issuer?.Id;
+        if (string.IsNullOrEmpty(issuerId))
+        {
+            return CheckResult.Failed(CheckKinds.Proof, "issuer_binding_missing",
+                "The credential has no issuer to bind the proof to.", "/issuer");
+        }
+
+        if (result.VerificationMethods.Count == 0
+            || result.VerificationMethods.Any(vm => !string.Equals(BaseDid(vm), issuerId, StringComparison.Ordinal)))
+        {
+            return CheckResult.Failed(CheckKinds.Proof, "issuer_binding",
+                "The proof's verification method is not controlled by the credential issuer.", "/proof/verificationMethod");
+        }
+
+        return CheckResult.Passed(CheckKinds.Proof);
+    }
+
+    // The DID portion of a DID URL: everything before the first '?' (query) or '#' (fragment).
+    private static string BaseDid(string didUrl)
+    {
+        var cut = didUrl.Length;
+        var query = didUrl.IndexOf('?');
+        if (query >= 0)
+        {
+            cut = query;
+        }
+
+        var fragment = didUrl.IndexOf('#');
+        if (fragment >= 0 && fragment < cut)
+        {
+            cut = fragment;
+        }
+
+        return didUrl[..cut];
+    }
+
+    private static CheckResult CheckStructure(Credential credential, CredentialVerificationOptions options)
+    {
+        var diagnostics = new List<CheckDiagnostic>();
+        if (credential.Version == VcdmVersion.V1_1 && !options.AcceptVcdm11)
+        {
+            diagnostics.Add(new CheckDiagnostic("vcdm11_not_accepted",
+                "VCDM 1.1 credentials are not accepted by this verifier configuration.", DiagnosticSeverity.Error));
+        }
+
+        var result = credential.ValidateStructure();
+        foreach (var problem in result.Problems)
+        {
+            diagnostics.Add(new CheckDiagnostic(problem.Code, problem.Message, DiagnosticSeverity.Error, problem.JsonPointer));
+        }
+
+        return diagnostics.Count == 0
+            ? CheckResult.Passed(CheckKinds.Structure)
+            : CheckResult.Failed(CheckKinds.Structure, diagnostics);
+    }
+
+    private static CheckResult CheckValidity(Credential credential, CredentialVerificationOptions options)
+    {
+        var now = options.VerificationTime ?? DateTimeOffset.UtcNow;
+        var skew = options.ClockSkew;
+        var diagnostics = new List<CheckDiagnostic>();
+
+        if (credential.ValidFrom is { } from && now < from - skew)
+        {
+            diagnostics.Add(new CheckDiagnostic("not_yet_valid",
+                "The credential is not yet valid (validFrom is in the future).", DiagnosticSeverity.Error, "/validFrom"));
+        }
+
+        if (credential.ValidUntil is { } until && now > until + skew)
+        {
+            diagnostics.Add(new CheckDiagnostic("expired",
+                "The credential has expired (validUntil is in the past).", DiagnosticSeverity.Error, "/validUntil"));
+        }
+
+        return diagnostics.Count == 0
+            ? CheckResult.Passed(CheckKinds.Validity)
+            : CheckResult.Failed(CheckKinds.Validity, diagnostics);
+    }
+
+    private static IReadOnlyList<CheckDiagnostic> MapProofProblems(IReadOnlyList<SecuringProblem> problems) =>
+        problems.Select(p => new CheckDiagnostic(p.Code, MapProofMessage(p.Code), DiagnosticSeverity.Error)).ToList();
+
+    private static string MapProofMessage(string code) => code switch
+    {
+        "PROOF_VERIFICATION_ERROR" => "The proof signature did not verify.",
+        "PROOF_TRANSFORMATION_ERROR" => "The credential could not be canonicalized for verification.",
+        "INVALID_VERIFICATION_METHOD" => "The proof's verification method is not authorized for its purpose.",
+        "INVALID_CHALLENGE_ERROR" => "The proof challenge did not match.",
+        "INVALID_DOMAIN_ERROR" => "The proof domain did not match.",
+        _ => "The proof is invalid.",
+    };
+
+    private static CheckResult SafeRun(string kind, Func<CheckResult> check)
+    {
+        try
+        {
+            return check();
+        }
+        catch (Exception ex) when (ex is not CredentialFormatException and not ArgumentNullException)
+        {
+            return CheckResult.Indeterminate(kind, "operation_error", "An operational error prevented this check from completing.");
+        }
+    }
+
+    private static async Task<CheckResult> SafeRunAsync(string kind, Func<Task<CheckResult>> check)
+    {
+        try
+        {
+            return await check().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not CredentialFormatException and not ArgumentNullException)
+        {
+            return CheckResult.Indeterminate(kind, "operation_error", "An operational error prevented this check from completing.");
+        }
+    }
+}

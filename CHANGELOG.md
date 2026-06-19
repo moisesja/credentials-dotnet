@@ -6,6 +6,36 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M1 (embedded Data Integrity: issue + verify)
+
+- **Roles:** `IIssuer` (embedded Data Integrity issuance) and `IVerifier` (end-to-end credential
+  verification), registered by `AddCredentials`. Issuance signs through `NetCrypto.ISigner` and never
+  handles raw keys (FR-015).
+- **Cryptosuites:** EdDSA + ECDSA, both JCS (`eddsa-jcs-2022`, `ecdsa-jcs-2019`, default) and RDFC
+  (`eddsa-rdfc-2022`, `ecdsa-rdfc-2019`, opt-in via the new `Credentials.Rdfc` package). A new suite is
+  selectable by opaque string with no public-API change (FR-053).
+- **Securing seam:** internal `ISecuringMechanism` + `DataIntegrityMechanism` — the sole caller of the
+  proofs layer (FR-050); roles never touch a substrate type. `SecuringForm` / `SecuringSelector` /
+  `ISecuringCapabilities` expose runtime-discovered suites.
+- **Verification result model:** `CredentialVerificationResult` (proof → structure → validity; status
+  / schema / issuer-trust report `Skipped` until M2), with `CheckResult` / `CheckStatus` /
+  `CheckDiagnostic` and fail-closed `DecisionComposer`. Side-effect free; reports failed checks rather
+  than throwing (FR-045). A bad signature is `Failed`; an unresolvable verification method is
+  `Indeterminate`.
+- **Resolution:** `NetDidVerificationMethodResolver` bridges NetDid resolution to the proofs layer
+  (FR-080); `UseNetDid()` wires `did:key`. `AddCredentials` fails fast when no DID resolver is present.
+
+### Security / hardening — M1 adversarial review (2026-06-19)
+
+- **Issuer binding (critical):** the verifier now binds the credential's `issuer` to the **base DID of
+  the proof's verification method** (the identifier the signing key lives under), not a
+  resolver-supplied `controller` field — which an attacker-influenced DID document could forge. This
+  closes an issuer-spoofing forgery for non-`did:key` methods.
+- **NFR-002:** the default closure is System.Text.Json-only — the RDFC suites (and their transitive
+  dotNetRDF / Newtonsoft.Json) are confined to the opt-in `Credentials.Rdfc` package.
+- `UseNetDid()` is idempotent (a second call no longer crashes NetDid's composite resolver); DID-URL
+  query strings are stripped before resolution; issuance observes a pre-cancelled token.
+
 ### Added — Milestone M0 (skeleton, core model, structural validation, DI)
 
 - Repository scaffolding: `Credentials.sln`, central package management, `Directory.Build.props/.targets`,

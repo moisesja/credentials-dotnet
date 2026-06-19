@@ -12,7 +12,7 @@ public sealed class AddCredentialsTests
     [Fact]
     public void Registers_default_crypto_seams()
     {
-        using var provider = new ServiceCollection().AddCredentials(_ => { }).BuildServiceProvider();
+        using var provider = new ServiceCollection().AddCredentials(b => b.UseNetDid()).BuildServiceProvider();
 
         provider.GetRequiredService<IRandomSource>().Should().BeOfType<BclRandomSource>();
         provider.GetRequiredService<IDigestService>().Should().BeOfType<NetCryptoDigestService>();
@@ -24,7 +24,7 @@ public sealed class AddCredentialsTests
         var custom = new FakeRandomSource();
 
         using var provider = new ServiceCollection()
-            .AddCredentials(b => b.UseRandomSource(custom))
+            .AddCredentials(b => b.UseNetDid().UseRandomSource(custom))
             .BuildServiceProvider();
 
         provider.GetRequiredService<IRandomSource>().Should().BeSameAs(custom);
@@ -34,7 +34,7 @@ public sealed class AddCredentialsTests
     public void Configure_binds_options()
     {
         using var provider = new ServiceCollection()
-            .AddCredentials(b => b.Configure(o =>
+            .AddCredentials(b => b.UseNetDid().Configure(o =>
             {
                 o.ClockSkew = TimeSpan.FromSeconds(30);
                 o.AcceptVcdm11 = false;
@@ -49,7 +49,7 @@ public sealed class AddCredentialsTests
     [Fact]
     public void Default_options_have_expected_defaults()
     {
-        using var provider = new ServiceCollection().AddCredentials(_ => { }).BuildServiceProvider();
+        using var provider = new ServiceCollection().AddCredentials(b => b.UseNetDid()).BuildServiceProvider();
 
         var options = provider.GetRequiredService<IOptions<CredentialsOptions>>().Value;
         options.ClockSkew.Should().Be(TimeSpan.FromMinutes(2));
