@@ -30,6 +30,9 @@ internal static class StatusBitstring
     /// </summary>
     public const long DefaultMaxInflatedBytes = 16L * 1024 * 1024;
 
+    /// <summary>The largest bitstring this codec will allocate or accept, in bytes (matches the inflate cap).</summary>
+    public const long MaximumBytes = DefaultMaxInflatedBytes;
+
     /// <summary>
     /// Encodes a raw bitstring to the <c>encodedList</c> wire form (GZIP then Multibase base64url, <c>u</c>
     /// prefix, unpadded).
@@ -60,8 +63,12 @@ internal static class StatusBitstring
         // NetCid's DefaultMaxInputLength (4096) bounds the ENCODED TEXT length and is far too small for a
         // real list; pass an explicit bound derived from the inflate cap. base64url expands bytes ~4/3, so
         // a compressed blob of up to maxInflatedBytes encodes to at most ~ceil(maxInflatedBytes*4/3)+pad
-        // characters; anything larger cannot inflate within the cap, so we reject it before decoding.
-        var maxEncodedChars = checked((int)Math.Min(int.MaxValue, (maxInflatedBytes / 3 + 1) * 4 + 8));
+        // characters; anything larger cannot inflate within the cap, so we reject it before decoding. A
+        // string can never exceed int.MaxValue chars, so any inflate cap at/above that maps to int.MaxValue
+        // (computed without overflowing — maxInflatedBytes/3*4 stays in long range below int.MaxValue).
+        var maxEncodedChars = maxInflatedBytes >= int.MaxValue
+            ? int.MaxValue
+            : (int)Math.Min(int.MaxValue, maxInflatedBytes / 3 * 4 + 8);
 
         byte[] compressed;
         try
@@ -162,7 +169,8 @@ internal static class StatusBitstring
     }
 
     /// <summary>Allocates a fresh, all-zero bitstring of <paramref name="lengthBits"/> bits
-    /// (rounded up to a whole byte; never below the spec minimum).</summary>
+    /// (rounded up to a whole byte; never below the spec minimum, never above <see cref="MaximumBytes"/>).</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The requested length exceeds <see cref="MaximumBytes"/>.</exception>
     public static byte[] CreateEmpty(int lengthBits = MinimumBits)
     {
         if (lengthBits < MinimumBits)
@@ -170,7 +178,15 @@ internal static class StatusBitstring
             lengthBits = MinimumBits;
         }
 
-        var bytes = (lengthBits + 7) / 8;
+        // Use long arithmetic so a near-int.MaxValue lengthBits cannot overflow the byte count, and bound
+        // the allocation to the same ceiling the decoder enforces.
+        var bytes = ((long)lengthBits + 7) / 8;
+        if (bytes > MaximumBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(lengthBits), lengthBits,
+                $"A status list bitstring may not exceed {MaximumBytes} bytes.");
+        }
+
         return new byte[bytes];
     }
 }

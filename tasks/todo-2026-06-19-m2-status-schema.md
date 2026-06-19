@@ -310,6 +310,34 @@ finding + regression test:
 
 ---
 
-## 9. Review (filled in after implementation)
+## 9. Review (2026-06-19)
 
-_TBD._
+**Status: complete and green.** Clean Release build (0 warnings, `TreatWarningsAsErrors` + XML-doc gate);
+**161 tests pass** (108 `Credentials.Core.Tests` + 49 `Credentials.Extensions.DependencyInjection.Tests`
++ 4 `Credentials.Rdfc.Tests`). NFR-002 verified: no `Newtonsoft.Json` / dotNetRDF in the Core or DI
+closures (new transitives: NetCid→SimpleBase; JsonSchema.Net→JsonPointer.Net/Json.More.Net/Humanizer.Core).
+
+**Delivered** exactly as planned — status codec + manager + stage, schema resolver/validator/registry +
+stage, issuer-trust hook, verifier wiring (proof→structure→validity→status→schema→trust), the three
+per-call toggles, DI builder hooks (typed/instance + opt-in bounded HTTP), and FR-016 builder support.
+`JsonSchemaCredential` is implemented (wrapper proof verified recursively, then inner schema applied).
+`CheckResult` gained an optional structured `Detail` to surface `StatusCheckResult`.
+
+**Adversarial pass (3 agents, confirmed-by-running).** Fixes folded in with regression tests:
+- **HIGH** — status-list issuer binding (revocation masking): bind `list.issuer == credential.issuer`
+  (`status.list_issuer_mismatch` ⇒ Indeterminate).
+- **MEDIUM** — removed `IssuerTrustContext.Document` (claims leak; NFR-008).
+- **LOW** — multi-bit `statusSize>1` revocation/suspension nonzero ⇒ Failed.
+- **LOW/latent** — overflow-safe `Decode` length bound + bounded `CreateEmpty`.
+- Confirmed safe (no fix): SSRF structurally impossible (JsonSchema.Net default fetch returns null);
+  ReDoS bounded by the BCL regex timeout (documented residual); 27+ status/trust attacks resisted.
+
+**Deviations from the plan (deliberate):**
+1. Removed `IssuerTrustContext.Document` (the plan §4 listed it) — the adversarial review showed it
+   leaks subject claims into a trust decision, contradicting NFR-008; least-privilege wins.
+2. Per-check `*IsRequired` flags remain deferred (as planned) — the fail-closed default already rejects a
+   configured-but-Indeterminate check.
+
+**Carried into M8:** ReDoS amplification on untrusted schemas is bounded but not eliminated (mitigated by
+the trusted-resolver + `digestSRI` boundary); a samples-side allowlist `IIssuerTrustPolicy` (FR-082) and
+the API-coverage gate land with the M8 samples (the allowlist currently exists as a test fixture).

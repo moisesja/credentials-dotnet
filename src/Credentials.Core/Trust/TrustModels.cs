@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Credentials.Verification;
 
 namespace Credentials.Trust;
@@ -6,7 +5,9 @@ namespace Credentials.Trust;
 /// <summary>
 /// The context handed to an <see cref="IIssuerTrustPolicy"/>. Carries only identity material — the
 /// proof-verified issuer, the verification method(s) the proof actually used (so a policy may pin a key),
-/// the credential's types, securing mechanism, and id — never credential claims or key material (NFR-008).
+/// the credential's types, securing mechanism, and id — and deliberately <strong>not</strong> the
+/// credential's claims or any key material, so an issuer-trust decision can never depend on (or leak)
+/// subject data (NFR-008).
 /// </summary>
 public sealed class IssuerTrustContext
 {
@@ -17,8 +18,7 @@ public sealed class IssuerTrustContext
         IReadOnlyList<string> verificationMethods,
         SecuringState mechanism,
         string? credentialId,
-        DateTimeOffset evaluatedAt,
-        JsonElement document)
+        DateTimeOffset evaluatedAt)
     {
         ArgumentException.ThrowIfNullOrEmpty(issuerId);
         IssuerId = issuerId;
@@ -27,7 +27,6 @@ public sealed class IssuerTrustContext
         Mechanism = mechanism;
         CredentialId = credentialId;
         EvaluatedAt = evaluatedAt;
-        Document = document;
     }
 
     /// <summary>The issuer identifier the proof authenticated (the base DID of the proof's verification method).</summary>
@@ -47,9 +46,6 @@ public sealed class IssuerTrustContext
 
     /// <summary>When the trust evaluation is taking place.</summary>
     public DateTimeOffset EvaluatedAt { get; }
-
-    /// <summary>A read-only view of the credential document (for policies that inspect more than the basics).</summary>
-    public JsonElement Document { get; }
 }
 
 /// <summary>An issuer-trust decision.</summary>

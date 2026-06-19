@@ -53,10 +53,11 @@ internal sealed class StatusStage
         var diagnostics = new List<CheckDiagnostic>();
         var worst = CheckStatus.Passed;
 
+        var credentialIssuerId = credential.Issuer?.Id;
         foreach (var entry in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var outcome = await EvaluateEntryAsync(entry.Raw, options, verifier, cancellationToken).ConfigureAwait(false);
+            var outcome = await EvaluateEntryAsync(entry.Raw, credentialIssuerId, options, verifier, cancellationToken).ConfigureAwait(false);
             worst = Worse(worst, outcome.Status);
             if (outcome.Detail is not null)
             {
@@ -82,6 +83,7 @@ internal sealed class StatusStage
 
     private async Task<EntryOutcome> EvaluateEntryAsync(
         JsonObject entry,
+        string? credentialIssuerId,
         CredentialVerificationOptions options,
         IVerifier verifier,
         CancellationToken cancellationToken)
@@ -186,6 +188,20 @@ internal sealed class StatusStage
                 "The fetched credential is not a BitstringStatusListCredential.");
         }
 
+        // 4a. Bind the status list to the credential's issuer. The recursive proof check (step 3) only
+        //     proves the list is signed by SOMEONE — not by the right someone. Without this, an attacker
+        //     who can influence what the fetcher returns (SSRF, cache poisoning, a colluding intermediary)
+        //     could substitute an all-clear list validly self-signed by an unrelated DID and silently mask
+        //     a real revocation. Require the list issuer to be the credential issuer (cross-issuer status
+        //     delegation is not supported in v1; it would need an explicit caller-supplied authority hook).
+        var listIssuerId = listCredential.Issuer?.Id;
+        if (string.IsNullOrEmpty(credentialIssuerId)
+            || !string.Equals(listIssuerId, credentialIssuerId, StringComparison.Ordinal))
+        {
+            return EntryOutcome.Indeterminate("status.list_issuer_mismatch",
+                "The status list is not issued by the credential's issuer.");
+        }
+
         // 5. Find the subject whose declared purpose matches the entry's purpose (E1).
         var subject = FindMatchingSubject(listCredential, purpose);
         if (subject is null)
@@ -231,8 +247,16 @@ internal sealed class StatusStage
 
             var value = StatusBitstring.GetValue(bitstring, position, statusSize);
             var message = ResolveStatusMessage(entry, subject, value);
-            // Multi-bit (message) statuses are informational, not a definitive negative.
             var detail = new StatusCheckDetail { StatusPurpose = purpose, IsSet = value != 0, Value = value, StatusMessage = message };
+            // A nonzero multi-bit value still means revoked/suspended for those purposes; only the
+            // informational 'message' purpose (and any other) is non-failing.
+            if (value != 0 && purpose is StatusPurpose.Revocation or StatusPurpose.Suspension)
+            {
+                var code = purpose == StatusPurpose.Revocation ? "status.revoked" : "status.suspended";
+                var reason = purpose == StatusPurpose.Revocation ? "The credential has been revoked." : "The credential is suspended.";
+                return EntryOutcome.Failed(code, reason, detail);
+            }
+
             return EntryOutcome.Passed(detail);
         }
         catch (ArgumentOutOfRangeException)

@@ -231,6 +231,70 @@ public sealed class M2StatusVerifyTests
     }
 
     [Fact]
+    public async Task A_list_signed_by_a_different_issuer_is_indeterminate_no_revocation_masking()
+    {
+        // Adversarial HIGH: an attacker who controls what the fetcher returns substitutes an all-clear list
+        // validly self-signed by an UNRELATED issuer. The list's own proof verifies, but it is not the
+        // credential's issuer, so it must NOT be trusted (no revocation masking).
+        var credentialKey = TestKeys.New(KeyType.Ed25519);
+        var attackerKey = TestKeys.New(KeyType.Ed25519);
+
+        // All-clear list, validly signed by the attacker (issuer = attacker, not the credential issuer).
+        byte[] forgedList;
+        using (var seed = BuildProvider(null))
+        {
+            forgedList = await IssueStatusListAsync(seed.GetRequiredService<IIssuer>(), attackerKey, revoked: false);
+        }
+
+        using var provider = BuildProvider(FetcherReturning(forgedList));
+        var subject = await IssueSubjectAsync(provider.GetRequiredService<IIssuer>(), credentialKey);
+
+        var result = await provider.GetRequiredService<IVerifier>().VerifyCredentialAsync(subject);
+        var status = result.Check(CheckKinds.Status)!;
+        status.Status.Should().Be(CheckStatus.Indeterminate);
+        status.Diagnostics.Should().Contain(d => d.Code == "status.list_issuer_mismatch");
+        result.Decision.Should().Be(VerificationDecision.Rejected); // fail-closed
+    }
+
+    [Fact]
+    public async Task Multi_bit_revocation_with_nonzero_value_fails()
+    {
+        // Adversarial LOW: a statusSize>1 revocation slot with a nonzero value still means revoked.
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        byte[] listBytes;
+        using (var seed = BuildProvider(null))
+        {
+            var issuer = seed.GetRequiredService<IIssuer>();
+            var list = Manager.CreateList(new StatusListCreateOptions
+            {
+                Id = ListUrl,
+                Issuer = key.Did,
+                StatusPurpose = StatusPurpose.Revocation,
+            });
+            // statusSize 2, entry index 5 ⇒ raw bit positions 10 & 11; set value 0b11 (3).
+            list = Manager.WithStatus(list, 10, isSet: true);
+            list = Manager.WithStatus(list, 11, isSet: true);
+            var issued = await issuer.IssueAsync(list,
+                new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+            listBytes = issued.Credential.ToBytes();
+        }
+
+        using var provider = BuildProvider(FetcherReturning(listBytes));
+        var unsecured = Credential.Build()
+            .WithIssuer(key.Did)
+            .AddSubject(new JsonObject { ["id"] = "did:example:subject" })
+            .AddStatus(BitstringStatusListEntry.Create(StatusPurpose.Revocation, 5, ListUrl, statusSize: 2))
+            .Seal();
+        var issuedSubject = await provider.GetRequiredService<IIssuer>().IssueAsync(unsecured,
+            new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+
+        var result = await provider.GetRequiredService<IVerifier>().VerifyCredentialAsync(issuedSubject.Credential);
+        result.Check(CheckKinds.Status)!.Status.Should().Be(CheckStatus.Failed);
+        result.Check(CheckKinds.Status)!.Diagnostics.Should().Contain(d => d.Code == "status.revoked");
+    }
+
+    [Fact]
     public async Task No_fetcher_configured_skips_status()
     {
         var key = TestKeys.New(KeyType.Ed25519);

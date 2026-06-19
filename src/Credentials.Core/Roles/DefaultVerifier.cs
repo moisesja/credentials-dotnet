@@ -173,8 +173,7 @@ internal sealed class DefaultVerifier : IVerifier
             proof.VerificationMethods,
             credential.Securing,
             credential.Id,
-            options.VerificationTime ?? DateTimeOffset.UtcNow,
-            credential.AsElement());
+            options.VerificationTime ?? DateTimeOffset.UtcNow);
 
         var result = await _trustPolicy.EvaluateAsync(context, ct).ConfigureAwait(false);
         return result.Decision switch

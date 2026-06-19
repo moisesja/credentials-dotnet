@@ -140,6 +140,29 @@ public sealed class StatusBitstringTests
     }
 
     [Fact]
+    public void Decode_with_a_huge_inflate_cap_does_not_overflow()
+    {
+        // Hardening (adversarial finding): a near-long.MaxValue cap must not throw OverflowException in the
+        // maxEncodedChars arithmetic — it clamps to a valid bound and still round-trips a real list.
+        var bits = StatusBitstring.CreateEmpty();
+        StatusBitstring.SetBit(bits, 7, true);
+        var encoded = StatusBitstring.Encode(bits);
+
+        var act = () => StatusBitstring.Decode(encoded, maxInflatedBytes: long.MaxValue);
+        act.Should().NotThrow<OverflowException>();
+        StatusBitstring.Decode(encoded, maxInflatedBytes: long.MaxValue).Should().Equal(bits);
+    }
+
+    [Fact]
+    public void CreateEmpty_rejects_an_oversized_length_without_overflowing()
+    {
+        // Hardening: int.MaxValue bits must not overflow (lengthBits+7)/8 into a negative allocation;
+        // it is rejected with a clear ArgumentOutOfRangeException.
+        var act = () => StatusBitstring.CreateEmpty(int.MaxValue);
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public void GetValue_reads_a_multi_bit_value_msb_first()
     {
         var bits = StatusBitstring.CreateEmpty();

@@ -13,9 +13,19 @@ namespace Credentials.Schema;
 /// reported as <see cref="SchemaCheckOutcome.Indeterminate"/>.
 /// </summary>
 /// <remarks>
-/// External <c>$ref</c> resolution is intentionally <em>not</em> wired to any network fetcher, so a schema
-/// cannot drive the validator to fetch arbitrary URLs (no SSRF via <c>SchemaRegistry</c>). The caller's
-/// resolver controls all egress, and a declared <c>digestSRI</c> pins the schema bytes.
+/// <para>
+/// <strong>SSRF:</strong> external <c>$ref</c> resolution is <em>not</em> wired to any network fetcher —
+/// JsonSchema.Net's default registry fetch returns <see langword="null"/>, so an unresolved external
+/// <c>$ref</c> simply fails resolution (→ <see cref="SchemaCheckOutcome.Indeterminate"/>) with no egress.
+/// The caller's resolver controls all schema fetching, and a declared <c>digestSRI</c> pins the bytes.
+/// </para>
+/// <para>
+/// <strong>ReDoS:</strong> a malicious <c>pattern</c>/<c>format</c> regex cannot hang the validator
+/// indefinitely — the BCL regex engine's match timeout fires and the evaluation is reported as
+/// <see cref="SchemaCheckOutcome.Indeterminate"/>. A pathological schema can still cost up to that timeout
+/// per regex, so schemas must come from a trusted resolver and (ideally) be pinned with <c>digestSRI</c>;
+/// the same trust boundary that gates SSRF gates this amplification.
+/// </para>
 /// </remarks>
 internal sealed class JsonSchema2020Validator : ICredentialSchemaValidator
 {
