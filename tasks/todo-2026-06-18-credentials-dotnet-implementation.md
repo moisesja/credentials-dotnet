@@ -571,4 +571,12 @@ Each milestone lists the FRs it satisfies, the files/types added, substrate depe
 - `DataProofsDotnet.DataProofsJsonOptions.Default` **exists** exactly as assumed (F1 is implementable as designed).
 - `ISigner` is defined in **`NetCrypto`** (not `NetDid`); `DataIntegrityProofPipeline.AddProofAsync/VerifyAsync` confirmed — both relevant at M1.
 
+**Adversarial review (2026-06-18).** Three independent adversarial agents attacked the M0 code (core-model immutability/fidelity, structural-validator false-accepts, parsing/untrusted-input/DI), each confirming findings by compiling and running exploits. Fixed and regression-tested (81 tests total):
+
+- **Duplicate JSON keys (3-agent consensus, critical):** `JsonNode.Parse` admitted them and threw `ArgumentException` *lazily* on first access — breaking the parse/`ValidateStructure` "throws only `CredentialFormatException` / never throws" contract and splitting verbatim wire bytes from the parsed tree. Fixed with `AllowDuplicateProperties = false` (eager `JsonException` → wrapped), and `ToElement` now reuses the same `ParseOptions`.
+- **No input-size bound (NFR-006 gap):** added `CredentialDocument.MaxInputBytes` (4 MiB).
+- **Validator false-accepts:** `@context` entries after index 0 unchecked; `credentialSubject: [{}]`; blank/empty `issuer.id` / `holder.id` / top-level `id` / `credentialStatus.type` / `credentialSchema.id`. All now rejected.
+
+Deferred with documented notes (latent/internal, not externally reachable): the internal `Root` getter exposes a mutable tree to friend assemblies (enforce when M1 securing lands — re-ingest, don't mutate frozen `Root`); `proof`-presence ≠ validity (doc note added); `GetMember` cannot distinguish absent from JSON-null. Verified-safe by the agents: public escape-by-reference (all clone), builder input-aliasing (deep-cloned), `Lazy`/serialize-once thread-safety, `FromElement` detachment, the F1 byte-mirror static init, and DI registration semantics.
+
 **Next:** M1 — embedded Data Integrity issue + verify (EdDSA/ECDSA), the securing seam, the role interfaces, and the verifier pipeline.

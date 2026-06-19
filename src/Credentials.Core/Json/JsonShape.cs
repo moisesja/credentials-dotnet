@@ -29,6 +29,28 @@ internal static class JsonShape
             ? value.GetValue<string>()
             : null;
 
+    /// <summary>True if <paramref name="node"/> is a JSON string that is neither empty nor whitespace-only.</summary>
+    public static bool IsNonBlankString(JsonNode? node) => !string.IsNullOrWhiteSpace(AsString(node));
+
+    /// <summary>True if <paramref name="node"/> is a non-empty JSON array whose every member is a non-blank string.</summary>
+    public static bool IsNonBlankStringArray(JsonNode? node)
+    {
+        if (node is not JsonArray array || array.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var item in array)
+        {
+            if (!IsNonBlankString(item))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// Reads a member as a list of strings: a single JSON string becomes a one-element list; a JSON
     /// array contributes each of its string members (non-string members are skipped). Returns an

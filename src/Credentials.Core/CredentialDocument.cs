@@ -15,11 +15,23 @@ namespace Credentials;
 /// </summary>
 public sealed class CredentialDocument
 {
+    /// <summary>
+    /// The maximum accepted size, in bytes, of a credential document parsed from untrusted input.
+    /// Caps worst-case parse/clone memory amplification (NFR-006); comfortably fits real credentials,
+    /// status lists, and embedded presentations.
+    /// </summary>
+    public const int MaxInputBytes = 4 * 1024 * 1024;
+
     private static readonly JsonDocumentOptions ParseOptions = new()
     {
         MaxDepth = 256,
         AllowTrailingCommas = false,
         CommentHandling = JsonCommentHandling.Disallow,
+        // Reject duplicate object keys eagerly at parse: System.Text.Json otherwise admits them and
+        // throws a non-JsonException lazily on first member access, which (a) breaks the parse/verify
+        // "never throws anything but CredentialFormatException" contract and (b) lets the verbatim
+        // wire bytes (which keep both keys) disagree with the parsed node tree (which keeps one).
+        AllowDuplicateProperties = false,
     };
 
     private readonly JsonObject _root;
@@ -50,6 +62,12 @@ public sealed class CredentialDocument
     /// <exception cref="CredentialFormatException">The bytes are not valid JSON or the root is not an object.</exception>
     public static CredentialDocument Parse(ReadOnlyMemory<byte> utf8Json)
     {
+        if (utf8Json.Length > MaxInputBytes)
+        {
+            throw new CredentialFormatException(
+                $"The credential document is {utf8Json.Length} bytes, exceeding the maximum of {MaxInputBytes} bytes.");
+        }
+
         var copy = utf8Json.ToArray();
         JsonObject root;
         try
@@ -93,7 +111,13 @@ public sealed class CredentialDocument
     internal static CredentialDocument CreateMutable() =>
         new(new JsonObject(), DocumentOrigin.Built, originalUtf8: null, frozen: false);
 
-    /// <summary>The live root — internal only; callers must not mutate a frozen document's tree.</summary>
+    /// <summary>
+    /// The live root tree. Internal only, and a strict invariant: it is mutated solely by a builder
+    /// while the document is unfrozen (via <see cref="Set"/>). Once frozen it is read-only — the typed
+    /// projections and the serialize-once cache both read it and would desynchronize if it were mutated
+    /// after freeze. The securing layer (M1) must produce a new document (re-ingested via
+    /// <see cref="Parse(ReadOnlyMemory{byte})"/>), never mutate a frozen <see cref="Root"/>.
+    /// </summary>
     internal JsonObject Root => _root;
 
     internal void Set(string member, JsonNode? value)
@@ -154,7 +178,9 @@ public sealed class CredentialDocument
     /// </summary>
     public JsonElement ToElement()
     {
-        using var document = JsonDocument.Parse(ToUtf8(), new JsonDocumentOptions { MaxDepth = 256 });
+        // Reuse ParseOptions so the reparse is governed by the same policy as the front door
+        // (depth bound + no duplicate keys) and can never be more permissive than Parse.
+        using var document = JsonDocument.Parse(ToUtf8(), ParseOptions);
         return document.RootElement.Clone();
     }
 

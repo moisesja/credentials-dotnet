@@ -21,3 +21,15 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 - Engine crypto seams: `IDigestService` over `NetCrypto.Hash`, and an `IRandomSource` RNG seam (wraps the BCL
   RNG — `NetCrypto` exposes no RNG abstraction).
 - `Credentials.Extensions.DependencyInjection`: `AddCredentials` + `CredentialsBuilder` + `CredentialsOptions`.
+
+### Security / hardening — M0 adversarial review (2026-06-18)
+
+- Reject duplicate JSON object keys eagerly at parse (`AllowDuplicateProperties = false`), closing an
+  unhandled-`ArgumentException` DoS, a "never throws" contract break in `ValidateStructure`, and a
+  signed-bytes-vs-parsed-tree discrepancy.
+- Bound parsed input size (`CredentialDocument.MaxInputBytes`, 4 MiB) to cap memory amplification on
+  untrusted input (NFR-006).
+- Structural validation now rejects: non-string/non-object `@context` entries after index 0; empty
+  objects inside a `credentialSubject` array; and blank/empty identity & type strings (`issuer.id`,
+  `holder.id`, top-level `id`, `credentialStatus.type`, `credentialSchema.id`, etc.).
+- 11 adversarial regression tests added (81 tests total).

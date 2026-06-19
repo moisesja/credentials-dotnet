@@ -80,6 +80,17 @@ public static class StructuralValidator
                         $"The first @context entry must be '{expected}'."));
                 }
             }
+
+            // Every subsequent @context entry must be a string IRI or a context object (A1);
+            // numbers, booleans, and null are non-conformant.
+            for (var i = 1; i < array.Count; i++)
+            {
+                if (!JsonShape.IsString(array[i]) && array[i] is not JsonObject)
+                {
+                    problems.Add(new StructuralProblem("context.invalid_entry", $"/@context/{i}",
+                        "Each @context entry must be a string or a context object."));
+                }
+            }
         }
         else
         {
@@ -127,17 +138,17 @@ public static class StructuralValidator
         }
     }
 
-    // H2: id, where present, is a single string (URL).
+    // H2: id, where present, is a single non-blank string (URL).
     private static void ValidateId(JsonObject root, List<StructuralProblem> problems)
     {
         var id = root["id"];
-        if (id is not null && !JsonShape.IsString(id))
+        if (id is not null && !JsonShape.IsNonBlankString(id))
         {
-            problems.Add(new StructuralProblem("id.invalid", "/id", "id must be a single string URL."));
+            problems.Add(new StructuralProblem("id.invalid", "/id", "id must be a single non-empty string URL."));
         }
     }
 
-    // H3: issuer is a string or an object; an object issuer requires an id.
+    // H3: issuer is a non-blank string or an object; an object issuer requires a non-blank id.
     private static void ValidateIssuer(JsonObject root, List<StructuralProblem> problems)
     {
         var issuer = root["issuer"];
@@ -146,17 +157,17 @@ public static class StructuralValidator
             case null:
                 problems.Add(new StructuralProblem("issuer.missing", "/issuer", "issuer is required."));
                 break;
-            case JsonObject obj when !JsonShape.IsString(obj["id"]):
+            case JsonObject obj when !JsonShape.IsNonBlankString(obj["id"]):
                 problems.Add(new StructuralProblem("issuer.object_missing_id", "/issuer/id",
-                    "An object-form issuer must have a string id."));
+                    "An object-form issuer must have a non-empty string id."));
                 break;
             case JsonObject:
                 break;
             default:
-                if (!JsonShape.IsString(issuer))
+                if (!JsonShape.IsNonBlankString(issuer))
                 {
                     problems.Add(new StructuralProblem("issuer.invalid_shape", "/issuer",
-                        "issuer must be a string or an object with an id."));
+                        "issuer must be a non-empty string or an object with an id."));
                 }
 
                 break;
@@ -186,10 +197,18 @@ public static class StructuralValidator
             case JsonArray array:
                 for (var i = 0; i < array.Count; i++)
                 {
-                    if (array[i] is not JsonObject)
+                    switch (array[i])
                     {
-                        problems.Add(new StructuralProblem("subject.invalid_shape", $"/credentialSubject/{i}",
-                            "Each credentialSubject entry must be an object."));
+                        case JsonObject { Count: 0 }:
+                            problems.Add(new StructuralProblem("subject.empty", $"/credentialSubject/{i}",
+                                "Each credentialSubject entry must not be empty."));
+                            break;
+                        case JsonObject:
+                            break;
+                        default:
+                            problems.Add(new StructuralProblem("subject.invalid_shape", $"/credentialSubject/{i}",
+                                "Each credentialSubject entry must be an object."));
+                            break;
                     }
                 }
 
@@ -312,21 +331,18 @@ public static class StructuralValidator
 
     private static void ValidateTypedEntry(JsonObject entry, string member, string pointer, bool requireId, List<StructuralProblem> problems)
     {
-        if (!JsonShape.IsString(entry["type"]) && !IsNonEmptyStringArray(entry["type"]))
+        if (!JsonShape.IsNonBlankString(entry["type"]) && !JsonShape.IsNonBlankStringArray(entry["type"]))
         {
             problems.Add(new StructuralProblem($"{member}.missing_type", $"{pointer}/type",
-                $"Each {member} entry requires a type."));
+                $"Each {member} entry requires a non-empty type."));
         }
 
-        if (requireId && !JsonShape.IsString(entry["id"]))
+        if (requireId && !JsonShape.IsNonBlankString(entry["id"]))
         {
             problems.Add(new StructuralProblem($"{member}.missing_id", $"{pointer}/id",
-                $"Each {member} entry requires a string id."));
+                $"Each {member} entry requires a non-empty string id."));
         }
     }
-
-    private static bool IsNonEmptyStringArray(JsonNode? node) =>
-        node is JsonArray array && array.Count > 0 && JsonShape.AllStrings(array);
 
     // F8: presentation holder, where present, is a string or an object with an id.
     private static void ValidateHolder(JsonObject root, List<StructuralProblem> problems)
@@ -336,17 +352,17 @@ public static class StructuralValidator
         {
             case null:
                 break;
-            case JsonObject obj when !JsonShape.IsString(obj["id"]):
+            case JsonObject obj when !JsonShape.IsNonBlankString(obj["id"]):
                 problems.Add(new StructuralProblem("holder.object_missing_id", "/holder/id",
-                    "An object-form holder must have a string id."));
+                    "An object-form holder must have a non-empty string id."));
                 break;
             case JsonObject:
                 break;
             default:
-                if (!JsonShape.IsString(holder))
+                if (!JsonShape.IsNonBlankString(holder))
                 {
                     problems.Add(new StructuralProblem("holder.invalid_shape", "/holder",
-                        "holder must be a string or an object with an id."));
+                        "holder must be a non-empty string or an object with an id."));
                 }
 
                 break;
