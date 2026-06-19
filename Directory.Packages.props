@@ -1,0 +1,55 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- ============================================================================
+         Stack libraries (the credentials-dotnet substrate). Versions verified against
+         the local NuGet cache on 2026-06-18. Not every entry is referenced yet: the
+         later milestones (M1+) add NetDid resolution, the DataProofs JOSE/COSE/RDFC
+         securing packages, and JSON Schema validation. Declared centrally so a
+         milestone only adds a <PackageReference> with no version.
+         ============================================================================ -->
+    <!-- Proofs + the faithful System.Text.Json serializer options (DataProofsJsonOptions.Default,
+         which CredentialJson.Faithful derives from so signed-bytes == wire-bytes). -->
+    <PackageVersion Include="DataProofsDotnet.Core" Version="1.0.1" />
+    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="1.0.1" />          <!-- M5: bbs-2023 / RDFC -->
+    <PackageVersion Include="DataProofsDotnet.Jose" Version="1.0.1" />          <!-- M3/M4: JOSE + SD-JWT VC -->
+    <PackageVersion Include="DataProofsDotnet.Cose" Version="1.0.1" />          <!-- M3: COSE -->
+    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="1.0.1" />
+    <!-- Engine crypto operations the engine performs itself: hashing/digests (NetCrypto.Hash),
+         ISigner abstraction, JWK conversion. NetCrypto exposes no RNG abstraction; the engine's
+         RNG seam wraps the BCL RandomNumberGenerator (see Credentials.Cryptography). -->
+    <PackageVersion Include="NetCrypto" Version="1.1.0" />
+    <!-- DID resolution + key store (M1+). -->
+    <PackageVersion Include="NetDid.Core" Version="2.0.1" />
+    <PackageVersion Include="NetDid.Method.Key" Version="2.0.1" />
+    <PackageVersion Include="NetDid.Extensions.DependencyInjection" Version="2.0.1" />
+    <!-- Multibase/multihash for the Bitstring Status List codec (M2). -->
+    <PackageVersion Include="NetCid" Version="1.6.0" />
+    <!-- JSON Schema 2020-12 validation (M2). STJ-native; no Newtonsoft. Latest published is 7.3.2
+         (the implementation plan's 9.2.2 was a recon error). -->
+    <PackageVersion Include="JsonSchema.Net" Version="7.3.2" />
+
+    <!-- Microsoft.Extensions -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.8" />
+
+    <!-- Source Link -->
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.300" />
+
+    <!-- Testing -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- FluentAssertions pinned to 7.0.0: the last release under the free Apache-2.0 license
+         (v8+ requires a paid Xceed license). Matches didcomm-dotnet. -->
+    <PackageVersion Include="FluentAssertions" Version="7.0.0" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.3" />
+  </ItemGroup>
+</Project>
