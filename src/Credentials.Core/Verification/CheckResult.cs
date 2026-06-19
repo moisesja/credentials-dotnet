@@ -6,11 +6,12 @@ namespace Credentials.Verification;
 /// </summary>
 public sealed class CheckResult
 {
-    private CheckResult(string kind, CheckStatus status, IReadOnlyList<CheckDiagnostic> diagnostics)
+    private CheckResult(string kind, CheckStatus status, IReadOnlyList<CheckDiagnostic> diagnostics, object? detail = null)
     {
         Kind = kind;
         Status = status;
         Diagnostics = diagnostics;
+        Detail = detail;
     }
 
     /// <summary>The check identifier (see <see cref="CheckKinds"/>).</summary>
@@ -21,6 +22,16 @@ public sealed class CheckResult
 
     /// <summary>Any diagnostics — typically present for <see cref="CheckStatus.Failed"/> / <see cref="CheckStatus.Indeterminate"/>.</summary>
     public IReadOnlyList<CheckDiagnostic> Diagnostics { get; }
+
+    /// <summary>
+    /// An optional structured, secret-free payload specific to the check (e.g. a
+    /// <see cref="Status.StatusCheckResult"/> for the status check), for callers that want detail beyond
+    /// the diagnostics. <see langword="null"/> for checks that carry none.
+    /// </summary>
+    public object? Detail { get; }
+
+    /// <summary>Returns a copy of this result carrying the given structured <paramref name="detail"/>.</summary>
+    internal CheckResult WithDetail(object? detail) => new(Kind, Status, Diagnostics, detail);
 
     /// <summary>A passed check.</summary>
     public static CheckResult Passed(string kind) => new(kind, CheckStatus.Passed, []);
@@ -36,6 +47,10 @@ public sealed class CheckResult
     /// <summary>An indeterminate check (could not complete) with one diagnostic.</summary>
     public static CheckResult Indeterminate(string kind, string code, string message) =>
         new(kind, CheckStatus.Indeterminate, [new CheckDiagnostic(code, message, DiagnosticSeverity.Error)]);
+
+    /// <summary>An indeterminate check carrying several diagnostics.</summary>
+    public static CheckResult Indeterminate(string kind, IReadOnlyList<CheckDiagnostic> diagnostics) =>
+        new(kind, CheckStatus.Indeterminate, diagnostics);
 
     /// <summary>A skipped check (not run) with an explanatory diagnostic.</summary>
     public static CheckResult Skipped(string kind, string message) =>

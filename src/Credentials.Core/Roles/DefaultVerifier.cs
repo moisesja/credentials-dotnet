@@ -1,21 +1,38 @@
+using Credentials.Schema;
 using Credentials.Securing;
+using Credentials.Status;
+using Credentials.Trust;
 using Credentials.Verification;
 
 namespace Credentials.Roles;
 
 /// <summary>
-/// The default <see cref="IVerifier"/>. Runs the M1 checks — proof, structure, validity — each wrapped
-/// so that operational faults become <see cref="CheckStatus.Indeterminate"/> while a definitive
-/// negative (e.g. a bad signature) is <see cref="CheckStatus.Failed"/>; malformed input and programming
-/// errors propagate (FR-045). Status, schema, and issuer-trust report <see cref="CheckStatus.Skipped"/>
-/// until later milestones.
+/// The default <see cref="IVerifier"/>. Runs the full check set — proof → structure → validity → status →
+/// schema → issuer-trust — each wrapped so that operational faults become
+/// <see cref="CheckStatus.Indeterminate"/> while a definitive negative (e.g. a bad signature, a revoked
+/// status, a schema violation) is <see cref="CheckStatus.Failed"/>; malformed input and programming errors
+/// propagate (FR-045). Status / schema / issuer-trust report <see cref="CheckStatus.Skipped"/> when their
+/// hook is not configured or the credential declares nothing to check. Issuer-trust consumes the
+/// proof-verified issuer, never the self-asserted one.
 /// </summary>
 internal sealed class DefaultVerifier : IVerifier
 {
     private readonly SecuringMechanismRegistry _registry;
+    private readonly StatusStage _statusStage;
+    private readonly SchemaStage _schemaStage;
+    private readonly IIssuerTrustPolicy? _trustPolicy;
 
-    public DefaultVerifier(SecuringMechanismRegistry registry) =>
+    public DefaultVerifier(
+        SecuringMechanismRegistry registry,
+        StatusStage statusStage,
+        SchemaStage schemaStage,
+        IIssuerTrustPolicy? trustPolicy = null)
+    {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        _statusStage = statusStage ?? throw new ArgumentNullException(nameof(statusStage));
+        _schemaStage = schemaStage ?? throw new ArgumentNullException(nameof(schemaStage));
+        _trustPolicy = trustPolicy;
+    }
 
     public ValueTask<CredentialVerificationResult> VerifyCredentialAsync(
         ReadOnlyMemory<byte> credential,
@@ -35,32 +52,49 @@ internal sealed class DefaultVerifier : IVerifier
         ArgumentNullException.ThrowIfNull(credential);
         options ??= new CredentialVerificationOptions();
 
+        var proof = await RunProofAsync(credential, options, cancellationToken).ConfigureAwait(false);
+
         var checks = new List<CheckResult>
         {
-            await SafeRunAsync(CheckKinds.Proof, () => CheckProofAsync(credential, options, cancellationToken)).ConfigureAwait(false),
+            proof.Result,
             SafeRun(CheckKinds.Structure, () => CheckStructure(credential, options)),
             SafeRun(CheckKinds.Validity, () => CheckValidity(credential, options)),
-            CheckResult.Skipped(CheckKinds.Status, "Credential status is not evaluated in this milestone."),
-            CheckResult.Skipped(CheckKinds.Schema, "Credential schema validation is not evaluated in this milestone."),
-            CheckResult.Skipped(CheckKinds.IssuerTrust, "No issuer-trust policy is configured."),
+            await SafeRunAsync(CheckKinds.Status, () => _statusStage.EvaluateAsync(credential, options, this, cancellationToken)).ConfigureAwait(false),
+            await SafeRunAsync(CheckKinds.Schema, () => _schemaStage.EvaluateAsync(credential, options, this, cancellationToken)).ConfigureAwait(false),
+            await SafeRunAsync(CheckKinds.IssuerTrust, () => CheckIssuerTrustAsync(credential, proof, options, cancellationToken)).ConfigureAwait(false),
         };
 
         var decision = DecisionComposer.Compose(checks, options.Policy);
         return new CredentialVerificationResult(decision, checks, credential.Version, credential.Securing);
     }
 
-    private async Task<CheckResult> CheckProofAsync(Credential credential, CredentialVerificationOptions options, CancellationToken ct)
+    private async Task<ProofOutcome> RunProofAsync(Credential credential, CredentialVerificationOptions options, CancellationToken ct)
+    {
+        try
+        {
+            return await CheckProofAsync(credential, options, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not CredentialFormatException and not ArgumentNullException)
+        {
+            return new ProofOutcome(
+                CheckResult.Indeterminate(CheckKinds.Proof, "operation_error", "An operational error prevented this check from completing."),
+                []);
+        }
+    }
+
+    private async Task<ProofOutcome> CheckProofAsync(Credential credential, CredentialVerificationOptions options, CancellationToken ct)
     {
         if (!credential.HasEmbeddedProof)
         {
-            return NoProof();
+            return new ProofOutcome(NoProof(), []);
         }
 
         var mechanism = _registry.GetMechanism(SecuringForm.DataIntegrity);
         if (mechanism is null)
         {
-            return CheckResult.Indeterminate(CheckKinds.Proof, "mechanism_unavailable",
-                "No Data Integrity securing mechanism is available.");
+            return new ProofOutcome(
+                CheckResult.Indeterminate(CheckKinds.Proof, "mechanism_unavailable", "No Data Integrity securing mechanism is available."),
+                []);
         }
 
         var request = new VerifyRequest
@@ -73,12 +107,12 @@ internal sealed class DefaultVerifier : IVerifier
         var result = await mechanism.VerifyAsync(request, ct).ConfigureAwait(false);
         return result.Status switch
         {
-            SecuringVerificationStatus.Verified => BindIssuer(credential, result),
-            SecuringVerificationStatus.Invalid => CheckResult.Failed(CheckKinds.Proof, MapProofProblems(result.Problems)),
-            SecuringVerificationStatus.Unresolvable => CheckResult.Indeterminate(CheckKinds.Proof,
-                "verification_method_unresolvable", "The proof's verification method could not be resolved."),
-            SecuringVerificationStatus.NoProof => NoProof(),
-            _ => CheckResult.Indeterminate(CheckKinds.Proof, "unknown", "The proof verification status is unknown."),
+            SecuringVerificationStatus.Verified => new ProofOutcome(BindIssuer(credential, result), result.VerificationMethods),
+            SecuringVerificationStatus.Invalid => new ProofOutcome(CheckResult.Failed(CheckKinds.Proof, MapProofProblems(result.Problems)), []),
+            SecuringVerificationStatus.Unresolvable => new ProofOutcome(CheckResult.Indeterminate(CheckKinds.Proof,
+                "verification_method_unresolvable", "The proof's verification method could not be resolved."), []),
+            SecuringVerificationStatus.NoProof => new ProofOutcome(NoProof(), []),
+            _ => new ProofOutcome(CheckResult.Indeterminate(CheckKinds.Proof, "unknown", "The proof verification status is unknown."), []),
         };
     }
 
@@ -110,6 +144,48 @@ internal sealed class DefaultVerifier : IVerifier
 
         return CheckResult.Passed(CheckKinds.Proof);
     }
+
+    // Issuer trust (FR-082): an explicit, optional step over the PROOF-VERIFIED issuer. Skipped when
+    // disabled, when no policy is configured, or when the proof did not authenticate the issuer (we never
+    // evaluate trust on a self-asserted issuer). A throwing policy is mapped to Indeterminate by SafeRunAsync.
+    private async Task<CheckResult> CheckIssuerTrustAsync(
+        Credential credential, ProofOutcome proof, CredentialVerificationOptions options, CancellationToken ct)
+    {
+        if (!options.EvaluateIssuerTrust)
+        {
+            return CheckResult.Skipped(CheckKinds.IssuerTrust, "Issuer-trust evaluation is disabled for this verification.");
+        }
+
+        if (_trustPolicy is null)
+        {
+            return CheckResult.Skipped(CheckKinds.IssuerTrust, "No issuer-trust policy is configured.");
+        }
+
+        var issuerId = credential.Issuer?.Id;
+        if (proof.Result.Status != CheckStatus.Passed || string.IsNullOrEmpty(issuerId))
+        {
+            return CheckResult.Skipped(CheckKinds.IssuerTrust, "The proof did not authenticate the issuer; trust is not evaluated.");
+        }
+
+        var context = new IssuerTrustContext(
+            issuerId,
+            credential.Type,
+            proof.VerificationMethods,
+            credential.Securing,
+            credential.Id,
+            options.VerificationTime ?? DateTimeOffset.UtcNow,
+            credential.AsElement());
+
+        var result = await _trustPolicy.EvaluateAsync(context, ct).ConfigureAwait(false);
+        return result.Decision switch
+        {
+            IssuerTrustDecision.Trusted => CheckResult.Passed(CheckKinds.IssuerTrust),
+            IssuerTrustDecision.Untrusted => CheckResult.Failed(CheckKinds.IssuerTrust, result.ReasonCode, result.Reason),
+            _ => CheckResult.Indeterminate(CheckKinds.IssuerTrust, result.ReasonCode, result.Reason),
+        };
+    }
+
+    private readonly record struct ProofOutcome(CheckResult Result, IReadOnlyList<string> VerificationMethods);
 
     // The DID portion of a DID URL: everything before the first '?' (query) or '#' (fragment).
     private static string BaseDid(string didUrl)
