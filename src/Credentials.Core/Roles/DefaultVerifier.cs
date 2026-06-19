@@ -35,7 +35,7 @@ internal sealed class DefaultVerifier : IVerifier
         ArgumentNullException.ThrowIfNull(credential);
         options ??= new CredentialVerificationOptions();
 
-        var checks = new List<CheckResult>(6)
+        var checks = new List<CheckResult>
         {
             await SafeRunAsync(CheckKinds.Proof, () => CheckProofAsync(credential, options, cancellationToken)).ConfigureAwait(false),
             SafeRun(CheckKinds.Structure, () => CheckStructure(credential, options)),
@@ -53,7 +53,7 @@ internal sealed class DefaultVerifier : IVerifier
     {
         if (!credential.HasEmbeddedProof)
         {
-            return CheckResult.Failed(CheckKinds.Proof, "no_proof", "The credential has no embedded proof.");
+            return NoProof();
         }
 
         var mechanism = _registry.GetMechanism(SecuringForm.DataIntegrity);
@@ -77,11 +77,13 @@ internal sealed class DefaultVerifier : IVerifier
             SecuringVerificationStatus.Invalid => CheckResult.Failed(CheckKinds.Proof, MapProofProblems(result.Problems)),
             SecuringVerificationStatus.Unresolvable => CheckResult.Indeterminate(CheckKinds.Proof,
                 "verification_method_unresolvable", "The proof's verification method could not be resolved."),
-            SecuringVerificationStatus.NoProof => CheckResult.Failed(CheckKinds.Proof, "no_proof",
-                "The credential has no embedded proof."),
+            SecuringVerificationStatus.NoProof => NoProof(),
             _ => CheckResult.Indeterminate(CheckKinds.Proof, "unknown", "The proof verification status is unknown."),
         };
     }
+
+    private static CheckResult NoProof() =>
+        CheckResult.Failed(CheckKinds.Proof, "no_proof", "The credential has no embedded proof.");
 
     // Issuer binding: a cryptographically valid proof is only meaningful if its verification method
     // belongs to the credential's issuer. We bind on the BASE DID of each proof's verificationMethod

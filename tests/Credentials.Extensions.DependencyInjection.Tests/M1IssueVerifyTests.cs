@@ -176,6 +176,65 @@ public sealed class M1IssueVerifyTests
     }
 
     [Fact]
+    public async Task Proof_set_with_one_invalid_proof_is_rejected()
+    {
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        var issued = await issuer.IssueAsync(
+            UnsecuredCredential(key.Did),
+            new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+
+        // Build a proof SET: the genuine proof plus a tampered copy (one corrupted base58 char in the
+        // signature). Verification must require ALL proofs valid, so the set must be Rejected.
+        var node = JsonNode.Parse(issued.Credential.ToBytes().AsSpan())!.AsObject();
+        var proofJson = node["proof"]!.ToJsonString();
+        var tampered = JsonNode.Parse(proofJson)!.AsObject();
+        var proofValue = tampered["proofValue"]!.GetValue<string>();
+        tampered["proofValue"] = proofValue[..^1] + (proofValue[^1] == 'a' ? 'b' : 'a');
+        node["proof"] = new JsonArray(JsonNode.Parse(proofJson), tampered);
+        var credential = Credential.Parse(JsonSerializer.SerializeToUtf8Bytes(node));
+
+        var result = await verifier.VerifyCredentialAsync(credential);
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Vcdm11_credential_is_rejected_when_not_accepted()
+    {
+        using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        // A structurally valid VCDM 1.1 credential.
+        const string json =
+            """
+            {
+              "@context": ["https://www.w3.org/2018/credentials/v1"],
+              "type": ["VerifiableCredential"],
+              "issuer": "did:example:issuer",
+              "issuanceDate": "2020-01-01T00:00:00Z",
+              "credentialSubject": { "id": "did:example:subject" }
+            }
+            """;
+        var credential = Credential.Parse(json);
+
+        var rejected = await verifier.VerifyCredentialAsync(
+            credential, new CredentialVerificationOptions { AcceptVcdm11 = false });
+        var rejectedStructure = rejected.Check(CheckKinds.Structure)!;
+        rejectedStructure.Status.Should().Be(CheckStatus.Failed);
+        rejectedStructure.Diagnostics.Should().Contain(d => d.Code == "vcdm11_not_accepted");
+        rejected.Decision.Should().Be(VerificationDecision.Rejected);
+
+        // With acceptance (the default), the same 1.1 credential passes the structure check.
+        var accepted = await verifier.VerifyCredentialAsync(
+            credential, new CredentialVerificationOptions { AcceptVcdm11 = true });
+        accepted.Check(CheckKinds.Structure)!.Status.Should().Be(CheckStatus.Passed);
+    }
+
+    [Fact]
     public async Task Unresolvable_verification_method_is_indeterminate()
     {
         using var provider = BuildProvider();
