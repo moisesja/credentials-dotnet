@@ -1,5 +1,6 @@
 using Credentials.Cryptography;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+using NetDid.Extensions.DependencyInjection;
+using NetDid.Method.Key;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -19,6 +20,31 @@ public sealed class CredentialsBuilder
 
     /// <summary>The underlying service collection — exposed so consumers can register supporting services in-line.</summary>
     public IServiceCollection Services { get; }
+
+    /// <summary>
+    /// Registers NetDid resolution (with <c>did:key</c> enabled by default) so the verifier can resolve
+    /// issuer/holder verification methods (FR-080). Extend the <paramref name="configure"/> callback to
+    /// add more DID methods or enable caching.
+    /// </summary>
+    public CredentialsBuilder UseNetDid(Action<NetDidBuilder>? configure = null)
+    {
+        // Idempotent: a second UseNetDid would register did:key twice, and NetDid's composite resolver
+        // throws on a duplicate method. Register a marker so re-entry is a safe no-op.
+        if (Services.Any(d => d.ServiceType == typeof(NetDidRegistrationMarker)))
+        {
+            return this;
+        }
+
+        Services.AddSingleton<NetDidRegistrationMarker>();
+        Services.AddNetDid(builder =>
+        {
+            builder.AddDidKey();
+            configure?.Invoke(builder);
+        });
+        return this;
+    }
+
+    private sealed class NetDidRegistrationMarker;
 
     /// <summary>Tweaks engine-wide <see cref="CredentialsOptions"/>.</summary>
     public CredentialsBuilder Configure(Action<CredentialsOptions> configure)

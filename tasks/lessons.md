@@ -47,3 +47,22 @@ adversarial review is not a substitute for attacking the actual implementation.
   gates (`issuer.id`, `credentialStatus.type`, …) need a non-blank check, not just an is-string check.
 - **No implicit input-size bound:** `JsonNode.Parse` bounds depth (via `MaxDepth`) but not total bytes; cap
   untrusted input length explicitly.
+
+## Bind the credential issuer to the verification-method IDENTIFIER, not a controller field (2026-06-19)
+
+A cryptographically valid Data Integrity proof says nothing about *who* issued the credential. The
+`verificationMethod`'s self-declared `controller` field is attacker-controllable for any DID method whose
+document the attacker can publish (did:web, custom resolvers). Bind `issuer` to the **base DID of the
+proof's verificationMethod** (where the signing key lives) — to claim issuer=victim the attacker would
+need victim's key, or the signature fails. Safe-looking with did:key only because there controller == DID
+== key. The DataProofs pipeline verifies the signature + the VM's own relationships, but NOT the
+credential-level issuer binding — that is the VC engine's job.
+
+## Transitive deps defeat "no Newtonsoft in the closure" even with a clean public API (2026-06-19)
+
+Referencing `DataProofsDotnet.Rdfc` (for RDFC suites) pulled dotNetRDF → Newtonsoft.Json + AngleSharp +
+HtmlAgilityPack into EVERY consumer's closure, violating NFR-002's closure clause even though no
+Newtonsoft type was on our public API. Fix: keep the default System.Text.Json-only (JCS suites) and put
+RDFC behind an opt-in package (`Credentials.Rdfc`) that contributes `ICryptosuite` services to a
+DI-collected registry. Also watch for *unused* substrate DI packages (`DataProofsDotnet.Extensions.DependencyInjection`)
+silently re-introducing the same transitive — check `dotnet list package --include-transitive`.
