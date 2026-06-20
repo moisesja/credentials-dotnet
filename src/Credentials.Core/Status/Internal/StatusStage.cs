@@ -227,6 +227,15 @@ internal sealed class StatusStage
             return EntryOutcome.Indeterminate("status.list_decode_error", "The status list bitstring could not be decoded.");
         }
 
+        // Spec step 9: the list must hold at least the minimum number of ENTRIES — (bitLength / statusSize)
+        // ≥ 131,072 — for herd privacy. The codec floor only guarantees the raw bit length, so a multi-bit
+        // (statusSize>1) list that meets the bit floor can still be too few entries.
+        if ((long)bitstring.Length * 8 / statusSize < StatusBitstring.MinimumBits)
+        {
+            return EntryOutcome.Indeterminate("status.list_too_short",
+                "The status list holds fewer than the minimum number of entries.");
+        }
+
         long position;
         try
         {

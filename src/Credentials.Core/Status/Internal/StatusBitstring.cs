@@ -168,6 +168,24 @@ internal static class StatusBitstring
         return value;
     }
 
+    /// <summary>Writes a multi-bit (<paramref name="statusSize"/>) value starting at the given bit position,
+    /// MSB-first (the most-significant status bit first). The inverse of <see cref="GetValue"/>.</summary>
+    public static void SetValue(byte[] bitstring, long position, long value, int statusSize)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(statusSize, 1);
+        if (statusSize > 62)
+        {
+            throw new ArgumentOutOfRangeException(nameof(statusSize), statusSize, "statusSize larger than 62 bits is not supported.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        for (var i = 0; i < statusSize; i++)
+        {
+            var bit = (value >> (statusSize - 1 - i)) & 1L;
+            SetBit(bitstring, position + i, bit != 0);
+        }
+    }
+
     /// <summary>Allocates a fresh, all-zero bitstring of <paramref name="lengthBits"/> bits
     /// (rounded up to a whole byte; never below the spec minimum, never above <see cref="MaximumBytes"/>).</summary>
     /// <exception cref="ArgumentOutOfRangeException">The requested length exceeds <see cref="MaximumBytes"/>.</exception>

@@ -271,10 +271,10 @@ public sealed class M2StatusVerifyTests
                 Id = ListUrl,
                 Issuer = key.Did,
                 StatusPurpose = StatusPurpose.Revocation,
+                LengthBits = StatusBitstring.MinimumBits * 2, // ≥131,072 ENTRIES at statusSize 2
             });
-            // statusSize 2, entry index 5 ⇒ raw bit positions 10 & 11; set value 0b11 (3).
-            list = Manager.WithStatus(list, 10, isSet: true);
-            list = Manager.WithStatus(list, 11, isSet: true);
+            // statusSize 2, entry index 5, value 0b11 (3) — the manager computes the bit position.
+            list = Manager.WithStatusValue(list, entryIndex: 5, value: 3, statusSize: 2);
             var issued = await issuer.IssueAsync(list,
                 new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
             listBytes = issued.Credential.ToBytes();
@@ -292,6 +292,92 @@ public sealed class M2StatusVerifyTests
         var result = await provider.GetRequiredService<IVerifier>().VerifyCredentialAsync(issuedSubject.Credential);
         result.Check(CheckKinds.Status)!.Status.Should().Be(CheckStatus.Failed);
         result.Check(CheckKinds.Status)!.Diagnostics.Should().Contain(d => d.Code == "status.revoked");
+    }
+
+    [Fact]
+    public async Task Revocation_at_the_last_valid_index_is_read_correctly()
+    {
+        // Boundary / off-by-one guard: the highest index in the 131,072-bit minimum list.
+        const long lastIndex = StatusBitstring.MinimumBits - 1;
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        byte[] listBytes;
+        using (var seed = BuildProvider(null))
+        {
+            var list = Manager.CreateList(new StatusListCreateOptions
+            {
+                Id = ListUrl, Issuer = key.Did, StatusPurpose = StatusPurpose.Revocation,
+            });
+            list = Manager.Revoke(list, lastIndex);
+            var issued = await seed.GetRequiredService<IIssuer>().IssueAsync(list,
+                new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+            listBytes = issued.Credential.ToBytes();
+        }
+
+        using var provider = BuildProvider(FetcherReturning(listBytes));
+        var unsecured = Credential.Build()
+            .WithIssuer(key.Did)
+            .AddSubject(new JsonObject { ["id"] = "did:example:subject" })
+            .AddStatus(BitstringStatusListEntry.Create(StatusPurpose.Revocation, lastIndex, ListUrl))
+            .Seal();
+        var issuedSubject = await provider.GetRequiredService<IIssuer>().IssueAsync(unsecured,
+            new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+
+        var result = await provider.GetRequiredService<IVerifier>().VerifyCredentialAsync(issuedSubject.Credential);
+        result.Check(CheckKinds.Status)!.Status.Should().Be(CheckStatus.Failed);
+        result.Check(CheckKinds.Status)!.Diagnostics.Should().Contain(d => d.Code == "status.revoked");
+    }
+
+    [Fact]
+    public async Task Multi_bit_message_status_surfaces_the_status_message_and_passes()
+    {
+        // statusMessage hex lookup (a hit): a 2-bit 'message' status with value 2 ⇒ "rejected", informational
+        // (Passed), and the resolved message is on the status detail.
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        byte[] listBytes;
+        using (var seed = BuildProvider(null))
+        {
+            var list = Manager.CreateList(new StatusListCreateOptions
+            {
+                Id = ListUrl, Issuer = key.Did, StatusPurpose = StatusPurpose.Message,
+                LengthBits = StatusBitstring.MinimumBits * 2, // ≥131,072 ENTRIES at statusSize 2
+            });
+            list = Manager.WithStatusValue(list, entryIndex: 7, value: 2, statusSize: 2);
+            var issued = await seed.GetRequiredService<IIssuer>().IssueAsync(list,
+                new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+            listBytes = issued.Credential.ToBytes();
+        }
+
+        using var provider = BuildProvider(FetcherReturning(listBytes));
+        var statusEntry = new JsonObject
+        {
+            ["type"] = BitstringStatusListEntry.TypeName,
+            ["statusPurpose"] = StatusPurpose.Message,
+            ["statusListIndex"] = "7",
+            ["statusListCredential"] = ListUrl,
+            ["statusSize"] = 2,
+            ["statusMessage"] = new JsonArray(
+                new JsonObject { ["status"] = "0x0", ["message"] = "pending" },
+                new JsonObject { ["status"] = "0x1", ["message"] = "accepted" },
+                new JsonObject { ["status"] = "0x2", ["message"] = "rejected" },
+                new JsonObject { ["status"] = "0x3", ["message"] = "revoked" }),
+        };
+        var unsecured = Credential.Build()
+            .WithIssuer(key.Did)
+            .AddSubject(new JsonObject { ["id"] = "did:example:subject" })
+            .AddStatus(statusEntry)
+            .Seal();
+        var issuedSubject = await provider.GetRequiredService<IIssuer>().IssueAsync(unsecured,
+            new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+
+        var result = await provider.GetRequiredService<IVerifier>().VerifyCredentialAsync(issuedSubject.Credential);
+        var status = result.Check(CheckKinds.Status)!;
+        status.Status.Should().Be(CheckStatus.Passed, "the 'message' purpose is informational");
+        var detail = status.GetDetail<StatusCheckResult>();
+        detail.Should().NotBeNull();
+        detail!.Details.Should().ContainSingle()
+            .Which.Should().Match<StatusCheckDetail>(d => d.Value == 2 && d.StatusMessage == "rejected");
     }
 
     [Fact]

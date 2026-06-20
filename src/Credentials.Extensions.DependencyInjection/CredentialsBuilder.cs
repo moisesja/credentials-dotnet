@@ -112,15 +112,17 @@ public sealed class CredentialsBuilder
     }
 
     /// <summary>
-    /// Registers an opt-in HTTP(S) <see cref="IStatusListFetcher"/> with a bounded response size. Egress is
-    /// the caller's responsibility (SSRF): front the <c>"credentials-dotnet"</c> named <c>HttpClient</c>
-    /// with an allowlisting handler / proxy where required.
+    /// Registers an opt-in HTTP(S) <see cref="IStatusListFetcher"/> with a bounded response size. HTTPS is
+    /// required by default (pass <paramref name="allowHttp"/> to permit cleartext, which a network attacker
+    /// can MitM to substitute a cleared status list). Egress is otherwise the caller's responsibility
+    /// (SSRF): front the <c>"credentials-dotnet"</c> named <c>HttpClient</c> with an allowlisting handler /
+    /// proxy where required.
     /// </summary>
-    public CredentialsBuilder UseHttpStatusListFetcher(long maxResponseBytes = DefaultStatusListMaxBytes)
+    public CredentialsBuilder UseHttpStatusListFetcher(long maxResponseBytes = DefaultStatusListMaxBytes, bool allowHttp = false)
     {
         Services.AddHttpClient(HttpFetch.ClientName);
         Services.AddSingleton<IStatusListFetcher>(sp =>
-            new HttpStatusListFetcher(sp.GetRequiredService<IHttpClientFactory>(), maxResponseBytes));
+            new HttpStatusListFetcher(sp.GetRequiredService<IHttpClientFactory>(), maxResponseBytes, allowHttp));
         return this;
     }
 
@@ -143,14 +145,16 @@ public sealed class CredentialsBuilder
 
     /// <summary>
     /// Registers an opt-in HTTP(S) <see cref="ICredentialSchemaResolver"/> with a bounded response size.
-    /// Egress is the caller's responsibility (SSRF), as for the status fetcher; the engine still enforces
-    /// any declared <c>digestSRI</c> over the fetched bytes.
+    /// HTTPS is required by default (pass <paramref name="allowHttp"/> to permit cleartext, which a network
+    /// attacker can MitM to substitute a permissive schema). Egress is otherwise the caller's responsibility
+    /// (SSRF), as for the status fetcher; the engine still enforces any declared <c>digestSRI</c> over the
+    /// fetched bytes.
     /// </summary>
-    public CredentialsBuilder UseHttpSchemaResolver(long maxResponseBytes = DefaultSchemaMaxBytes)
+    public CredentialsBuilder UseHttpSchemaResolver(long maxResponseBytes = DefaultSchemaMaxBytes, bool allowHttp = false)
     {
         Services.AddHttpClient(HttpFetch.ClientName);
         Services.AddSingleton<ICredentialSchemaResolver>(sp =>
-            new HttpSchemaResolver(sp.GetRequiredService<IHttpClientFactory>(), maxResponseBytes));
+            new HttpSchemaResolver(sp.GetRequiredService<IHttpClientFactory>(), maxResponseBytes, allowHttp));
         return this;
     }
 

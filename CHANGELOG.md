@@ -69,6 +69,23 @@ hang); and the status path resisted issuer-spoofed/stale/wrong-type/wrong-purpos
 malformed indices, malformed/oversized/throwing fetches, self-referential recursion, and a throwing or
 proof-unauthenticated trust policy.
 
+PR review follow-ups (also fixed, with tests):
+
+- **`JsonSchemaCredential` wrapper issuer binding (high):** the schema stage now binds a wrapped schema
+  credential to the subject credential's issuer (`schema.wrapper_issuer_mismatch` ⇒ Indeterminate) — the
+  same revocation-masking class as the status-list fix, applied to schemas. Third-party schemas use the
+  plain `JsonSchema` type pinned with `digestSRI`.
+- **Status-list entry-count floor:** the verifier enforces Bitstring Status List validate-step 9
+  (`bitLength / statusSize ≥ 131,072` entries), so a multi-bit list that meets only the raw bit floor is
+  rejected (`status.list_too_short`).
+- **`StatusListManager` multi-bit API:** methods take an honest `entryIndex` (the manager computes the bit
+  position from `statusSize`); added `WithStatusValue` / `GetStatusValue` so callers no longer hand-compute
+  bit positions. `FirstStatusListSubject` no longer falls back to an arbitrary first subject.
+- **`digestSRI`:** compares raw digest bytes and accepts both standard base64 and base64url (so a correct
+  base64url digest is not falsely rejected); an unparseable value is Indeterminate, not a silent pass.
+- **HTTP hooks default to HTTPS-only** (`allowHttp: true` to opt into cleartext).
+- **`CheckResult.GetDetail<T>()`** typed accessor over the structured `Detail`.
+
 ### Added — Milestone M1 (embedded Data Integrity: issue + verify)
 
 - **Roles:** `IIssuer` (embedded Data Integrity issuance) and `IVerifier` (end-to-end credential

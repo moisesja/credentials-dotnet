@@ -30,6 +30,13 @@ public sealed class CheckResult
     /// </summary>
     public object? Detail { get; }
 
+    /// <summary>
+    /// Returns <see cref="Detail"/> as <typeparamref name="T"/> (e.g.
+    /// <see cref="Status.StatusCheckResult"/>), or <see langword="null"/> if absent or a different type —
+    /// a type-safe accessor over the loosely-typed <see cref="Detail"/>.
+    /// </summary>
+    public T? GetDetail<T>() where T : class => Detail as T;
+
     /// <summary>Returns a copy of this result carrying the given structured <paramref name="detail"/>.</summary>
     internal CheckResult WithDetail(object? detail) => new(Kind, Status, Diagnostics, detail);
 

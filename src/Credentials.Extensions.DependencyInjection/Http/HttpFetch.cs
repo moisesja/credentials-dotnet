@@ -11,13 +11,20 @@ internal static class HttpFetch
     /// <summary>
     /// GETs <paramref name="url"/> and reads at most <paramref name="maxBytes"/> bytes of body. Returns the
     /// bytes on a 2xx response within the cap, or <see langword="null"/> on any non-success / oversize /
-    /// transport failure / non-http(s) URL (the caller maps null to an Indeterminate check, never a throw).
-    /// User cancellation propagates; an HttpClient timeout does not.
+    /// transport failure / disallowed-scheme URL (the caller maps null to an Indeterminate check, never a
+    /// throw). HTTPS is required unless <paramref name="allowHttp"/> is set — a cleartext fetch of a status
+    /// list or schema can be MitM'd to substitute a cleared list or a permissive schema. User cancellation
+    /// propagates; an HttpClient timeout does not.
     /// </summary>
-    public static async Task<byte[]?> TryGetAsync(HttpClient client, string url, long maxBytes, CancellationToken cancellationToken)
+    public static async Task<byte[]?> TryGetAsync(HttpClient client, string url, long maxBytes, bool allowHttp, CancellationToken cancellationToken)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return null;
+        }
+
+        var schemeOk = uri.Scheme == Uri.UriSchemeHttps || (allowHttp && uri.Scheme == Uri.UriSchemeHttp);
+        if (!schemeOk)
         {
             return null;
         }

@@ -124,7 +124,9 @@ required = `IsRegistered<T>` + throw. FluentAssertions pinned **7.0.0** (no 8.x 
 ### `Credentials.Trust`
 - `interface IIssuerTrustPolicy` (hook): `Task<IssuerTrustResult> EvaluateAsync(IssuerTrustContext, CancellationToken)`.
 - `sealed class IssuerTrustContext { IssuerId (proof-verified base DID), CredentialTypes, VerificationMethods
-  (proof-verified), Mechanism, CredentialId?, EvaluatedAt, JsonElement Document }` — never claims/keys (NFR-008).
+  (proof-verified), Mechanism, CredentialId?, EvaluatedAt }` — identity only, never claims/keys (NFR-008).
+  *(The `Document` field from the original sketch was dropped during the adversarial review — it exposed
+  subject claims to a trust decision; see §9.)*
 - `sealed record IssuerTrustResult { IssuerTrustDecision Decision; ReasonCode; Reason; CheckDiagnostic[] Diagnostics }`
   + `Trusted/Untrusted/Indeterminate` factories. `enum IssuerTrustDecision { Trusted, Untrusted, Indeterminate }`.
 - **No built-in trust list ships** (FR-082); a single allowlist example lives in tests (samples/ is M8).

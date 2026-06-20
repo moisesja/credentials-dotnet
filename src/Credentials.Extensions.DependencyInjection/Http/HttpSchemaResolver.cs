@@ -14,18 +14,20 @@ internal sealed class HttpSchemaResolver : ICredentialSchemaResolver
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly long _maxBytes;
+    private readonly bool _allowHttp;
 
-    public HttpSchemaResolver(IHttpClientFactory httpClientFactory, long maxBytes)
+    public HttpSchemaResolver(IHttpClientFactory httpClientFactory, long maxBytes, bool allowHttp)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _maxBytes = maxBytes;
+        _allowHttp = allowHttp;
     }
 
     public async Task<SchemaResolutionResult> ResolveAsync(SchemaReference reference, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reference);
         var client = _httpClientFactory.CreateClient(HttpFetch.ClientName);
-        var bytes = await HttpFetch.TryGetAsync(client, reference.Id, _maxBytes, cancellationToken).ConfigureAwait(false);
+        var bytes = await HttpFetch.TryGetAsync(client, reference.Id, _maxBytes, _allowHttp, cancellationToken).ConfigureAwait(false);
         return bytes is null
             ? SchemaResolutionResult.NotFound("http_fetch_failed")
             : SchemaResolutionResult.Found(new ResolvedSchema(reference.Id, SchemaDialect.JsonSchema2020_12, bytes));

@@ -65,13 +65,14 @@ internal sealed class SchemaStage
         }
 
         var credentialElement = credential.AsElement();
+        var credentialIssuerId = credential.Issuer?.Id;
         var diagnostics = new List<CheckDiagnostic>();
         var worst = CheckStatus.Passed;
 
         foreach (var entry in entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var outcome = await EvaluateEntryAsync(entry.Raw, credentialElement, options, verifier, cancellationToken).ConfigureAwait(false);
+            var outcome = await EvaluateEntryAsync(entry.Raw, credentialElement, credentialIssuerId, options, verifier, cancellationToken).ConfigureAwait(false);
             worst = Worse(worst, outcome.Status);
             diagnostics.AddRange(outcome.Diagnostics);
         }
@@ -87,6 +88,7 @@ internal sealed class SchemaStage
     private async Task<StageOutcome> EvaluateEntryAsync(
         JsonObject entry,
         JsonElement credential,
+        string? credentialIssuerId,
         CredentialVerificationOptions options,
         IVerifier verifier,
         CancellationToken cancellationToken)
@@ -142,10 +144,14 @@ internal sealed class SchemaStage
             }
         }
 
-        // JsonSchemaCredential: unwrap the schema VC (verify its proof first), then validate as JsonSchema.
+        // JsonSchemaCredential is handled by built-in unwrap logic (verify the wrapper VC's proof, bind its
+        // issuer, extract the inner schema, then dispatch to the registry's JsonSchema validator) rather
+        // than by a registry entry — registering a custom ICredentialSchemaValidator for the
+        // "JsonSchemaCredential" type would NOT replace this unwrap step. The pluggable extension point is
+        // the dialect validator the unwrap delegates to (e.g. JsonSchema, or a future SHACL validator).
         if (string.Equals(type, JsonSchemaCredentialType, StringComparison.Ordinal))
         {
-            return await ValidateWrappedSchemaAsync(resolved, credential, options, verifier, cancellationToken).ConfigureAwait(false);
+            return await ValidateWrappedSchemaAsync(resolved, credential, credentialIssuerId, options, verifier, cancellationToken).ConfigureAwait(false);
         }
 
         var validator = _validators.Get(type);
@@ -160,6 +166,7 @@ internal sealed class SchemaStage
     private async Task<StageOutcome> ValidateWrappedSchemaAsync(
         ResolvedSchema wrapper,
         JsonElement credential,
+        string? credentialIssuerId,
         CredentialVerificationOptions options,
         IVerifier verifier,
         CancellationToken cancellationToken)
@@ -190,6 +197,18 @@ internal sealed class SchemaStage
         {
             return StageOutcome.Indeterminate("schema.wrapper_unverified",
                 "The JsonSchemaCredential's own proof did not verify (or it is outside its validity window).");
+        }
+
+        // Bind the schema credential to the subject credential's issuer. As with the status list (same
+        // class of fix), verifying the wrapper's own proof only proves it is signed by SOMEONE; an attacker
+        // influencing the resolver could otherwise substitute a permissive schema VC self-signed by an
+        // unrelated DID and make the schema check pass. Cross-issuer (third-party) schemas are supported via
+        // the plain "JsonSchema" type pinned with digestSRI, not via a foreign-issuer JsonSchemaCredential.
+        if (string.IsNullOrEmpty(credentialIssuerId)
+            || !string.Equals(schemaCredential.Issuer?.Id, credentialIssuerId, StringComparison.Ordinal))
+        {
+            return StageOutcome.Indeterminate("schema.wrapper_issuer_mismatch",
+                "The JsonSchemaCredential is not issued by the credential's issuer.");
         }
 
         // The inner JSON Schema lives at credentialSubject.jsonSchema.
@@ -237,8 +256,16 @@ internal sealed class SchemaStage
                 return StageOutcome.Indeterminate("schema.digest_unsupported", $"Unsupported digestSRI algorithm '{alg}'.");
         }
 
-        var actualBase64 = Convert.ToBase64String(actual);
-        if (!FixedTimeEquals(actualBase64, expected))
+        // Compare the raw digest bytes (not the base64 text), decoding the expected value tolerantly:
+        // standard base64 is the SRI norm, but accept unpadded base64url too (some tooling emits it) so a
+        // correct digest in that form is not falsely rejected. An unparseable expected value cannot be
+        // verified ⇒ Indeterminate (fail-closed), never a silent pass.
+        if (!TryDecodeBase64(expected, out var expectedBytes))
+        {
+            return StageOutcome.Indeterminate("schema.digest_unsupported", "The digestSRI value is not valid base64.");
+        }
+
+        if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(actual, expectedBytes))
         {
             return StageOutcome.Failed("schema.digest_mismatch", "The fetched schema does not match its declared digestSRI.");
         }
@@ -246,13 +273,40 @@ internal sealed class SchemaStage
         return null;
     }
 
-    private static bool FixedTimeEquals(string a, string b)
+    private static bool TryDecodeBase64(string value, out byte[] bytes)
     {
-        // Compare the base64 strings byte-wise in constant time over the max length (integrity, not secrecy,
-        // but cheap and avoids early-exit signal).
-        var ba = System.Text.Encoding.ASCII.GetBytes(a);
-        var bb = System.Text.Encoding.ASCII.GetBytes(b);
-        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(ba, bb);
+        // SRI may carry options after a space ("<base64> ?opt"); take the digest token only.
+        var token = value;
+        var space = token.IndexOf(' ');
+        if (space >= 0)
+        {
+            token = token[..space];
+        }
+
+        // Standard base64 (the SRI norm) first.
+        if (TryFrom(token, out bytes))
+        {
+            return true;
+        }
+
+        // Then base64url: map -_/+ and re-pad.
+        var normalized = token.Replace('-', '+').Replace('_', '/');
+        normalized += (normalized.Length % 4) switch { 2 => "==", 3 => "=", _ => "" };
+        return TryFrom(normalized, out bytes);
+
+        static bool TryFrom(string s, out byte[] result)
+        {
+            try
+            {
+                result = Convert.FromBase64String(s);
+                return true;
+            }
+            catch (FormatException)
+            {
+                result = [];
+                return false;
+            }
+        }
     }
 
     private static StageOutcome Map(SchemaCheckResult result) => result.Outcome switch
