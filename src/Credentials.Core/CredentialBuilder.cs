@@ -85,6 +85,13 @@ public sealed class CredentialBuilder
         return this;
     }
 
+    /// <summary>Adds a Bitstring Status List <c>credentialStatus</c> entry (FR-016).</summary>
+    public CredentialBuilder AddStatus(Status.BitstringStatusListEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return AddStatus(entry.ToJsonObject());
+    }
+
     /// <summary>Adds a <c>credentialSchema</c> reference; a second reference promotes the member to an array.</summary>
     public CredentialBuilder AddSchema(JsonObject schema)
     {

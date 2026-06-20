@@ -2,7 +2,10 @@ using Credentials;
 using Credentials.Cryptography;
 using Credentials.Resolution;
 using Credentials.Roles;
+using Credentials.Schema;
 using Credentials.Securing;
+using Credentials.Status;
+using Credentials.Trust;
 using DataProofsDotnet.DataIntegrity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NetDid.Core;
@@ -68,8 +71,28 @@ public static class CredentialsServiceCollectionExtensions
                 sp.GetRequiredService<IVerificationMethodResolver>())));
         services.TryAddSingleton(sp => new SecuringMechanismRegistry(sp.GetServices<ISecuringMechanism>()));
         services.TryAddSingleton<ISecuringCapabilities>(sp => sp.GetRequiredService<SecuringMechanismRegistry>());
+
+        // Status (M2, FR-020/022): the issuer-side manager and the verifier's status stage (which holds the
+        // optional status-list fetcher; an unconfigured fetcher ⇒ the status check is Skipped).
+        services.TryAddSingleton<StatusListManager>();
+        services.TryAddSingleton(sp => new StatusStage(sp.GetService<IStatusListFetcher>()));
+
+        // Schema (M2, FR-070): the JSON Schema 2020-12 validator (collected into the immutable registry, so
+        // a future SHACL validator is just another registration), and the verifier's schema stage (which
+        // holds the optional schema resolver; an unconfigured resolver ⇒ the schema check is Skipped).
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ICredentialSchemaValidator, JsonSchema2020Validator>());
+        services.TryAddSingleton(sp => new SchemaValidatorRegistry(sp.GetServices<ICredentialSchemaValidator>()));
+        services.TryAddSingleton(sp => new SchemaStage(
+            sp.GetService<ICredentialSchemaResolver>(),
+            sp.GetRequiredService<SchemaValidatorRegistry>(),
+            sp.GetRequiredService<IDigestService>()));
+
         services.TryAddSingleton<IIssuer>(sp => new DefaultIssuer(sp.GetRequiredService<SecuringMechanismRegistry>()));
-        services.TryAddSingleton<IVerifier>(sp => new DefaultVerifier(sp.GetRequiredService<SecuringMechanismRegistry>()));
+        services.TryAddSingleton<IVerifier>(sp => new DefaultVerifier(
+            sp.GetRequiredService<SecuringMechanismRegistry>(),
+            sp.GetRequiredService<StatusStage>(),
+            sp.GetRequiredService<SchemaStage>(),
+            sp.GetService<IIssuerTrustPolicy>())); // optional (FR-082); absent ⇒ issuer-trust Skipped
 
         // Fail fast (FR-080): the verifier needs a DID resolver to resolve verification methods.
         if (!IsRegistered<IDidResolver>(services))
