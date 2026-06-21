@@ -22,3 +22,18 @@ internal interface ISecuringMechanism
     /// <summary>Verifies a secured document, returning a neutral tri-state result (never throws for an invalid proof).</summary>
     Task<SecuringVerificationResult> VerifyAsync(VerifyRequest request, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Implemented by the enveloping mechanisms (JOSE/COSE): materializes the inner credential from a
+/// secured envelope's bytes. The mechanism is the single place that decodes its substrate's envelope
+/// (FR-050), so the verifier never imports a JOSE/COSE type to ingest enveloped input.
+/// </summary>
+internal interface IEnvelopeIngest
+{
+    /// <summary>
+    /// Decodes the (unverified) inner credential from a secured envelope, returning a frozen
+    /// <see cref="Credential"/> that retains the verbatim <paramref name="envelope"/> for the proof
+    /// stage to verify. Throws <see cref="CredentialFormatException"/> if the envelope cannot be decoded.
+    /// </summary>
+    Credential Ingest(ReadOnlyMemory<byte> envelope);
+}

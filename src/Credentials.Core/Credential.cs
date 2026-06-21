@@ -16,6 +16,7 @@ namespace Credentials;
 public sealed class Credential
 {
     private readonly CredentialDocument _document;
+    private readonly ReadOnlyMemory<byte> _envelope;
     private readonly Lazy<VcdmVersion> _version;
     private readonly Lazy<IReadOnlyList<string>> _context;
     private readonly Lazy<IReadOnlyList<string>> _type;
@@ -27,9 +28,10 @@ public sealed class Credential
     private readonly Lazy<IReadOnlyList<CredentialStatusEntry>> _status;
     private readonly Lazy<IReadOnlyList<CredentialSchemaRef>> _schema;
 
-    private Credential(CredentialDocument document, SecuringState securing)
+    private Credential(CredentialDocument document, SecuringState securing, ReadOnlyMemory<byte> envelope)
     {
         _document = document;
+        _envelope = envelope;
         Securing = securing;
 
         const LazyThreadSafetyMode mode = LazyThreadSafetyMode.ExecutionAndPublication;
@@ -64,7 +66,15 @@ public sealed class Credential
     }
 
     internal static Credential FromDocument(CredentialDocument document, SecuringState securing) =>
-        new(document, securing);
+        new(document, securing, default);
+
+    /// <summary>
+    /// Materializes an enveloped credential (JOSE/COSE): <paramref name="inner"/> is the decoded inner
+    /// credential document (the bytes the signature covers), and <paramref name="envelope"/> is retained
+    /// verbatim so the verifier can verify the original wire bytes (sign-exact-bytes).
+    /// </summary>
+    internal static Credential FromEnvelope(CredentialDocument inner, SecuringState securing, ReadOnlyMemory<byte> envelope) =>
+        new(inner, securing, envelope);
 
     /// <summary>True — every credential crossing a public boundary is frozen.</summary>
     public bool IsFrozen => _document.IsFrozen;
@@ -80,6 +90,16 @@ public sealed class Credential
 
     /// <summary>True if an embedded Data Integrity <c>proof</c> member is present.</summary>
     public bool HasEmbeddedProof => _document.Root["proof"] is not null;
+
+    /// <summary>
+    /// The verbatim compact JWS serialization for a JOSE-enveloped credential (<see cref="SecuringState.Jose"/>),
+    /// or <see langword="null"/> otherwise. Kept byte-for-byte so it can be re-transmitted or embedded in
+    /// a presentation without breaking the signature.
+    /// </summary>
+    public string? CompactEnvelope => Securing == SecuringState.Jose ? Encoding.UTF8.GetString(_envelope.Span) : null;
+
+    /// <summary>The verbatim secured wire bytes for an enveloped credential (compact JWS as UTF-8, or COSE_Sign1 bytes).</summary>
+    internal ReadOnlyMemory<byte> EnvelopeBytes => _envelope;
 
     /// <summary>The <c>@context</c> entries, as strings (object-valued entries are available via <see cref="GetMember"/>).</summary>
     public IReadOnlyList<string> Context => _context.Value;

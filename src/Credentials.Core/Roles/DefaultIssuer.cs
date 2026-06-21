@@ -1,3 +1,4 @@
+using System.Text;
 using Credentials.Securing;
 
 namespace Credentials.Roles;
@@ -40,9 +41,43 @@ internal sealed class DefaultIssuer : IIssuer
                 };
 
                 var outcome = await mechanism.SecureAsync(secureRequest, cancellationToken).ConfigureAwait(false);
-                var securedDocument = CredentialDocument.FromElement(outcome.SecuredDocument, DocumentOrigin.Built);
+                var securedDocument = CredentialDocument.FromElement(outcome.Document, DocumentOrigin.Built);
                 var secured = Credential.FromDocument(securedDocument, SecuringState.DataIntegrity);
                 return IssuedCredential.DataIntegrity(secured);
+            }
+
+            case JoseEnvelopeIssuanceRequest jose:
+            {
+                var mechanism = _registry.ResolveForIssue(SecuringForm.Jose, cryptosuite: null);
+                var secureRequest = new SecureRequest
+                {
+                    Document = credential.AsElement(),
+                    Payload = credential.AsUtf8(),
+                    Signer = jose.Signer,
+                    VerificationMethod = jose.VerificationMethod,
+                };
+
+                var outcome = await mechanism.SecureAsync(secureRequest, cancellationToken).ConfigureAwait(false);
+                var enveloped = Credential.FromEnvelope(
+                    credential.Document, SecuringState.Jose, Encoding.UTF8.GetBytes(outcome.Jose));
+                return IssuedCredential.Jose(enveloped, outcome.Jose);
+            }
+
+            case CoseEnvelopeIssuanceRequest cose:
+            {
+                var mechanism = _registry.ResolveForIssue(SecuringForm.Cose, cryptosuite: null);
+                var secureRequest = new SecureRequest
+                {
+                    Document = credential.AsElement(),
+                    Payload = credential.AsUtf8(),
+                    Signer = cose.Signer,
+                    VerificationMethod = cose.VerificationMethod,
+                };
+
+                var outcome = await mechanism.SecureAsync(secureRequest, cancellationToken).ConfigureAwait(false);
+                var coseBytes = outcome.Cose;
+                var enveloped = Credential.FromEnvelope(credential.Document, SecuringState.Cose, coseBytes);
+                return IssuedCredential.Cose(enveloped, coseBytes);
             }
 
             default:

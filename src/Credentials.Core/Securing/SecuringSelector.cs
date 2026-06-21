@@ -15,4 +15,10 @@ public readonly record struct SecuringSelector(SecuringForm Form, string? Crypto
         ArgumentException.ThrowIfNullOrEmpty(cryptosuite);
         return new SecuringSelector(SecuringForm.DataIntegrity, cryptosuite);
     }
+
+    /// <summary>Selects an enveloping VC-JOSE proof (compact JWS, <c>typ=vc+jwt</c>).</summary>
+    public static SecuringSelector Jose() => new(SecuringForm.Jose);
+
+    /// <summary>Selects an enveloping VC-COSE proof (COSE_Sign1, <c>typ=application/vc+cose</c>).</summary>
+    public static SecuringSelector Cose() => new(SecuringForm.Cose);
 }
