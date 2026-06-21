@@ -135,6 +135,70 @@ document the stages will validate and fail (`envelope_payload_mismatch`) on any 
 "provably safe given the current substrate" into "safe regardless of how the substrate decodes," for a few
 lines and one extra seam field.
 
+## When a credential carries two identifiers for the same thing, bind on one but require both agree (2026-06-21)
+
+M4's SD-JWT VC carries a VCDM credential as the SD-JWT claims set, so it has **two** issuer identifiers:
+the SD-JWT `iss` claim (the binding anchor) and the VCDM `issuer` member (what `Credential.Issuer` and the
+issuer-trust hook read). The proof stage bound `BaseDid(kid) == iss`, but nothing required `iss == issuer`.
+An attacker signed with their **own** key under `iss = attacker` (so binding + signature pass) while setting
+`issuer = victim` — the credential verified Accepted, `Credential.Issuer.Id` reported the victim, and an
+allowlist trust policy keyed on the issuer returned Trusted. The self-consistent-forgery-with-disagreeing-
+signed-identity-fields class CLAUDE.md flags, made possible purely because two code paths read two different
+(both signed, both attacker-controlled) fields. **Rule:** when a format exposes the same authority under two
+names, (a) bind on one, (b) **require the two to be equal** as a definitive proof failure when both are
+present (here `iss == issuer`, safe because legitimate issuance always sets them equal), and (c) make every
+downstream consumer (binding, trust, the consumer-visible accessor) read the **same** anchor. A guard that
+only reconciles "clear vs disclosed" for a field misses "field-A vs field-B".
+
+## A selective-disclosure stage is only as strong as the "must-stay-in-the-clear" set — and it's bigger than the substrate's (2026-06-21)
+
+The SD-JWT VC verifier runs structure/validity/status/schema over the issuer-JWT **cleartext**, where a
+selectively-disclosable member is replaced by an `_sd` digest. The substrate's reserved set is the JWT one
+(`iss/nbf/exp/cnf/vct/vct#integrity/status`) — but the engine's stages read the **VCDM** members
+(`validFrom/validUntil/issuanceDate/expirationDate/credentialStatus/credentialSchema`), which the substrate
+treats as ordinary and happily lets you disclose. Marking `validUntil` disclosable hid it from
+`CheckValidity` ⇒ an **expired credential verified**; a disclosable `credentialStatus` ⇒ **revocation
+Skipped**. Hiding a member that gates a check silently disables the check. **Rule:** every member a verifier
+stage reads must be forced to stay in the clear — enumerate them yourself (don't inherit the substrate's
+narrower reserved list), forbid disclosing them at issuance, **and** add a verify-side guard that rejects any
+such member present in the reconstructed payload but absent from the cleartext the stages validate (catches
+credentials crafted outside your issuer). The most robust variant is to run the stages over the
+substrate-verified disclosed payload, not the cleartext.
+
+**Residual the verifier cannot close (RFC 9901 §4.2.7):** the guards above catch a member that is *revealed*
+via a disclosure but missing from the validated document. They cannot catch a holder who simply *withholds*
+the disclosure — the leftover `_sd` digest is dropped as a decoy, indistinguishable from a real one, so a
+"hidden expiry/status" looks identical to "no expiry/status." This is inherent to SD-JWT (the spec carries
+it for `iss`/`nbf`/`exp`/`status` too); the only defence is **issuer-side** — keep validity/status claims
+non-disclosable so they're always in the clear — which a conformant issuer (and *our* issuer) does, making
+its own credentials immune. Don't claim a verifier-side fix you can't make: document the boundary, make your
+own issuance immune, and push the third-party-issuer policy (presentation completeness / Type-Metadata
+disclosability) to where it belongs. The lesson: a selective-disclosure verifier's reach stops at "what was
+revealed"; "what was withheld" is the issuer's responsibility to make impossible.
+
+## "Can't find the key" must split into "DID didn't resolve" (Indeterminate) vs "DID has no such method" (Failed) (2026-06-21)
+
+The shared `NetDidEnvelopeKeyResolver` (JOSE/COSE from M3, SD-JWT from M4) returned `null` for two very
+different situations: the DID couldn't be resolved at all (IO/network/unknown method — genuinely unknown ⇒
+Indeterminate) **and** the DID resolved fine but its document doesn't publish the referenced verification
+method (a definitive negative — the issuer's published key set does not authorize that `kid`). Collapsing
+both to `null → Unresolvable → Indeterminate` let an attacker mangle a tampered/forged credential's `kid`
+**fragment** (leaving the base DID resolvable) to downgrade a definitive bad signature to Indeterminate,
+which a non-strict policy soft-accepts — defeating the F7 invariant "a forgery must never land on
+Indeterminate." **Rule:** a resolver feeding an F7 classification must return a **tri-state** (Resolved /
+DidUnresolvable / MethodNotFound), not a nullable. DID-resolved-but-method-absent is Failed, not
+Indeterminate; only a genuine resolution/IO failure is Indeterminate. The attacker controls the `kid`, so any
+attacker-chosen value that doesn't resolve to a key must be a definitive failure, never "unknown".
+
+## An informational, non-gating verifier hook must not be able to change the verdict (2026-06-21)
+
+The optional SD-JWT VC Type Metadata resolver is informational (M4 doesn't gate on it), but a throwing
+resolver propagated out of the substrate verify and was mapped to Indeterminate — so a misconfigured/flaky
+(or hostile) resolver could turn an otherwise cryptographically valid credential into Indeterminate (a
+soft-DoS). **Rule:** an informational/non-gating hook must be wrapped so a fault becomes "no result"
+(best-effort), never a verification outcome; reserve Indeterminate for faults in checks that actually gate the
+decision. (A gating hook is the opposite — its fault *should* be Indeterminate, fail-closed.)
+
 ## Transitive deps defeat "no Newtonsoft in the closure" even with a clean public API (2026-06-19)
 
 Referencing `DataProofsDotnet.Rdfc` (for RDFC suites) pulled dotNetRDF → Newtonsoft.Json + AngleSharp +

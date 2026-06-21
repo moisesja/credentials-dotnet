@@ -11,19 +11,22 @@ public sealed class IssuedCredential
 {
     private readonly string? _compactJws;
     private readonly ReadOnlyMemory<byte> _coseBytes;
+    private readonly string? _compactSdJwt;
 
     private IssuedCredential(
         SecuringState form,
         Credential credential,
         string mediaType,
         string? compactJws,
-        ReadOnlyMemory<byte> coseBytes)
+        ReadOnlyMemory<byte> coseBytes,
+        string? compactSdJwt = null)
     {
         Form = form;
         Credential = credential;
         MediaType = mediaType;
         _compactJws = compactJws;
         _coseBytes = coseBytes;
+        _compactSdJwt = compactSdJwt;
     }
 
     /// <summary>The securing form of the issued credential.</summary>
@@ -40,6 +43,9 @@ public sealed class IssuedCredential
 
     /// <summary>The COSE_Sign1 bytes for a COSE-enveloped credential, or <see langword="null"/> otherwise.</summary>
     public ReadOnlyMemory<byte>? CoseBytes => Form == SecuringState.Cose ? _coseBytes : null;
+
+    /// <summary>The compact SD-JWT VC serialization for an SD-JWT VC, or <see langword="null"/> otherwise.</summary>
+    public string? CompactSdJwt => _compactSdJwt;
 
     /// <summary>Creates an embedded Data Integrity issued-credential result.</summary>
     public static IssuedCredential DataIntegrity(Credential credential)
@@ -66,5 +72,13 @@ public sealed class IssuedCredential
         }
 
         return new IssuedCredential(SecuringState.Cose, enveloped, "application/vc+cose", null, coseBytes);
+    }
+
+    /// <summary>Creates an SD-JWT VC issued-credential result (media type <c>application/dc+sd-jwt</c>).</summary>
+    public static IssuedCredential SdJwtVc(Credential enveloped, string compactSdJwt)
+    {
+        ArgumentNullException.ThrowIfNull(enveloped);
+        ArgumentException.ThrowIfNullOrEmpty(compactSdJwt);
+        return new IssuedCredential(SecuringState.SdJwtVc, enveloped, "application/dc+sd-jwt", null, default, compactSdJwt);
     }
 }

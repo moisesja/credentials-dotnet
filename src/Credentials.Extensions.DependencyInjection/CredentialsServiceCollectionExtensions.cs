@@ -84,6 +84,14 @@ public static class CredentialsServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecuringMechanism, CoseEnvelopingMechanism>(sp =>
             new CoseEnvelopingMechanism(sp.GetRequiredService<IEnvelopeKeyResolver>())));
 
+        // SD-JWT VC securing mechanism (M4, FR-013). The sole importer of the DataProofs SD-JWT(.Vc) APIs
+        // (FR-050); reuses the enveloping key resolver (kid → JWK) and the optional, consumer-registered
+        // ICredentialTypeMetadataResolver (absent ⇒ no Type Metadata retrieval).
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecuringMechanism, SdJwtVcMechanism>(sp =>
+            new SdJwtVcMechanism(
+                sp.GetRequiredService<IEnvelopeKeyResolver>(),
+                sp.GetService<ICredentialTypeMetadataResolver>())));
+
         services.TryAddSingleton(sp => new SecuringMechanismRegistry(sp.GetServices<ISecuringMechanism>()));
         services.TryAddSingleton<ISecuringCapabilities>(sp => sp.GetRequiredService<SecuringMechanismRegistry>());
 

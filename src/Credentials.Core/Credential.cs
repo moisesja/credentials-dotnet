@@ -92,11 +92,14 @@ public sealed class Credential
     public bool HasEmbeddedProof => _document.Root["proof"] is not null;
 
     /// <summary>
-    /// The verbatim compact JWS serialization for a JOSE-enveloped credential (<see cref="SecuringState.Jose"/>),
-    /// or <see langword="null"/> otherwise. Kept byte-for-byte so it can be re-transmitted or embedded in
-    /// a presentation without breaking the signature.
+    /// The verbatim compact serialization for a credential that has one — the compact JWS for a
+    /// JOSE-enveloped credential (<see cref="SecuringState.Jose"/>) or the compact SD-JWT for an SD-JWT VC
+    /// (<see cref="SecuringState.SdJwtVc"/>) — or <see langword="null"/> otherwise (Data Integrity / COSE
+    /// have no compact string form). Kept byte-for-byte so it can be re-transmitted or embedded in a
+    /// presentation without breaking the signature.
     /// </summary>
-    public string? CompactEnvelope => Securing == SecuringState.Jose ? Encoding.UTF8.GetString(_envelope.Span) : null;
+    public string? CompactEnvelope =>
+        Securing is SecuringState.Jose or SecuringState.SdJwtVc ? Encoding.UTF8.GetString(_envelope.Span) : null;
 
     /// <summary>The verbatim secured wire bytes for an enveloped credential (compact JWS as UTF-8, or COSE_Sign1 bytes).</summary>
     internal ReadOnlyMemory<byte> EnvelopeBytes => _envelope;

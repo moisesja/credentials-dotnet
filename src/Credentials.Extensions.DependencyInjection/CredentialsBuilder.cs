@@ -158,6 +158,23 @@ public sealed class CredentialsBuilder
         return this;
     }
 
+    // ── SD-JWT VC Type Metadata (FR-013/FR-017): the vct metadata hook. Unset ⇒ no metadata retrieval. ──
+
+    /// <summary>Registers a caller-supplied <see cref="ICredentialTypeMetadataResolver"/> (SD-JWT VC <c>vct</c> Type Metadata).</summary>
+    public CredentialsBuilder UseTypeMetadataResolver<T>() where T : class, ICredentialTypeMetadataResolver
+    {
+        Services.AddSingleton<ICredentialTypeMetadataResolver, T>();
+        return this;
+    }
+
+    /// <summary>Registers a specific <see cref="ICredentialTypeMetadataResolver"/> instance.</summary>
+    public CredentialsBuilder UseTypeMetadataResolver(ICredentialTypeMetadataResolver instance)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        Services.AddSingleton(instance);
+        return this;
+    }
+
     // ── Issuer trust (FR-082): the explicit, optional trust step. Unset ⇒ issuer-trust is Skipped. ──
 
     /// <summary>Registers a caller-supplied <see cref="IIssuerTrustPolicy"/> (FR-082). No trust lists ship in the library.</summary>

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Credentials.Schema;
 using Credentials.Securing;
 using Credentials.Status;
@@ -120,6 +122,7 @@ internal sealed class DefaultVerifier : IVerifier
             SecuringState.DataIntegrity => SecuringForm.DataIntegrity,
             SecuringState.Jose => SecuringForm.Jose,
             SecuringState.Cose => SecuringForm.Cose,
+            SecuringState.SdJwtVc => SecuringForm.SdJwtVc,
             _ => (SecuringForm?)null,
         };
 
@@ -178,11 +181,12 @@ internal sealed class DefaultVerifier : IVerifier
     // credential claiming any issuer with their own key and have it verify.
     private static CheckResult BindIssuer(Credential credential, SecuringVerificationResult result)
     {
-        var issuerId = credential.Issuer?.Id;
+        var issuerId = ResolveIssuerId(credential);
         if (string.IsNullOrEmpty(issuerId))
         {
             return CheckResult.Failed(CheckKinds.Proof, "issuer_binding_missing",
-                "The credential has no issuer to bind the proof to.", "/issuer");
+                "The credential has no issuer to bind the proof to.",
+                credential.Securing == SecuringState.SdJwtVc ? "/iss" : "/issuer");
         }
 
         if (result.VerificationMethods.Count == 0
@@ -211,7 +215,10 @@ internal sealed class DefaultVerifier : IVerifier
             return CheckResult.Skipped(CheckKinds.IssuerTrust, "No issuer-trust policy is configured.");
         }
 
-        var issuerId = credential.Issuer?.Id;
+        // Use the SAME anchor the proof bound (ResolveIssuerId) so the trust policy evaluates the
+        // proof-authenticated issuer — for SD-JWT VC that is the `iss` claim, which the proof stage's
+        // sdjwt_issuer_mismatch guard has already required to equal the VCDM issuer.
+        var issuerId = ResolveIssuerId(credential);
         if (proof.Result.Status != CheckStatus.Passed || string.IsNullOrEmpty(issuerId))
         {
             return CheckResult.Skipped(CheckKinds.IssuerTrust, "The proof did not authenticate the issuer; trust is not evaluated.");
@@ -232,6 +239,23 @@ internal sealed class DefaultVerifier : IVerifier
             IssuerTrustDecision.Untrusted => CheckResult.Failed(CheckKinds.IssuerTrust, result.ReasonCode, result.Reason),
             _ => CheckResult.Indeterminate(CheckKinds.IssuerTrust, result.ReasonCode, result.Reason),
         };
+    }
+
+    // The issuer-binding anchor: for SD-JWT VC it is the (clear, reserved, signature-covered) 'iss' claim
+    // per draft-ietf-oauth-sd-jwt-vc-16 §3.2.2.1.1, falling back to the VCDM issuer when absent; for every
+    // other form it is the VCDM issuer. The anchor is part of the signed payload, so binding it to the
+    // resolved signing-key DID is the look-up-then-bind shape (an attacker cannot claim a victim issuer
+    // without the victim's key).
+    private static string? ResolveIssuerId(Credential credential)
+    {
+        if (credential.Securing == SecuringState.SdJwtVc
+            && credential.GetMember("iss") is JsonValue iss
+            && iss.GetValueKind() == JsonValueKind.String)
+        {
+            return iss.GetValue<string>();
+        }
+
+        return credential.Issuer?.Id;
     }
 
     private readonly record struct ProofOutcome(CheckResult Result, IReadOnlyList<string> VerificationMethods);
@@ -311,6 +335,16 @@ internal sealed class DefaultVerifier : IVerifier
         "envelope_malformed" => "The enveloping proof is malformed (wrong media type, header, or structure).",
         "envelope_kid_missing" => "The enveloping proof carries no key identifier to bind the issuer to.",
         "envelope_payload_mismatch" => "The signed payload does not match the credential being verified.",
+        "verification_method_not_found" => "The signer's DID resolved but does not publish the proof's verification method.",
+        "sdjwt_malformed" => "The SD-JWT VC is malformed (wrong media type, structure, or disclosure).",
+        "sdjwt_kid_missing" => "The SD-JWT VC carries no key identifier to bind the issuer to.",
+        "sdjwt_disclosure_invalid" => "An SD-JWT VC disclosure did not reconstruct against the signed digests.",
+        "sdjwt_disallowed_disclosure" => "The SD-JWT VC selectively disclosed a claim that must stay in the clear.",
+        "sdjwt_vct_missing" => "The SD-JWT VC has no 'vct' type claim.",
+        "sdjwt_key_binding_invalid" => "The SD-JWT VC Key Binding JWT did not verify.",
+        "sdjwt_payload_mismatch" => "The disclosed payload does not match the SD-JWT VC being verified.",
+        "sdjwt_issuer_mismatch" => "The SD-JWT VC 'iss' claim does not match the credential issuer.",
+        "sdjwt_hidden_member" => "A credential member required for verification was hidden in a disclosure.",
         _ => "The proof is invalid.",
     };
 

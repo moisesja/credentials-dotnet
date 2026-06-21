@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Credentials.Roles;
 using NetCrypto;
 
 namespace Credentials.Securing;
@@ -74,6 +76,26 @@ internal sealed record SecureRequest
 
     /// <summary>The Data Integrity proof <c>created</c> timestamp.</summary>
     public DateTimeOffset? Created { get; init; }
+
+    // ---- SD-JWT VC only (FR-013); null/ignored by the other forms. ----
+
+    /// <summary>The SD-JWT VC claims set (the VCDM document clone the issuer hands to the SD-JWT mechanism).</summary>
+    public JsonObject? Claims { get; init; }
+
+    /// <summary>The SD-JWT VC type claim (<c>vct</c>).</summary>
+    public string? Vct { get; init; }
+
+    /// <summary>The claims to mark selectively disclosable.</summary>
+    public IReadOnlyList<DisclosureSelector>? Disclosable { get; init; }
+
+    /// <summary>The holder confirmation key (<c>cnf</c>), or null for no holder binding.</summary>
+    public HolderBindingKey? HolderBinding { get; init; }
+
+    /// <summary>The SD-JWT disclosure-digest hash algorithm.</summary>
+    public SdHashName? SdHash { get; init; }
+
+    /// <summary>The number of decoy digests to add.</summary>
+    public int DecoyDigestCount { get; init; }
 }
 
 /// <summary>
@@ -86,13 +108,15 @@ internal sealed class SecureOutcome
     private readonly JsonElement _document;
     private readonly string? _jose;
     private readonly ReadOnlyMemory<byte> _cose;
+    private readonly string? _sdJwt;
 
-    private SecureOutcome(SecuringForm form, JsonElement document, string? jose, ReadOnlyMemory<byte> cose)
+    private SecureOutcome(SecuringForm form, JsonElement document, string? jose, ReadOnlyMemory<byte> cose, string? sdJwt)
     {
         Form = form;
         _document = document;
         _jose = jose;
         _cose = cose;
+        _sdJwt = sdJwt;
     }
 
     /// <summary>Which securing form produced this outcome.</summary>
@@ -111,14 +135,20 @@ internal sealed class SecureOutcome
         ? _cose
         : throw new InvalidOperationException("This outcome is not a COSE envelope.");
 
+    /// <summary>The compact SD-JWT VC serialization (SD-JWT VC).</summary>
+    public string SdJwt => _sdJwt ?? throw new InvalidOperationException("This outcome is not an SD-JWT VC.");
+
     public static SecureOutcome ForDocument(JsonElement securedDocument) =>
-        new(SecuringForm.DataIntegrity, securedDocument, null, default);
+        new(SecuringForm.DataIntegrity, securedDocument, null, default, null);
 
     public static SecureOutcome ForJose(string compactJws) =>
-        new(SecuringForm.Jose, default, compactJws, default);
+        new(SecuringForm.Jose, default, compactJws, default, null);
 
     public static SecureOutcome ForCose(ReadOnlyMemory<byte> coseBytes) =>
-        new(SecuringForm.Cose, default, null, coseBytes);
+        new(SecuringForm.Cose, default, null, coseBytes, null);
+
+    public static SecureOutcome ForSdJwt(string compactSdJwt) =>
+        new(SecuringForm.SdJwtVc, default, null, default, compactSdJwt);
 }
 
 /// <summary>

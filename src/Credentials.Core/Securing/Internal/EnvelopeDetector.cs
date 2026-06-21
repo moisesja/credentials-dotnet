@@ -44,6 +44,15 @@ internal static class EnvelopeDetector
             return SecuringForm.Cose;
         }
 
+        // An SD-JWT VC: issuer-JWS~D1~…~Dn~[KB-JWT]. Its first segment is itself a compact JWS, so this
+        // MUST be checked BEFORE the plain-JOSE branch or an SD-JWT would be misrouted to the JOSE
+        // mechanism. The '~' separator (outside the base64url + '.' alphabet) is the discriminator: a
+        // plain compact JWS carries none, an SD-JWT always carries at least the trailing one.
+        if (IsBase64UrlChar(first) && LooksLikeSdJwt(bytes[start..]))
+        {
+            return SecuringForm.SdJwtVc;
+        }
+
         // A compact JWS: ASCII base64url with exactly two '.' separators (header.payload.signature).
         if (IsBase64UrlChar(first) && LooksLikeCompactJws(bytes[start..]))
         {
@@ -51,6 +60,31 @@ internal static class EnvelopeDetector
         }
 
         return null;
+    }
+
+    private static bool LooksLikeSdJwt(ReadOnlySpan<byte> bytes)
+    {
+        // Trim trailing JSON whitespace (a wire token may carry a trailing newline).
+        var end = bytes.Length;
+        while (end > 0 && IsJsonWhitespace(bytes[end - 1]))
+        {
+            end--;
+        }
+
+        // The issuer JWT is everything before the first '~'; the presence of a '~' is what marks an
+        // SD-JWT (a plain compact JWS has none). The issuer-JWT segment must itself look like a compact
+        // JWS — this is a routing hint; the authoritative check is the subsequent ingest/verify.
+        var tilde = -1;
+        for (var i = 0; i < end; i++)
+        {
+            if (bytes[i] == (byte)'~')
+            {
+                tilde = i;
+                break;
+            }
+        }
+
+        return tilde > 0 && LooksLikeCompactJws(bytes[..tilde]);
     }
 
     private static bool LooksLikeCompactJws(ReadOnlySpan<byte> bytes)
