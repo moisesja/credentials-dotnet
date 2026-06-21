@@ -80,6 +80,28 @@ internal sealed class DefaultIssuer : IIssuer
                 return IssuedCredential.Cose(enveloped, coseBytes);
             }
 
+            case SdJwtVcIssuanceRequest sdJwt:
+            {
+                var mechanism = _registry.ResolveForIssue(SecuringForm.SdJwtVc, cryptosuite: null);
+                var secureRequest = new SecureRequest
+                {
+                    Document = credential.AsElement(),
+                    Claims = credential.AsClaimsObject(),
+                    Vct = sdJwt.Vct,
+                    Disclosable = sdJwt.Disclosable,
+                    HolderBinding = sdJwt.HolderBinding,
+                    SdHash = sdJwt.SdHash,
+                    DecoyDigestCount = sdJwt.DecoyDigestCount,
+                    Signer = sdJwt.Signer,
+                    VerificationMethod = sdJwt.VerificationMethod,
+                };
+
+                var outcome = await mechanism.SecureAsync(secureRequest, cancellationToken).ConfigureAwait(false);
+                var enveloped = Credential.FromEnvelope(
+                    credential.Document, SecuringState.SdJwtVc, Encoding.UTF8.GetBytes(outcome.SdJwt));
+                return IssuedCredential.SdJwtVc(enveloped, outcome.SdJwt);
+            }
+
             default:
                 throw new NotSupportedException(
                     $"Issuance request '{request.GetType().Name}' is not supported in this milestone.");

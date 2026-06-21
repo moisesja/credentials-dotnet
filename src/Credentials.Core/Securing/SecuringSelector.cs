@@ -21,4 +21,7 @@ public readonly record struct SecuringSelector(SecuringForm Form, string? Crypto
 
     /// <summary>Selects an enveloping VC-COSE proof (COSE_Sign1, <c>typ=application/vc+cose</c>).</summary>
     public static SecuringSelector Cose() => new(SecuringForm.Cose);
+
+    /// <summary>Selects an SD-JWT VC (<c>application/dc+sd-jwt</c>, selective disclosure).</summary>
+    public static SecuringSelector SdJwtVc() => new(SecuringForm.SdJwtVc);
 }
