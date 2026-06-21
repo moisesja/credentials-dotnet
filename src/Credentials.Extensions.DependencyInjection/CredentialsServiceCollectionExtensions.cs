@@ -64,11 +64,26 @@ public static class CredentialsServiceCollectionExtensions
         services.TryAddSingleton<IVerificationMethodResolver>(sp =>
             new NetDidVerificationMethodResolver(sp.GetRequiredService<IDidResolver>()));
 
+        // NetDid -> enveloping key resolver (M3, FR-012/FR-080): resolves a JWS/COSE kid (a DID URL) to
+        // neutral NetCrypto key material the JOSE mechanism converts to a JWK and the COSE mechanism uses
+        // as a raw key.
+        services.TryAddSingleton<IEnvelopeKeyResolver>(sp =>
+            new NetDidEnvelopeKeyResolver(sp.GetRequiredService<IDidResolver>()));
+
         // The securing mechanisms + their registry, and the role services.
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecuringMechanism, DataIntegrityMechanism>(sp =>
             new DataIntegrityMechanism(
                 sp.GetRequiredService<DataIntegrityProofPipeline>(),
                 sp.GetRequiredService<IVerificationMethodResolver>())));
+
+        // Enveloping VC-JOSE-COSE securing mechanisms (M3, FR-012). Registered unconditionally (always
+        // available, like Data Integrity); the registry collects them by form. Each is the sole importer
+        // of its DataProofs package (FR-050).
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecuringMechanism, JoseEnvelopingMechanism>(sp =>
+            new JoseEnvelopingMechanism(sp.GetRequiredService<IEnvelopeKeyResolver>())));
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecuringMechanism, CoseEnvelopingMechanism>(sp =>
+            new CoseEnvelopingMechanism(sp.GetRequiredService<IEnvelopeKeyResolver>())));
+
         services.TryAddSingleton(sp => new SecuringMechanismRegistry(sp.GetServices<ISecuringMechanism>()));
         services.TryAddSingleton<ISecuringCapabilities>(sp => sp.GetRequiredService<SecuringMechanismRegistry>());
 

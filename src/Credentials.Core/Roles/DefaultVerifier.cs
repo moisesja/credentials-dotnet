@@ -39,9 +39,40 @@ internal sealed class DefaultVerifier : IVerifier
         CredentialVerificationOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        // Parsing malformed input throws CredentialFormatException — that is the contract.
-        var parsed = Credential.Parse(credential);
+        // Parsing/decoding malformed input throws CredentialFormatException — that is the contract.
+        var parsed = Ingest(credential);
         return VerifyCredentialAsync(parsed, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Materializes a <see cref="Credential"/> from raw verifier input, routing by securing form: a
+    /// JSON-object credential is parsed directly; a compact JWS / COSE_Sign1 envelope is decoded by its
+    /// mechanism (the sole importer of that substrate, FR-050) so the inner credential is available to the
+    /// downstream stages and the verbatim envelope to the proof stage. Decode failure on a detected
+    /// envelope, or any non-credential input, throws <see cref="CredentialFormatException"/>; a decodable
+    /// envelope with a bad signature is a Failed result, not an exception.
+    /// </summary>
+    private Credential Ingest(ReadOnlyMemory<byte> credential)
+    {
+        if (credential.Length > CredentialDocument.MaxInputBytes)
+        {
+            throw new CredentialFormatException(
+                $"The credential input is {credential.Length} bytes, exceeding the maximum of {CredentialDocument.MaxInputBytes} bytes.");
+        }
+
+        var form = EnvelopeDetector.Detect(credential.Span);
+        if (form is not { } envelopeForm)
+        {
+            return Credential.Parse(credential);
+        }
+
+        if (_registry.GetMechanism(envelopeForm) is not IEnvelopeIngest ingest)
+        {
+            throw new CredentialFormatException(
+                $"The input is an enveloped credential ({envelopeForm}) but no securing mechanism is registered to decode it.");
+        }
+
+        return ingest.Ingest(credential);
     }
 
     public async ValueTask<CredentialVerificationResult> VerifyCredentialAsync(
@@ -84,25 +115,44 @@ internal sealed class DefaultVerifier : IVerifier
 
     private async Task<ProofOutcome> CheckProofAsync(Credential credential, CredentialVerificationOptions options, CancellationToken ct)
     {
-        if (!credential.HasEmbeddedProof)
+        var securingForm = credential.Securing switch
+        {
+            SecuringState.DataIntegrity => SecuringForm.DataIntegrity,
+            SecuringState.Jose => SecuringForm.Jose,
+            SecuringState.Cose => SecuringForm.Cose,
+            _ => (SecuringForm?)null,
+        };
+
+        // Unsecured (or a form this verifier does not handle) — there is no proof to check.
+        if (securingForm is not { } form)
         {
             return new ProofOutcome(NoProof(), []);
         }
 
-        var mechanism = _registry.GetMechanism(SecuringForm.DataIntegrity);
+        var mechanism = _registry.GetMechanism(form);
         if (mechanism is null)
         {
             return new ProofOutcome(
-                CheckResult.Indeterminate(CheckKinds.Proof, "mechanism_unavailable", "No Data Integrity securing mechanism is available."),
+                CheckResult.Indeterminate(CheckKinds.Proof, "mechanism_unavailable", $"No securing mechanism is available for the {form} form."),
                 []);
         }
 
-        var request = new VerifyRequest
-        {
-            Document = credential.AsElement(),
-            ExpectedProofPurpose = options.ExpectedProofPurpose ?? ProofPurpose.AssertionMethod,
-            VerificationTime = options.VerificationTime,
-        };
+        var request = form == SecuringForm.DataIntegrity
+            ? new VerifyRequest
+            {
+                Document = credential.AsElement(),
+                ExpectedProofPurpose = options.ExpectedProofPurpose ?? ProofPurpose.AssertionMethod,
+                VerificationTime = options.VerificationTime,
+            }
+            : new VerifyRequest
+            {
+                // The enveloping forms verify the verbatim wire bytes; the inner element is unused there.
+                // ExpectedPayload binds the verified payload to the inner document the stages validate.
+                Document = credential.AsElement(),
+                Envelope = credential.EnvelopeBytes,
+                ExpectedPayload = credential.AsUtf8(),
+                VerificationTime = options.VerificationTime,
+            };
 
         var result = await mechanism.VerifyAsync(request, ct).ConfigureAwait(false);
         return result.Status switch
@@ -258,6 +308,9 @@ internal sealed class DefaultVerifier : IVerifier
         "INVALID_VERIFICATION_METHOD" => "The proof's verification method is not authorized for its purpose.",
         "INVALID_CHALLENGE_ERROR" => "The proof challenge did not match.",
         "INVALID_DOMAIN_ERROR" => "The proof domain did not match.",
+        "envelope_malformed" => "The enveloping proof is malformed (wrong media type, header, or structure).",
+        "envelope_kid_missing" => "The enveloping proof carries no key identifier to bind the issuer to.",
+        "envelope_payload_mismatch" => "The signed payload does not match the credential being verified.",
         _ => "The proof is invalid.",
     };
 

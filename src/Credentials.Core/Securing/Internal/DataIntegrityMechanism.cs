@@ -35,7 +35,8 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
 
         var proofOptions = new DataIntegrityProof
         {
-            Cryptosuite = request.Cryptosuite,
+            // The registry's ResolveForIssue guarantees a non-null cryptosuite for the Data Integrity form.
+            Cryptosuite = request.Cryptosuite!,
             VerificationMethod = request.VerificationMethod,
             ProofPurpose = request.ProofPurpose,
             Created = request.Created is { } created ? Rfc3339.Format(created) : null,
@@ -43,7 +44,7 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
 
         var secured = await _pipeline.AddProofAsync(request.Document, proofOptions, request.Signer, cancellationToken)
             .ConfigureAwait(false);
-        return new SecureOutcome(secured);
+        return SecureOutcome.ForDocument(secured);
     }
 
     public async Task<SecuringVerificationResult> VerifyAsync(VerifyRequest request, CancellationToken cancellationToken)

@@ -92,6 +92,49 @@ default), but "not reachable today" is a latent trap for the next caller. **Rule
 bounds in `long`, clamp before narrowing to `int`, and bound allocations to the same ceiling the decoder
 enforces — even for caller-supplied (not just wire-supplied) values.
 
+## A throw-based vs result-style substrate verify both reduce to the same neutral seam — but classify BEFORE the crypto call (2026-06-20)
+
+The M3 enveloping mechanisms wrap two differently-shaped DataProofs verify APIs: `VcJose.VerifyCredential`
+is **synchronous and throws** (`MalformedJoseException` for a wrong/absent `typ`/`cty`, `JoseCryptoException`
+for a bad signature — and, fatally for naive code, `JoseCryptoException` *also* when the key resolver returns
+null), while `VcCose.Verify` is **result-style** (`Verified==false` + a `Failure.Code`). The F7 rule (bad
+signature ⇒ `Failed`; resolver/IO failure ⇒ `Indeterminate`; never conflate, never throw past the stage) is
+easy to get wrong on the JOSE side because "bad signature" and "couldn't find the key" are the *same
+exception type*. **Rule:** resolve the verification key **asynchronously, out-of-band, before** calling a
+synchronous substrate verify — classify a null/failed resolution as `Unresolvable`→`Indeterminate` up front,
+then pass a constant resolver to the substrate so the only thing its exception can mean is a real crypto/
+structural failure → `Failed`. This also keeps the role honestly async over a sync FFI (no fake
+`Task.FromResult`, F5). The adversarial pass specifically tried to make a forged signature land on
+`Indeterminate` (which a non-strict policy would accept) and could not.
+
+## Bind an enveloping credential's issuer to the kid by look-up-then-bind, even when the kid is unauthenticated (2026-06-20)
+
+The same issuer-binding lesson as M1/M2, one more level down: an enveloping (JOSE/COSE) proof has no
+in-document `verificationMethod` — the only signer identifier is the JWS protected-header `kid` or the COSE
+key id (which in COSE is **unprotected**, label 4). Binding still works and stays safe because the `kid` is
+used **only to look up a key**, never trusted for authorization: resolve the `kid`'s published key, verify
+the signature against *that* key, then require `BaseDid(kid) == inner.issuer.id`. To forge `issuer=victim`
+the attacker must sign under a `kid` whose base DID is the victim's — which makes the resolver fetch the
+victim's key, so the attacker's signature fails. A missing `kid` **fails closed** (we cannot identify the
+signer ⇒ reject, not Indeterminate). The unprotected COSE `kid` is a non-issue under this model — an
+adversary rewriting it only changes *which key we look up*, and a mismatch then fails the signature or the
+bind. **Rule:** for any token-shaped credential, derive the signer identity from the header, resolve the
+key under it, and bind the signed issuer to that identity — never accept a self-asserted issuer or trust an
+unauthenticated header field for authorization.
+
+## Make sign-exact-bytes self-enforcing: assert the substrate-verified payload equals what the stages validate (2026-06-20)
+
+For enveloping, the verifier decodes the inner credential at ingest (to drive the structure/validity/status/
+schema stages) and *separately* verifies the envelope in the proof stage. The two only stay consistent if
+the verifier's payload decode and the substrate's payload decode produce identical bytes — which they do
+today (same BCL `Base64Url`, same segment; the JWS signature covers the literal ASCII `header.payload`), and
+the adversarial pass proved no divergent payload is constructible. But that safety was *emergent* from a
+substrate implementation detail. **Rule:** when two code paths must agree on "the bytes the signature
+covers," make it explicit — have the mechanism compare the substrate-returned verified payload to the inner
+document the stages will validate and fail (`envelope_payload_mismatch`) on any mismatch. It converts
+"provably safe given the current substrate" into "safe regardless of how the substrate decodes," for a few
+lines and one extra seam field.
+
 ## Transitive deps defeat "no Newtonsoft in the closure" even with a clean public API (2026-06-19)
 
 Referencing `DataProofsDotnet.Rdfc` (for RDFC suites) pulled dotNetRDF → Newtonsoft.Json + AngleSharp +

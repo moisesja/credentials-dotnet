@@ -35,3 +35,33 @@ public sealed record DataIntegrityIssuanceRequest : IssuanceRequest
     /// <summary>The proof <c>created</c> timestamp. Defaults to the time of issuance when not set.</summary>
     public DateTimeOffset? Created { get; init; }
 }
+
+/// <summary>
+/// Requests an enveloping VC-JOSE proof (FR-012): the credential's exact bytes are signed into a compact
+/// JWS (<c>typ=vc+jwt</c>). The signature algorithm is derived from the signer's key type; the
+/// <see cref="VerificationMethod"/> becomes the JWS <c>kid</c> the verifier binds the issuer to. Signing
+/// goes through the <see cref="Signer"/> abstraction — the engine never handles raw private keys (FR-015).
+/// </summary>
+public sealed record JoseEnvelopeIssuanceRequest : IssuanceRequest
+{
+    /// <summary>The signer for the issuer key (a <c>NetCrypto.ISigner</c>; never raw key material).</summary>
+    public required ISigner Signer { get; init; }
+
+    /// <summary>The <c>verificationMethod</c> DID URL used as the JWS <c>kid</c> (e.g. <c>did:key:z6Mk…#z6Mk…</c>).</summary>
+    public required string VerificationMethod { get; init; }
+}
+
+/// <summary>
+/// Requests an enveloping VC-COSE proof (FR-012): the credential's exact bytes are signed into a tagged
+/// COSE_Sign1 message (<c>typ=application/vc+cose</c>, <c>content-type=application/vc</c>). The COSE
+/// algorithm is derived from the signer's key type (EdDSA / ES256 / ES384 / ES256K); the
+/// <see cref="VerificationMethod"/> becomes the COSE <c>kid</c> the verifier binds the issuer to.
+/// </summary>
+public sealed record CoseEnvelopeIssuanceRequest : IssuanceRequest
+{
+    /// <summary>The signer for the issuer key (a <c>NetCrypto.ISigner</c>; never raw key material).</summary>
+    public required ISigner Signer { get; init; }
+
+    /// <summary>The <c>verificationMethod</c> DID URL used as the COSE <c>kid</c> (e.g. <c>did:key:z6Mk…#z6Mk…</c>).</summary>
+    public required string VerificationMethod { get; init; }
+}
