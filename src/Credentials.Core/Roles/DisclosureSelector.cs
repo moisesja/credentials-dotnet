@@ -86,7 +86,8 @@ public sealed class DisclosureSelector
 
     /// <summary>
     /// Marks selected elements of an array claim as individually disclosable; the array itself stays in
-    /// the clear with the chosen elements replaced by disclosure placeholders.
+    /// the clear with the chosen elements replaced by disclosure placeholders. Duplicate indices are
+    /// de-duplicated (each element is disclosable at most once).
     /// </summary>
     /// <param name="claimName">The array claim name (stays in the clear).</param>
     /// <param name="indices">The zero-based element indices to make disclosable (at least one, all non-negative).</param>
@@ -107,6 +108,8 @@ public sealed class DisclosureSelector
             }
         }
 
-        return new DisclosureSelector(DisclosureSelectorKind.ArrayElements, claimName, [], [.. indices]);
+        // De-duplicate (preserving first-seen order): disclosing the same element index twice is a usage
+        // trap, not a meaningful request — a given array element is disclosable at most once.
+        return new DisclosureSelector(DisclosureSelectorKind.ArrayElements, claimName, [], [.. indices.Distinct()]);
     }
 }

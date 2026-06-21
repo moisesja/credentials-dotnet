@@ -696,6 +696,13 @@ public sealed class M4SdJwtVcTests
         ["credentialSubject"] = new JsonObject { ["id"] = "did:example:subject" },
     };
 
+    // NOTE: CraftSdJwt / MangleIssuerKid below are the SOLE sanctioned use of DataProofsDotnet.Jose SD-JWT
+    // substrate types (DisclosureFrame / SdJwtVcIssuer / JwsSigner) inside the test suite. They craft
+    // adversarial inputs that DefaultIssuer's issuance guards (iss==issuer, non-disclosable members) would
+    // refuse, which is exactly how the verify-side defences are exercised. This is test-only and does not
+    // affect FR-051/D12 — the test assembly is not the library's public surface (which the
+    // SurfaceConfinementTests reflection test guards).
+
     /// <summary>Crafts a real, validly-signed SD-JWT VC directly through the substrate (bypassing DefaultIssuer's iss==issuer + disclosure guards) to exercise the verify-side defenses.</summary>
     private static async Task<string> CraftSdJwt(JsonObject claims, DisclosureFrame frame, TestKey signerKey)
     {

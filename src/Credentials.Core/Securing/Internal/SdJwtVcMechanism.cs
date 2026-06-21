@@ -299,8 +299,12 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
     private static void GuardSelectableClaim(DisclosureSelector selector)
     {
         // Disclosing a VCDM member a verifier stage reads (structure / binding / validity / status /
-        // schema) would silently disable that check or break the binding. credentialSubject may have its
-        // sub-properties or array elements disclosed, but not the whole object.
+        // schema) would silently disable that check or break the binding. credentialSubject is handled
+        // specially (and is deliberately NOT in NonDisclosableMembers): its sub-properties / array elements
+        // ARE legitimately disclosable, so only the whole-object form is blocked here. Unlike the
+        // validity/status members, a non-conformant credential hiding the whole credentialSubject is caught
+        // by the structural validator (a missing/empty credentialSubject is a structure failure in both the
+        // revealed and withheld cases), so it does not need a verify-side no-hidden-member entry.
         if (NonDisclosableMembers.Contains(selector.ClaimName)
             || (selector.ClaimName == "credentialSubject" && selector.Kind == DisclosureSelectorKind.Claim))
         {
@@ -357,7 +361,10 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
         obj[name] is JsonValue value && value.GetValueKind() == JsonValueKind.String ? value.GetValue<string>() : null;
 
     // Map the substrate's coded error prefixes to neutral, secret-free credentials-dotnet codes (F10) —
-    // never the upstream free-text message. Every case is a definitive negative (→ Failed).
+    // never the upstream free-text message. Every case is a definitive negative (→ Failed), so an
+    // unrecognized prefix (e.g. if the substrate ever renames one) degrades safely to a generic
+    // PROOF_VERIFICATION_ERROR and can never weaken the verdict — this is a maintenance, not a
+    // correctness, coupling. Prefer substrate-exposed constant aliases here once they exist upstream.
     private static string MapErrorCode(IReadOnlyList<string> errors)
     {
         var first = errors.Count > 0 ? errors[0] : string.Empty;

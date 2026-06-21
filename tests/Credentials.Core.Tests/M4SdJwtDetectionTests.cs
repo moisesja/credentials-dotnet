@@ -2,6 +2,7 @@ using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Credentials.Roles;
 using Credentials.Securing;
 using FluentAssertions;
 using Xunit;
@@ -75,5 +76,13 @@ public sealed class M4SdJwtDetectionTests
         var h = Base64Url.EncodeToString(JsonSerializer.SerializeToUtf8Bytes(header));
         var p = Base64Url.EncodeToString(payload);
         return $"{h}.{p}.{Base64Url.EncodeToString(new byte[8])}";
+    }
+
+    [Fact]
+    public void DisclosureSelector_arrayElements_dedupes_indices()
+    {
+        // Duplicate indices are a usage trap, not a meaningful request — they are de-duplicated, preserving
+        // first-seen order, so a given array element is disclosable at most once.
+        DisclosureSelector.ArrayElements("tags", 0, 1, 0, 1, 2).Indices.Should().Equal(0, 1, 2);
     }
 }
