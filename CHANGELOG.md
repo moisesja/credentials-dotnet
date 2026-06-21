@@ -53,6 +53,17 @@ detached/nil COSE payload is rejected at ingest); the size bound precedes any de
 surface and NFR-002 closure are clean. The sign-exact-bytes invariant was additionally made self-enforcing
 (`envelope_payload_mismatch`) so it no longer depends on the substrate decoding the payload identically.
 
+PR review follow-ups (also fixed, with tests):
+
+- **COSE negative tests (DoD gap):** added the COSE counterparts the plan promised — wrong `typ`, wrong
+  `content-type`, missing-`kid` fail-closed, and the self-consistent forgery signed under the victim's
+  `kid` — crafting raw COSE_Sign1 with the lower-level signer to drive the bad-header paths.
+- **`SecureOutcome` accessors are symmetric:** the `Document` / `Jose` / `Cose` accessors now all throw on
+  a wrong-form outcome (the COSE accessor previously returned an empty `ReadOnlyMemory` silently).
+- **`IssuedCredential.Cose` rejects empty bytes**, matching the non-empty guard on the JOSE factory.
+- Documented the unprotected-COSE-`kid` mitigation on `CoseEnvelopingMechanism.VerifyAsync` and the
+  byte-stability assumption on `Credential.AsUtf8()` that the `envelope_payload_mismatch` guard relies on.
+
 ### Added — Milestone M2 (credential status + schema + issuer-trust hook)
 
 - **Status (Bitstring Status List v1.0):** `StatusListManager` produces and maintains the unsecured

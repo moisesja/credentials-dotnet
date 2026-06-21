@@ -60,6 +60,11 @@ public sealed class IssuedCredential
     public static IssuedCredential Cose(Credential enveloped, ReadOnlyMemory<byte> coseBytes)
     {
         ArgumentNullException.ThrowIfNull(enveloped);
+        if (coseBytes.IsEmpty)
+        {
+            throw new ArgumentException("COSE bytes must not be empty.", nameof(coseBytes));
+        }
+
         return new IssuedCredential(SecuringState.Cose, enveloped, "application/vc+cose", null, coseBytes);
     }
 }

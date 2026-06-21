@@ -5,6 +5,7 @@ using Credentials;
 using Credentials.Roles;
 using Credentials.Securing;
 using Credentials.Verification;
+using DataProofsDotnet.Cose;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NetCrypto;
@@ -318,6 +319,87 @@ public sealed class M3EnvelopingTests
         proof.Diagnostics.Should().Contain(d => d.Code == "issuer_binding");
     }
 
+    [Fact]
+    public async Task Cose_self_consistent_forgery_under_victim_kid_fails_signature()
+    {
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var attacker = TestKeys.New(KeyType.Ed25519);
+        var victim = TestKeys.New(KeyType.Ed25519);
+
+        // issuer = victim AND kid = victim's verification method, but signed with the ATTACKER's key. The
+        // kid base DID matches the issuer (binding would pass), so only the signature check — against the
+        // victim's resolved key — catches the forgery.
+        var credential = Credential.Build()
+            .WithIssuer(victim.Did)
+            .AddSubject(new JsonObject { ["id"] = "did:example:subject" })
+            .Seal();
+        var forged = await issuer.IssueAsync(
+            credential,
+            new CoseEnvelopeIssuanceRequest { Signer = attacker.Signer, VerificationMethod = victim.VerificationMethod });
+
+        var result = await verifier.VerifyCredentialAsync(forged.Credential);
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Cose_missing_kid_is_rejected_fail_closed()
+    {
+        using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        // A validly-signed COSE_Sign1 with the correct pinned headers but NO kid — there is no signer
+        // identity to bind the issuer to, so it must be rejected (fail closed), not Indeterminate.
+        var envelope = await FabricateCose(
+            UnsecuredCredential(key.Did).AsUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
+            keyId: null, contentType: VcCose.CredentialContentType, type: VcCose.EnvelopeType);
+
+        var result = await verifier.VerifyCredentialAsync(envelope);
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Cose_wrong_typ_is_rejected()
+    {
+        using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        // Correct content-type, valid signature, resolvable kid — but typ != application/vc+cose. The
+        // substrate's pinned-header assertion (G1) rejects it as malformed before the signature matters.
+        var envelope = await FabricateCose(
+            UnsecuredCredential(key.Did).AsUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
+            keyId: Encoding.UTF8.GetBytes(key.VerificationMethod), contentType: VcCose.CredentialContentType,
+            type: "application/example+cose");
+
+        var result = await verifier.VerifyCredentialAsync(envelope);
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Cose_wrong_content_type_is_rejected()
+    {
+        using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        // Correct typ, valid signature, resolvable kid — but content-type != application/vc (G1).
+        var envelope = await FabricateCose(
+            UnsecuredCredential(key.Did).AsUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
+            keyId: Encoding.UTF8.GetBytes(key.VerificationMethod), contentType: "application/example",
+            type: VcCose.EnvelopeType);
+
+        var result = await verifier.VerifyCredentialAsync(envelope);
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
     // ---- Payload-integrity guard (sign-exact-bytes defence in depth) ------------------------------
 
     [Fact]
@@ -443,6 +525,19 @@ public sealed class M3EnvelopingTests
         var p = Base64Url.EncodeToString(payload);
         var s = Base64Url.EncodeToString(new byte[64]);
         return $"{h}.{p}.{s}";
+    }
+
+    /// <summary>Builds a raw COSE_Sign1 envelope with caller-controlled (possibly wrong/absent) headers.</summary>
+    private static async Task<byte[]> FabricateCose(
+        byte[] payload, ISigner signer, CoseAlgorithm algorithm, ReadOnlyMemory<byte>? keyId, string? contentType, string? type)
+    {
+        return await CoseSign1.SignAsync(payload, signer, new CoseSign1SignOptions
+        {
+            Algorithm = algorithm,
+            KeyId = keyId,
+            ContentType = contentType,
+            Type = type,
+        });
     }
 
     /// <summary>A signer that reports an out-of-scope key type, to exercise the fail-fast path.</summary>

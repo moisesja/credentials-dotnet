@@ -137,7 +137,12 @@ public sealed class Credential
     /// <summary>The whole credential as a self-contained <see cref="JsonElement"/> (for the Data Integrity pipeline).</summary>
     public JsonElement AsElement() => _document.ToElement();
 
-    /// <summary>The credential's exact UTF-8 bytes (for enveloping JOSE/COSE signing over the exact payload).</summary>
+    /// <summary>
+    /// The credential's exact UTF-8 bytes (for enveloping JOSE/COSE signing over the exact payload).
+    /// Byte-stable across calls — the backing document returns its verbatim wire bytes (received) or
+    /// serialize-once-pinned bytes (built), never a re-serialization — which the verifier's
+    /// <c>envelope_payload_mismatch</c> guard relies on when binding the verified payload to this credential.
+    /// </summary>
     public ReadOnlyMemory<byte> AsUtf8() => _document.ToUtf8();
 
     /// <summary>A deep clone of the credential as a <see cref="JsonObject"/> (for SD-JWT VC claim selection).</summary>

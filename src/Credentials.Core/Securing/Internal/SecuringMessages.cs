@@ -99,13 +99,17 @@ internal sealed class SecureOutcome
     public SecuringForm Form { get; }
 
     /// <summary>The secured JSON document (Data Integrity).</summary>
-    public JsonElement Document => _document;
+    public JsonElement Document => Form == SecuringForm.DataIntegrity
+        ? _document
+        : throw new InvalidOperationException("This outcome is not a Data Integrity document.");
 
     /// <summary>The compact JWS string (JOSE enveloping).</summary>
     public string Jose => _jose ?? throw new InvalidOperationException("This outcome is not a JOSE envelope.");
 
     /// <summary>The COSE_Sign1 bytes (COSE enveloping).</summary>
-    public ReadOnlyMemory<byte> Cose => _cose;
+    public ReadOnlyMemory<byte> Cose => Form == SecuringForm.Cose
+        ? _cose
+        : throw new InvalidOperationException("This outcome is not a COSE envelope.");
 
     public static SecureOutcome ForDocument(JsonElement securedDocument) =>
         new(SecuringForm.DataIntegrity, securedDocument, null, default);

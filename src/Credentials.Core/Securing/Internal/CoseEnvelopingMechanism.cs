@@ -76,6 +76,11 @@ internal sealed class CoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
         string? kid;
         try
         {
+            // The COSE kid (label 4) is UNPROTECTED, so an attacker can rewrite it in transit. That is
+            // safe here: the kid is used only to LOOK UP a key, never trusted for authorization — the
+            // signature must verify against the resolved key, and the verifier then binds BaseDid(kid) to
+            // the inner credential's issuer. Rewriting the kid only changes which key we fetch, after
+            // which either the signature fails or the issuer binding does.
             var message = CoseSign1.Decode(envelope);
             kid = message.KeyId is { } id ? Encoding.UTF8.GetString(id.Span) : null;
         }
