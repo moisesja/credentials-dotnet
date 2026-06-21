@@ -46,6 +46,45 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
   Key-Binding-JWT creation/verification are deferred to the presentations milestone (M6) — an issued `cnf`
   is forward-compatible with it.
 
+### Security / hardening — M4 adversarial review (2026-06-21)
+
+Three adversarial agents attacked the issuer-binding/disclosure-forgery, F7-classification/detection/DoS,
+and payload-fidelity/leakage surfaces by compiling and running exploits. **Three genuine defects were found
+and fixed** (each with a regression test that reproduces the exploit and asserts it is now Rejected/Failed);
+NFR-005 surface and NFR-002 closure were re-confirmed clean.
+
+- **`iss`/VCDM-`issuer` split-brain (critical — issuer impersonation):** the proof bound on the SD-JWT
+  `iss` claim while the consumer-visible `Credential.Issuer` and the issuer-trust stage read the VCDM
+  `issuer`, with nothing requiring the two to agree. An attacker signing with their own key (`iss=attacker`,
+  so binding + signature pass) but setting `issuer=victim` produced a credential Accepted and trusted as the
+  victim's. The proof stage now requires `iss == issuer` (string or object `id`) when both are present
+  (`sdjwt_issuer_mismatch` ⇒ Failed) — legitimate issuance always sets them equal — and issuer-trust now
+  consumes the same proof-bound anchor as the binding.
+- **Validity / status / schema disclosure bypass (high):** the verifier reads `validFrom`/`validUntil`/
+  `issuanceDate`/`expirationDate`/`credentialStatus`/`credentialSchema` from the issuer-JWT cleartext, but
+  these VCDM members were not in the non-disclosable set (only the SD-JWT `exp`/`nbf` were). Marking
+  `validUntil` selectively disclosable hid it, so an **expired credential verified as valid**; a disclosable
+  `credentialStatus` made the **revocation check Skipped**. Fix: those members are now rejected at issuance,
+  and a verify-side guard rejects any of them that is *revealed* via a disclosure but absent from the
+  cleartext the stages validate (`sdjwt_hidden_member` ⇒ Failed) — covering credentials crafted outside this
+  engine. **Known residual (inherent to SD-JWT):** a holder who simply *withholds* a disclosure that a
+  non-conformant third-party issuer made disclosable cannot be detected — the leftover digest is dropped as
+  an indistinguishable decoy (RFC 9901 §4.2.7), the same limitation the SD-JWT VC profile carries for
+  `iss`/`nbf`/`exp`/`status`. The defence is issuer-side and **this library's own issuer keeps these claims
+  non-disclosable, so credentials it issues are immune**; a presentation-completeness / Type-Metadata
+  disclosability policy for third-party credentials is a later (M6) concern.
+- **F7 kid-fragment downgrade (medium; also hardens the M3 JOSE/COSE path):** the shared
+  `NetDidEnvelopeKeyResolver` returned `null` for both "DID unresolvable" and "DID resolved but the
+  verification method is absent", so an attacker could mangle a tampered/forged credential's `kid` fragment
+  (leaving the base DID resolvable) to downgrade a definitive bad signature to `Indeterminate` — soft-accepted
+  under a non-strict policy. The resolver now returns a tri-state result: a resolvable DID whose document
+  lacks the referenced method is `verification_method_not_found` ⇒ **Failed**, and only a genuine resolution
+  failure is `Indeterminate`.
+- **Whitespace (low) / Type Metadata resolver (info):** ingest/verify now trim the same surrounding JSON
+  whitespace the detector tolerates (a wire token with an incidental newline round-trips); a throwing Type
+  Metadata resolver is treated as best-effort (no metadata) and can no longer downgrade an otherwise-valid
+  credential.
+
 ### Added — Milestone M3 (enveloping VC-JOSE-COSE)
 
 - **Enveloping issuance (FR-012):** `JoseEnvelopeIssuanceRequest` signs a credential's exact bytes into a

@@ -215,6 +215,68 @@ House conventions: xUnit + FluentAssertions **7.0.0**, NSubstitute `.Returns(val
 
 ---
 
-## 9. Review
+## 9. Review (2026-06-21)
 
-*(to be completed after implementation + adversarial pass)*
+**Status: complete and green.** Clean Release build (0 warnings, `TreatWarningsAsErrors` / XML-doc gate),
+**256 tests pass** (134 `Credentials.Core.Tests` + 118 `Credentials.Extensions.DependencyInjection.Tests` +
+4 `Credentials.Rdfc.Tests`); ~51 new M4 tests (incl. 14 adversarial regressions). NFR-002 default closure
+re-verified clean (no new dependency — `DataProofsDotnet.Jose` was already present from M3).
+
+**Delivered (as planned, §3–§4):** `SdJwtVcMechanism` (sole caller of the SD-JWT substrate) +
+`TypeMetadataResolverAdapter`; the draft-free public types `SdJwtVcIssuanceRequest` / `DisclosureSelector` /
+`HolderBindingKey` / `SdHashName` / `ICredentialTypeMetadataResolver`; seam extensions (`SecureRequest`
+SD-JWT fields incl. `Claims`, `SecureOutcome.ForSdJwt`, `SecuringSelector.SdJwtVc()`); the `EnvelopeDetector`
+`~` branch (before JOSE); `IssuedCredential.SdJwtVc` + `Credential.CompactEnvelope` for SD-JWT; the
+`DefaultIssuer` `SdJwtVcIssuanceRequest` case and the `DefaultVerifier` `SdJwtVc` proof arm + `iss` binding
+anchor; DI registration + `UseTypeMetadataResolver`. The VCDM-carried data model resolved OQ-2; FR-013 +
+FR-051/D12 satisfied (`typ=dc+sd-jwt`, media `application/dc+sd-jwt`, `vct` in the clear + non-disclosable,
+reserved claims rejected, no draft type on the surface — reflection-tested); F7 classify-before-crypto;
+issuer binding on `iss`; the self-enforcing `sdjwt_payload_mismatch` guard.
+
+**Deviations from the plan (deliberate, documented):**
+1. **`SdJwtVcRequest` → `SdJwtVcIssuanceRequest`** (matches the `*EnvelopeIssuanceRequest` house convention).
+2. **Holder inspection (`InspectSdJwt`/`SdJwtInspection`/`DisclosableClaim`) deferred to M6** (the approved
+   scope split — M4 is issue + verify the issuer-signed SD-JWT; all holder/VP work is M6, as in M3).
+3. **Recon corrected the master-plan API:** `SdJwtVcVerifier.VerifyAsync` is async **+ result-style** (not
+   the sync+throw shape of M3's `VcJose`); the base `SdJwtVerifier` is fully result-style; the substrate does
+   **not** check the issuer-JWT `nbf`/`exp`; `SdJwtVcIssuer.IssueAsync` has no `typ` parameter (it pins
+   `dc+sd-jwt` itself). All folded into §1.
+
+**Adversarial review (2026-06-21).** Three agents (compile-and-run exploits in `/tmp`, no repo edits) found
+**three genuine defects**, all fixed with regression tests:
+- **Critical — `iss`/`issuer` split-brain:** the proof bound on `iss` while the consumer/issuer-trust path
+  read the VCDM `issuer`, with no equality requirement → an attacker-signed credential was Accepted and
+  trusted as a victim issuer. Fixed: require `iss == issuer` at the proof stage (`sdjwt_issuer_mismatch`),
+  unify the issuer-trust anchor with the binding anchor.
+- **High — validity/status/schema disclosure bypass:** the VCDM validity/status/schema members were not in
+  the non-disclosable set, so hiding `validUntil`/`credentialStatus` made an expired credential verify /
+  skipped revocation. Fixed: forbid disclosing them at issuance + a verify-side no-hidden-member guard
+  (`sdjwt_hidden_member`).
+- **Medium (also hardens M3 JOSE/COSE) — F7 kid-fragment downgrade:** the shared resolver conflated
+  "DID unresolvable" with "DID resolved but method absent". Fixed: tri-state `EnvelopeKeyResolution`
+  (`MethodNotFound` ⇒ `verification_method_not_found` ⇒ Failed).
+- Low/info: whitespace trim in ingest/verify; best-effort (non-gating) Type Metadata resolver.
+
+The agents confirmed the defenses that held: disclosure hide/inject/swap (RFC 9901 unused-disclosure +
+digest-not-in-`_sd`), reverse split-brain, missing-`kid` fail-closed, `_sd_alg` downgrade, decoy/disclosure
+floods (linear), the 4 MiB size cap precedes decode, the reconstruction depth guard, FR-045 (only
+`CredentialFormatException`/`ArgumentNullException` propagate), NFR-005 surface and NFR-002 closure.
+
+**Fix-verification pass.** A focused agent re-attacked the three fixes and confirmed the critical
+(`sdjwt_issuer_mismatch`) and F7 (`verification_method_not_found`) fixes hold, but found that the
+validity/status fix closes only the *revealed-disclosure* case — a holder who **withholds** a disclosure for
+a (non-conformantly) disclosable validity/status claim is **undetectable**, because the leftover `_sd` digest
+is dropped as an indistinguishable decoy (RFC 9901 §4.2.7; confirmed in the substrate's reconstructor). This
+is **inherent to SD-JWT** (the profile carries the same residual for `iss`/`nbf`/`exp`/`status`) and cannot
+be closed at the verifier without disabling decoys and selective presentation. The mitigation is issuer-side:
+**this engine's own issuer keeps validity/status/schema claims non-disclosable, so credentials it issues are
+immune**; the residual is documented (code + CHANGELOG + lessons) and characterized by a regression test
+(`SdJwtVc_withheld_disclosable_validity_claim_is_an_inherent_sd_jwt_limitation`), with a third-party
+presentation-completeness / Type-Metadata disclosability policy deferred to M6. (The verification agent
+itself stalled mid-run after reporting this finding; the finding was re-confirmed by reading the substrate
+reconstructor + a regression test, not the agent's continued execution.)
+
+**Out of scope (M6 follow-ups, flagged):** holder SD-JWT presentation + Key-Binding-JWT
+creation/verification (`aud`/`nonce`/`sd_hash`/freshness); running structure/validity/status/schema over the
+substrate-reconstructed disclosed payload (the principled successor to the M4 no-hidden-member guard);
+recursive disclosure frames; vct Type Metadata as a *gating* check.

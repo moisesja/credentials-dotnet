@@ -481,6 +481,45 @@ public sealed class M4SdJwtVcTests
     }
 
     [Fact]
+    public async Task SdJwtVc_withheld_disclosable_validity_claim_is_an_inherent_sd_jwt_limitation()
+    {
+        // Characterizes the INHERENT SD-JWT residual (RFC 9901 §4.2.7): a credential crafted OUTSIDE this
+        // engine with validUntil made disclosable. When the disclosure is PRESENTED, the no-hidden-member
+        // guard rejects it (the value is revealed but missing from the cleartext the stages validate). When
+        // the holder WITHHOLDS the disclosure, the leftover _sd digest is dropped as an indistinguishable
+        // decoy — no verifier can detect it, so the credential verifies as one that simply has no expiry.
+        // The defence is issuer-side: this engine's own issuer forbids disclosing validity claims
+        // (SdJwtVc_disclosing_a_validity_or_status_member_throws), so credentials it issues are immune.
+        using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        var claims = new JsonObject
+        {
+            ["@context"] = new JsonArray("https://www.w3.org/ns/credentials/v2"),
+            ["type"] = new JsonArray("VerifiableCredential"),
+            ["issuer"] = key.Did,
+            ["iss"] = key.Did,
+            ["vct"] = Vct,
+            ["validUntil"] = "2020-02-01T00:00:00Z",
+            ["credentialSubject"] = new JsonObject { ["id"] = "did:example:subject" },
+        };
+        var compact = await CraftSdJwt(claims, new DisclosureFrame().Disclose("validUntil"), key);
+
+        // Presented (the disclosure included) → rejected by the no-hidden-member guard.
+        var presented = await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(compact));
+        presented.Decision.Should().Be(VerificationDecision.Rejected);
+        presented.Check(CheckKinds.Proof)!.Diagnostics.Should().Contain(d => d.Code == "sdjwt_hidden_member");
+
+        // Withheld (drop the disclosure) → undetectable; verifies as a credential with no expiry. This is
+        // the documented inherent limitation, not a defect this milestone can close at the verifier.
+        var withheld = compact.Split('~')[0] + "~"; // issuer-JWT + trailing '~', no disclosures
+        var result = await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(withheld));
+        result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
+        result.Check(CheckKinds.Validity)!.Status.Should().Be(CheckStatus.Passed);
+    }
+
+    [Fact]
     public async Task SdJwtVc_hidden_credentialStatus_is_rejected()
     {
         using var provider = BuildProvider();

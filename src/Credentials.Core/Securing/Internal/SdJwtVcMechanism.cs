@@ -249,10 +249,17 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
             return SecuringVerificationResult.Invalid("sdjwt_issuer_mismatch");
         }
 
-        // No VCDM member a verifier stage reads may be hidden in a disclosure: if it is present in the
+        // No VCDM member a verifier stage reads may be REVEALED via a disclosure: if it is present in the
         // reconstructed payload but absent from the cleartext the stages validate, the corresponding check
-        // (validity window, status, schema, structure, binding) would be silently disabled. Issuance
-        // forbids disclosing these, but a credential crafted outside this engine could still try.
+        // (validity window, status, schema, structure, binding) would run over the wrong document. Issuance
+        // forbids disclosing these (GuardSelectableClaim), but a credential crafted outside this engine
+        // could still try — this catches that. NOTE the residual, inherent to SD-JWT: a holder who simply
+        // WITHHOLDS a disclosure (so the member is absent from BOTH the cleartext and the reconstructed
+        // payload) cannot be detected here — the leftover `_sd` digest is dropped as an indistinguishable
+        // decoy (RFC 9901 §4.2.7). The defence against that is keeping these claims non-disclosable at
+        // issuance (this engine's own SD-JWT VCs always do, so they are immune; the same posture the
+        // SD-JWT VC profile assumes for iss/nbf/exp/status). A presentation-completeness / Type-Metadata
+        // disclosability policy for third-party credentials is a later (M6) concern.
         foreach (var member in NonDisclosableMembers)
         {
             if (disclosed.ContainsKey(member) && !clearPayload.ContainsKey(member))
