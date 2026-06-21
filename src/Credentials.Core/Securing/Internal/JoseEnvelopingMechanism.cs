@@ -104,11 +104,11 @@ internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
             return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
         }
 
+        byte[] verifiedPayload;
         try
         {
             // The resolver already fetched the published key for this kid; the callback ignores its arg.
-            _ = VcJose.VerifyCredential(compact, _ => jwk, cryptoProvider: null);
-            return SecuringVerificationResult.Verified([kid]);
+            verifiedPayload = VcJose.VerifyCredential(compact, _ => jwk, cryptoProvider: null);
         }
         catch (MalformedJoseException)
         {
@@ -120,5 +120,14 @@ internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
             // The signature did not verify against the resolved key — a definitive negative.
             return SecuringVerificationResult.Invalid("PROOF_VERIFICATION_ERROR");
         }
+
+        // The bytes the downstream stages validate (the ingested inner document) must be exactly the
+        // bytes the signature covered — do not depend on the substrate decoding the payload as we did.
+        if (request.ExpectedPayload is { } expected && !verifiedPayload.AsSpan().SequenceEqual(expected.Span))
+        {
+            return SecuringVerificationResult.Invalid("envelope_payload_mismatch");
+        }
+
+        return SecuringVerificationResult.Verified([kid]);
     }
 }

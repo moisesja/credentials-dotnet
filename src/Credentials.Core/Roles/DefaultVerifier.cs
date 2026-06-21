@@ -147,8 +147,10 @@ internal sealed class DefaultVerifier : IVerifier
             : new VerifyRequest
             {
                 // The enveloping forms verify the verbatim wire bytes; the inner element is unused there.
+                // ExpectedPayload binds the verified payload to the inner document the stages validate.
                 Document = credential.AsElement(),
                 Envelope = credential.EnvelopeBytes,
+                ExpectedPayload = credential.AsUtf8(),
                 VerificationTime = options.VerificationTime,
             };
 
@@ -308,6 +310,7 @@ internal sealed class DefaultVerifier : IVerifier
         "INVALID_DOMAIN_ERROR" => "The proof domain did not match.",
         "envelope_malformed" => "The enveloping proof is malformed (wrong media type, header, or structure).",
         "envelope_kid_missing" => "The enveloping proof carries no key identifier to bind the issuer to.",
+        "envelope_payload_mismatch" => "The signed payload does not match the credential being verified.",
         _ => "The proof is invalid.",
     };
 

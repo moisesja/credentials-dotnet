@@ -151,6 +151,48 @@ House conventions: xUnit + FluentAssertions **7.0.0**, NSubstitute `.Returns(val
 
 ---
 
-## 7. Review (filled after implementation)
+## 7. Review (2026-06-20)
 
-_(to be completed)_
+**Status: complete and green.** Clean Release build (0 warnings, `TreatWarningsAsErrors`), **201 tests
+pass** (120 `Credentials.Core.Tests` + 77 `Credentials.Extensions.DependencyInjection.Tests` + 4
+`Credentials.Rdfc.Tests`); 22 new M3 tests.
+
+**Delivered (as planned, §3):** `Jose`/`CoseEnvelopingMechanism` (each the sole caller of its DataProofs
+package); `IEnvelopeKeyResolver` + `NetDidEnvelopeKeyResolver`; `EnvelopeDetector` + `CompactJws`; the seam
+extension (`SecureRequest.Payload`, discriminated `SecureOutcome`, `VerifyRequest.Envelope`/`ExpectedPayload`);
+`Credential.FromEnvelope`/`CompactEnvelope`/`EnvelopeBytes`; `IssuedCredential.Jose`/`Cose`;
+`Jose`/`CoseEnvelopeIssuanceRequest`; `SecuringSelector.Jose()`/`Cose()`; verifier proof-path branch on
+`Securing` + envelope ingest on the bytes overload; DI registration. FR-012 satisfied for both
+serializations; G1 (typ/cty) pinned+asserted by the substrate + tested; F7 mapping per form; sign-exact-bytes
+round-trip; issuer binding reused from M1.
+
+**Deviations from the plan (deliberate, documented):**
+1. **`IIssuerJwkResolver` → `IEnvelopeKeyResolver`** (neutral NetCrypto key material, not a `Jwk`): COSE
+   verify needs a raw key + `KeyType`, JOSE needs a `Jwk`; one DID resolution serves both. The JOSE path
+   builds the `Jwk` via `JwkConversion.FromMultikey` (the substrate handles EC point encoding) rather than
+   from raw bytes.
+2. **No `*ProofStage` classes** (none existed to mirror): the proof check branches inside
+   `DefaultVerifier.CheckProofAsync` on `credential.Securing`.
+3. **Envelope ingest lives behind the mechanisms** (`IEnvelopeIngest`), not a Holder (`IngestCompact` is
+   M6): `DefaultVerifier` imports no JOSE/COSE type.
+4. **Added a payload-integrity guard** (`ExpectedPayload` on `VerifyRequest` → `envelope_payload_mismatch`)
+   beyond the plan, from the adversarial review (see below).
+
+**Corrections to the plan's recon (verified against `PublicAPI.Unshipped.txt`):** all folded into §1 —
+`VcJose.VerifyCredential` is synchronous + throw-based with a 3rd `IJoseCryptoProvider?` arg and a *nullable*
+`Jwk` resolver; `VcCose.Verify` takes a raw key + `KeyType` (no resolver) and is result-style;
+`CoseSign1.Decode` is public (used to read the COSE `kid` before verify); `CoseAlgorithm.EdDsa` casing; no
+public `KeyType→CoseAlgorithm` helper; no VP `vp+jwt` path (correctly M6).
+
+**Adversarial review (2026-06-20).** Three agents attacked forgery/binding, F7/detection/DoS, and
+payload-substitution/surface-leakage by compiling and running 127 exploit tests. **Zero exploitable
+findings.** Every forgery (incl. the unprotected-COSE-`kid` rewrite and the self-consistent forgery under the
+victim's `kid`) is Rejected; bad-sig stays `Failed` under a non-strict policy; payload-substitution is
+impossible (ingest decode == substrate-verified payload == inner `AsUtf8`); the size bound precedes any
+decode; NFR-005 surface and NFR-002 closure are clean. **Hardening folded in:** the sign-exact-bytes
+invariant is now self-enforcing (`envelope_payload_mismatch`) instead of emergent from substrate-decoder
+behaviour, with JOSE+COSE regression tests.
+
+**Out of scope (M6 follow-ups, flagged):** enveloped VP (`vp+jwt`) and the `EnvelopedVerifiableCredential`
+`data:`-URI wrapper (`ContainedCredential.Enveloped` is string-only — cannot carry binary COSE); the
+form is recorded on the enveloped `Credential` so M6 can build it.

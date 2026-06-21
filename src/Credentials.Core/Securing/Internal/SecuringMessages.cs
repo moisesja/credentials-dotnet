@@ -129,6 +129,14 @@ internal sealed record VerifyRequest
     /// <summary>The verbatim secured wire bytes for the enveloping forms.</summary>
     public ReadOnlyMemory<byte>? Envelope { get; init; }
 
+    /// <summary>
+    /// For the enveloping forms, the exact inner-credential bytes the downstream verification stages
+    /// will validate. The mechanism asserts the substrate-verified payload equals these bytes, so the
+    /// credential whose claims are checked is provably the one the signature covers — independent of how
+    /// the substrate decodes the payload internally (defence in depth for sign-exact-bytes).
+    /// </summary>
+    public ReadOnlyMemory<byte>? ExpectedPayload { get; init; }
+
     public string? ExpectedProofPurpose { get; init; }
     public DateTimeOffset? VerificationTime { get; init; }
 }

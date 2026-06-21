@@ -6,6 +6,53 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M3 (enveloping VC-JOSE-COSE)
+
+- **Enveloping issuance (FR-012):** `JoseEnvelopeIssuanceRequest` signs a credential's exact bytes into a
+  compact JWS (`typ=vc+jwt`, `cty=vc`); `CoseEnvelopeIssuanceRequest` signs them into a tagged COSE_Sign1
+  (`typ=application/vc+cose`, `content-type=application/vc`). The COSE algorithm and the JOSE `alg` are
+  derived from the signer's key type (EdDSA / ES256 / ES384 / ES256K); an out-of-scope key (e.g. P-521)
+  fails fast rather than mis-signing. Signing goes through `NetCrypto.ISigner` — never a raw key (FR-015).
+  `IssuedCredential` gains `Jose` / `Cose` factories with `CompactJws` / `CoseBytes` accessors and the
+  `application/vc+jwt` / `application/vc+cose` media types; the issued `Credential` retains its verbatim
+  envelope (`Credential.CompactEnvelope` for JOSE) and re-verifies directly.
+- **Enveloping verification (FR-012):** the verifier detects its input's securing form from the bytes
+  (`EnvelopeDetector`: JSON object vs compact JWS vs COSE_Sign1) and decodes the inner credential through
+  the owning mechanism, so the structure / validity / status / schema stages run over the signed inner
+  document while the proof stage verifies the verbatim wire bytes. Sign-exact-bytes throughout: the
+  payload is never re-serialized, and the mechanism asserts the substrate-verified payload equals the
+  inner document the stages validate (`envelope_payload_mismatch`).
+- **Issuer binding for enveloping forms:** the credential `issuer` is bound to the **base DID of the
+  signing key's `kid`** (the JWS protected-header `kid`, or the COSE key id), reusing the M1 binding — to
+  claim `issuer=victim` an attacker needs the victim's key. A missing `kid` fails closed; the unprotected
+  COSE `kid` is used only to *look up* a key, never trusted for authorization.
+- **F7 / report-don't-throw:** the verification key is resolved asynchronously **before** the synchronous
+  substrate verify, so a DID/IO resolution failure is `Indeterminate` while a bad signature (or a
+  wrong/absent `typ`/`cty`) is `Failed` — never conflated, never thrown (FR-045). JOSE's throw-based
+  verify (`MalformedJoseException` / `JoseCryptoException`) is caught and mapped at the mechanism boundary;
+  COSE's result-style verify maps `Verified==false` to `Failed`.
+- **Securing seam:** internal `JoseEnvelopingMechanism` / `CoseEnvelopingMechanism` — each the sole caller
+  of its DataProofs package (`DataProofsDotnet.Jose` / `.Cose`, FR-050); a neutral `IEnvelopeKeyResolver`
+  (`NetDidEnvelopeKeyResolver`) turns one DID resolution into both a JWK (JOSE) and a raw key (COSE).
+  `SecuringSelector.Jose()` / `Cose()` and `ISecuringCapabilities` surface the new forms.
+- **Dependencies / NFR-002 / NFR-005:** referenced `DataProofsDotnet.Jose` and `DataProofsDotnet.Cose`
+  directly; the default closure stays System.Text.Json-only — no `Newtonsoft.Json` / dotNetRDF (Cose adds
+  only the BCL `System.Formats.Cbor`), verified by `dotnet list … --include-transitive`. No JOSE/COSE
+  substrate type (`Jwk`, `JwsSigner`, `CoseAlgorithm`, `CoseSign1VerificationResult`, …) appears on the
+  public surface — enforced by a reflection test (NFR-005 / FR-051 / D12).
+
+### Security / hardening — M3 adversarial review (2026-06-20)
+
+Three adversarial agents attacked the forgery/issuer-binding, F7-status-mapping/detection/DoS, and
+payload-substitution/surface-leakage surfaces by compiling and running 127 exploit tests. **No exploitable
+issue was found.** The agents confirmed the defenses held: every issuer-spoofing forgery is Rejected on
+both forms (including the unprotected-COSE-`kid` rewrite and the self-consistent forgery signed under the
+victim's `kid`); a bad signature stays `Failed` (not Indeterminate) even under a non-strict policy;
+payload-substitution is impossible (ingest decode == substrate-verified payload == inner `AsUtf8`, and a
+detached/nil COSE payload is rejected at ingest); the size bound precedes any decode; and the NFR-005
+surface and NFR-002 closure are clean. The sign-exact-bytes invariant was additionally made self-enforcing
+(`envelope_payload_mismatch`) so it no longer depends on the substrate decoding the payload identically.
+
 ### Added — Milestone M2 (credential status + schema + issuer-trust hook)
 
 - **Status (Bitstring Status List v1.0):** `StatusListManager` produces and maintains the unsecured

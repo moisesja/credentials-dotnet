@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
+using Credentials.Securing;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -315,6 +316,62 @@ public sealed class M3EnvelopingTests
         var proof = result.Check(CheckKinds.Proof)!;
         proof.Status.Should().Be(CheckStatus.Failed);
         proof.Diagnostics.Should().Contain(d => d.Code == "issuer_binding");
+    }
+
+    // ---- Payload-integrity guard (sign-exact-bytes defence in depth) ------------------------------
+
+    [Fact]
+    public async Task Jose_verified_payload_must_match_the_inner_document()
+    {
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        var issued = await issuer.IssueAsync(
+            UnsecuredCredential(key.Did),
+            new JoseEnvelopeIssuanceRequest { Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+
+        var mechanism = provider.GetServices<ISecuringMechanism>().First(m => m.Form == SecuringForm.Jose);
+
+        // A genuine, signature-valid envelope, but the stages would validate a DIFFERENT inner document:
+        // the integrity guard must reject it even though the signature verifies (decoder-divergence defence).
+        var request = new VerifyRequest
+        {
+            Document = issued.Credential.AsElement(),
+            Envelope = Encoding.UTF8.GetBytes(issued.CompactJws!),
+            ExpectedPayload = Encoding.UTF8.GetBytes(
+                "{\"@context\":[\"https://www.w3.org/ns/credentials/v2\"],\"type\":[\"VerifiableCredential\"]}"),
+        };
+
+        var result = await mechanism.VerifyAsync(request, default);
+        result.Status.Should().Be(SecuringVerificationStatus.Invalid);
+        result.Problems.Should().Contain(p => p.Code == "envelope_payload_mismatch");
+    }
+
+    [Fact]
+    public async Task Cose_verified_payload_must_match_the_inner_document()
+    {
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        var issued = await issuer.IssueAsync(
+            UnsecuredCredential(key.Did),
+            new CoseEnvelopeIssuanceRequest { Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+
+        var mechanism = provider.GetServices<ISecuringMechanism>().First(m => m.Form == SecuringForm.Cose);
+
+        var request = new VerifyRequest
+        {
+            Document = issued.Credential.AsElement(),
+            Envelope = issued.CoseBytes!.Value,
+            ExpectedPayload = Encoding.UTF8.GetBytes(
+                "{\"@context\":[\"https://www.w3.org/ns/credentials/v2\"],\"type\":[\"VerifiableCredential\"]}"),
+        };
+
+        var result = await mechanism.VerifyAsync(request, default);
+        result.Status.Should().Be(SecuringVerificationStatus.Invalid);
+        result.Problems.Should().Contain(p => p.Code == "envelope_payload_mismatch");
     }
 
     // ---- Fail-fast / detection / capabilities -----------------------------------------------------

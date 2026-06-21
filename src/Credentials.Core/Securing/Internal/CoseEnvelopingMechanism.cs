@@ -121,6 +121,14 @@ internal sealed class CoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
 
         if (result.Verified)
         {
+            // The bytes the downstream stages validate (the ingested inner document) must be exactly the
+            // payload the signature covered — do not depend on the substrate decoding it as we did.
+            if (request.ExpectedPayload is { } expected
+                && (result.Message?.Payload is not { } verified || !verified.Span.SequenceEqual(expected.Span)))
+            {
+                return SecuringVerificationResult.Invalid("envelope_payload_mismatch");
+            }
+
             return SecuringVerificationResult.Verified([kid]);
         }
 
