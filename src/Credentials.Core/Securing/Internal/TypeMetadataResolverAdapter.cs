@@ -17,6 +17,22 @@ internal sealed class TypeMetadataResolverAdapter : ITypeMetadataResolver
     public TypeMetadataResolverAdapter(ICredentialTypeMetadataResolver inner) =>
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
 
-    public Task<JsonObject?> ResolveAsync(string vct, CancellationToken cancellationToken = default) =>
-        _inner.ResolveAsync(vct, cancellationToken);
+    public async Task<JsonObject?> ResolveAsync(string vct, CancellationToken cancellationToken = default)
+    {
+        // Type Metadata is informational and non-gating in this milestone — a misbehaving resolver must
+        // not be able to downgrade an otherwise cryptographically valid credential. A fault is treated as
+        // "no metadata available" (best-effort), never a verification verdict. Cancellation still propagates.
+        try
+        {
+            return await _inner.ResolveAsync(vct, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

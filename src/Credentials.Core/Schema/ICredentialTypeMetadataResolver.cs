@@ -15,8 +15,10 @@ public interface ICredentialTypeMetadataResolver
 {
     /// <summary>
     /// Resolves the Type Metadata document for the given <paramref name="vct"/>, or <see langword="null"/>
-    /// when no metadata is available. Must not throw for an unresolvable <c>vct</c> (return
-    /// <see langword="null"/>); an I/O fault is treated as an operational error by the verifier.
+    /// when no metadata is available. Should return <see langword="null"/> for an unresolvable <c>vct</c>
+    /// rather than throwing. Because Type Metadata is informational and non-gating, a fault is treated as
+    /// "no metadata available" and never changes the verification verdict (a misbehaving resolver cannot
+    /// downgrade an otherwise valid credential); only cancellation propagates.
     /// </summary>
     /// <param name="vct">The SD-JWT VC type claim value to resolve metadata for.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>

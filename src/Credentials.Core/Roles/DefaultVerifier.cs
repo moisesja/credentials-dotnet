@@ -215,7 +215,10 @@ internal sealed class DefaultVerifier : IVerifier
             return CheckResult.Skipped(CheckKinds.IssuerTrust, "No issuer-trust policy is configured.");
         }
 
-        var issuerId = credential.Issuer?.Id;
+        // Use the SAME anchor the proof bound (ResolveIssuerId) so the trust policy evaluates the
+        // proof-authenticated issuer — for SD-JWT VC that is the `iss` claim, which the proof stage's
+        // sdjwt_issuer_mismatch guard has already required to equal the VCDM issuer.
+        var issuerId = ResolveIssuerId(credential);
         if (proof.Result.Status != CheckStatus.Passed || string.IsNullOrEmpty(issuerId))
         {
             return CheckResult.Skipped(CheckKinds.IssuerTrust, "The proof did not authenticate the issuer; trust is not evaluated.");
@@ -332,6 +335,7 @@ internal sealed class DefaultVerifier : IVerifier
         "envelope_malformed" => "The enveloping proof is malformed (wrong media type, header, or structure).",
         "envelope_kid_missing" => "The enveloping proof carries no key identifier to bind the issuer to.",
         "envelope_payload_mismatch" => "The signed payload does not match the credential being verified.",
+        "verification_method_not_found" => "The signer's DID resolved but does not publish the proof's verification method.",
         "sdjwt_malformed" => "The SD-JWT VC is malformed (wrong media type, structure, or disclosure).",
         "sdjwt_kid_missing" => "The SD-JWT VC carries no key identifier to bind the issuer to.",
         "sdjwt_disclosure_invalid" => "An SD-JWT VC disclosure did not reconstruct against the signed digests.",
@@ -339,6 +343,8 @@ internal sealed class DefaultVerifier : IVerifier
         "sdjwt_vct_missing" => "The SD-JWT VC has no 'vct' type claim.",
         "sdjwt_key_binding_invalid" => "The SD-JWT VC Key Binding JWT did not verify.",
         "sdjwt_payload_mismatch" => "The disclosed payload does not match the SD-JWT VC being verified.",
+        "sdjwt_issuer_mismatch" => "The SD-JWT VC 'iss' claim does not match the credential issuer.",
+        "sdjwt_hidden_member" => "A credential member required for verification was hidden in a disclosure.",
         _ => "The proof is invalid.",
     };
 

@@ -6,6 +6,46 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M4 (SD-JWT VC)
+
+- **SD-JWT VC issuance (FR-013):** `SdJwtVcIssuanceRequest` issues a VCDM 2.0 credential as a selectively
+  disclosable SD-JWT VC (`typ=dc+sd-jwt`, media `application/dc+sd-jwt`). The credential is carried as the
+  SD-JWT VC claims set with the required `vct` added in the clear and an `iss` claim mirroring the issuer
+  (the binding anchor); caller-chosen claims are made selectively disclosable, and an optional holder
+  `cnf` key (`HolderBindingKey`) can be embedded for a later Key-Binding presentation. The signature `alg`
+  is derived from the signer's key type; an out-of-scope key fails fast. `IssuedCredential` gains an
+  `SdJwtVc` factory + `CompactSdJwt` accessor; the issued `Credential` retains its verbatim compact
+  serialization (`Credential.CompactEnvelope`).
+- **SD-JWT VC verification (FR-013):** the verifier detects an SD-JWT (`issuer-JWS~D1~…~`) from the bytes
+  (`EnvelopeDetector` branches on `~` **before** the compact-JWS branch), verifies the issuer signature
+  and reconstructs the disclosed payload through the substrate, and enforces the profile (`typ`/media,
+  `vct` present, no reserved claim disclosed). Structure and validity run over the credential's clear
+  VCDM members.
+- **Draft-free public surface (FR-051 / D12):** `SdJwtVcIssuanceRequest`, `DisclosureSelector`
+  (`Claim` / `ObjectProperties` / `ArrayElements`), `HolderBindingKey`, `SdHashName`, and
+  `ICredentialTypeMetadataResolver` — no SD-JWT draft type (`DisclosureFrame`, `SdJwtIssuerOptions`,
+  `Jwk`, `ITypeMetadataResolver`, `SdJwtVc*`) appears on the public API. The draft types are confined to
+  the internal `SdJwtVcMechanism` (the sole caller of the `DataProofsDotnet.Jose` SD-JWT APIs, FR-050) and
+  a `TypeMetadataResolverAdapter` (fix F3); enforced by a reflection test.
+- **Issuer binding:** the credential issuer is bound to the **base DID of the issuer-JWT `kid`**
+  (`BaseDid(kid) == iss`, falling back to the VCDM `issuer`) — `iss`/`vct` are reserved-non-disclosable so
+  they stay in the signed clear payload. A missing `kid` fails closed. A self-enforcing guard asserts the
+  issuer-JWT cleartext `iss`/`vct` equal the substrate-verified disclosed payload's (`sdjwt_payload_mismatch`).
+- **F7 / report-don't-throw:** the issuer key is resolved asynchronously **before** the substrate verify, so
+  a DID/IO failure is `Indeterminate` while a bad signature, a bad disclosure, an `_sd`-digest mismatch, a
+  wrong `typ`, a disclosed reserved claim, or a missing `vct` is `Failed` — never conflated, never thrown
+  (FR-045). A constant resolver is passed to the substrate so its negative can never mean "key not found".
+- **Two-layer disclosure guard:** a `DisclosureSelector` may not target a VCDM structural member
+  (`@context` / `type` / `issuer` / `id` / `credentialSubject` as a whole) or an SD-JWT reserved claim — so
+  the issuer binding and structural checks always read clear members.
+- **DI:** `AddCredentials` registers the SD-JWT VC mechanism unconditionally (no new dependency — `.Jose`
+  was already in the closure from M3) and a `builder.UseTypeMetadataResolver(...)` hook for optional
+  `vct` Type Metadata; `SecuringSelector.SdJwtVc()` and `ISecuringCapabilities` surface the new form.
+  NFR-002 closure unchanged (System.Text.Json-only).
+- **Scope:** M4 issues and verifies the **issuer-signed** SD-JWT VC; holder-side disclosure selection and
+  Key-Binding-JWT creation/verification are deferred to the presentations milestone (M6) — an issued `cnf`
+  is forward-compatible with it.
+
 ### Added — Milestone M3 (enveloping VC-JOSE-COSE)
 
 - **Enveloping issuance (FR-012):** `JoseEnvelopeIssuanceRequest` signs a credential's exact bytes into a

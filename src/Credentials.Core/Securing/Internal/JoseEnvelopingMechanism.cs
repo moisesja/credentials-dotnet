@@ -70,10 +70,10 @@ internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
             return SecuringVerificationResult.Invalid("envelope_kid_missing");
         }
 
-        EnvelopeKey? key;
+        EnvelopeKeyResolution resolution;
         try
         {
-            key = await _keyResolver.ResolveAsync(kid, cancellationToken).ConfigureAwait(false);
+            resolution = await _keyResolver.ResolveAsync(kid, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -84,11 +84,16 @@ internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
             return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
         }
 
-        if (key is not { } resolved)
+        switch (resolution.Status)
         {
-            return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
+            case EnvelopeKeyResolutionStatus.DidUnresolvable:
+                return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
+            case EnvelopeKeyResolutionStatus.MethodNotFound:
+                // The DID resolved but does not publish this kid — a definitive negative, not Indeterminate.
+                return SecuringVerificationResult.Invalid("verification_method_not_found");
         }
 
+        var resolved = resolution.Key;
         Jwk jwk;
         try
         {

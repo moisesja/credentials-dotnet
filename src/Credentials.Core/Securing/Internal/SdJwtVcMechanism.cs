@@ -28,11 +28,18 @@ namespace Credentials.Securing;
 /// </summary>
 internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
 {
-    // VCDM structural members that must stay in the clear (the issuer binding, version detection and
-    // structural checks read them) — never selectively disclosable. The SD-JWT substrate additionally
-    // forbids the reserved JWT claims (iss/nbf/exp/cnf/vct/vct#integrity/status); we guard the VCDM ones.
-    private static readonly HashSet<string> StructuralMembers =
-        new(StringComparer.Ordinal) { "@context", "type", "id", "issuer" };
+    // VCDM members that must stay in the clear because a verifier stage reads them from the
+    // (selective-disclosure-stripped) issuer-JWT cleartext — never selectively disclosable. Hiding any
+    // of these in a disclosure would silently disable the corresponding check (an expired/revoked
+    // credential would verify) or break the issuer binding / structural / version checks. The SD-JWT
+    // substrate additionally forbids the reserved JWT claims (iss/nbf/exp/cnf/vct/vct#integrity/status);
+    // these are the VCDM equivalents the substrate treats as ordinary (and would otherwise allow).
+    private static readonly HashSet<string> NonDisclosableMembers = new(StringComparer.Ordinal)
+    {
+        "@context", "type", "id", "issuer",
+        "validFrom", "validUntil", "issuanceDate", "expirationDate",
+        "credentialStatus", "credentialSchema",
+    };
 
     private readonly IEnvelopeKeyResolver _keyResolver;
     private readonly ICredentialTypeMetadataResolver? _metadataResolver;
@@ -100,9 +107,13 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
         return SecureOutcome.ForSdJwt(result.Issuance);
     }
 
+    // The leading/trailing JSON whitespace the EnvelopeDetector tolerates when routing (a wire token may
+    // carry an incidental newline) — trimmed here so ingest/verify see the same token the detector classified.
+    private static readonly char[] JsonWhitespace = [' ', '\t', '\n', '\r'];
+
     public Credential Ingest(ReadOnlyMemory<byte> envelope)
     {
-        var compact = Encoding.UTF8.GetString(envelope.Span);
+        var compact = Encoding.UTF8.GetString(envelope.Span).Trim(JsonWhitespace);
 
         byte[] issuerPayload;
         try
@@ -128,7 +139,7 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
             return SecuringVerificationResult.NoProof;
         }
 
-        var compact = Encoding.UTF8.GetString(envelopeBytes.Span);
+        var compact = Encoding.UTF8.GetString(envelopeBytes.Span).Trim(JsonWhitespace);
 
         string issuerJwt;
         JsonObject clearPayload;
@@ -150,10 +161,10 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
             return SecuringVerificationResult.Invalid("sdjwt_kid_missing");
         }
 
-        EnvelopeKey? key;
+        EnvelopeKeyResolution resolution;
         try
         {
-            key = await _keyResolver.ResolveAsync(kid, cancellationToken).ConfigureAwait(false);
+            resolution = await _keyResolver.ResolveAsync(kid, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -164,11 +175,17 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
             return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
         }
 
-        if (key is not { } resolved)
+        switch (resolution.Status)
         {
-            return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
+            case EnvelopeKeyResolutionStatus.DidUnresolvable:
+                return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
+            case EnvelopeKeyResolutionStatus.MethodNotFound:
+                // The DID resolved but does not publish this kid (e.g. an attacker-mangled kid fragment
+                // over a still-resolvable base DID) — a definitive negative, not Indeterminate (F7).
+                return SecuringVerificationResult.Invalid("verification_method_not_found");
         }
 
+        var resolved = resolution.Key;
         Jwk jwk;
         try
         {
@@ -211,14 +228,37 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
         }
 
         // Self-enforcing consistency guard (mirrors the M3 envelope_payload_mismatch lesson): the
-        // reserved/structural fields the verifier binds and validates on — iss and vct — must equal those
-        // in the substrate-verified disclosed payload. They are non-disclosable, so they must match; this
-        // converts "safe because reserved" into "explicitly checked".
+        // fields the verifier binds and validates on must equal those in the substrate-verified disclosed
+        // payload, so the credential whose claims the stages check is provably the one the signature
+        // covers — independent of selective disclosure.
         if (result.DisclosedPayload is not { } disclosed
             || !StringClaimEquals(clearPayload, disclosed, "iss")
             || !StringClaimEquals(clearPayload, disclosed, "vct"))
         {
             return SecuringVerificationResult.Invalid("sdjwt_payload_mismatch");
+        }
+
+        // The binding anchor (iss) and the VCDM issuer are both signed and in the clear — they must agree.
+        // A "split-brain" credential (iss = attacker so the proof binds, issuer = victim so the
+        // consumer/trust path reports the victim) is a definitive forgery. Legitimate issuance always sets
+        // iss = issuer, so this rejects only the forgery.
+        if (ReadStringClaim(clearPayload, "iss") is { } issClaim
+            && ReadIssuerId(clearPayload) is { } vcdmIssuer
+            && !string.Equals(issClaim, vcdmIssuer, StringComparison.Ordinal))
+        {
+            return SecuringVerificationResult.Invalid("sdjwt_issuer_mismatch");
+        }
+
+        // No VCDM member a verifier stage reads may be hidden in a disclosure: if it is present in the
+        // reconstructed payload but absent from the cleartext the stages validate, the corresponding check
+        // (validity window, status, schema, structure, binding) would be silently disabled. Issuance
+        // forbids disclosing these, but a credential crafted outside this engine could still try.
+        foreach (var member in NonDisclosableMembers)
+        {
+            if (disclosed.ContainsKey(member) && !clearPayload.ContainsKey(member))
+            {
+                return SecuringVerificationResult.Invalid("sdjwt_hidden_member");
+            }
         }
 
         return SecuringVerificationResult.Verified([kid]);
@@ -251,14 +291,14 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
 
     private static void GuardSelectableClaim(DisclosureSelector selector)
     {
-        // Disclosing a VCDM structural member as a whole would break the issuer binding / structure /
-        // version detection (they read these from the clear). credentialSubject may have its
+        // Disclosing a VCDM member a verifier stage reads (structure / binding / validity / status /
+        // schema) would silently disable that check or break the binding. credentialSubject may have its
         // sub-properties or array elements disclosed, but not the whole object.
-        if (StructuralMembers.Contains(selector.ClaimName)
+        if (NonDisclosableMembers.Contains(selector.ClaimName)
             || (selector.ClaimName == "credentialSubject" && selector.Kind == DisclosureSelectorKind.Claim))
         {
             throw new ArgumentException(
-                $"The VCDM structural member '{selector.ClaimName}' must stay in the clear and cannot be selectively disclosed; "
+                $"The VCDM member '{selector.ClaimName}' must stay in the clear and cannot be selectively disclosed; "
                 + "disclose credentialSubject sub-properties instead.", nameof(selector));
         }
 
