@@ -6,6 +6,33 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M5 (bbs-2023 selective disclosure)
+
+- **Verification (FR-042):** `UseBbs2023()` registers the `bbs-2023` cryptosuite, so a **derived**
+  bbs-2023 proof verifies through the existing `IVerifier` with no new verifier code — the Data Integrity
+  pipeline dispatches by cryptosuite name, the existing resolver produces the issuer's BLS12-381-G2 key, and
+  the M1 issuer binding applies. Mandatory disclosure is cryptographically enforced by the substrate (the
+  verifier recomputes the BBS header from the revealed mandatory statements), so a holder cannot drop or
+  alter a mandatory claim.
+- **Holder derivation (FR-031):** `IBbsDeriver.DeriveAsync(baseCredential, BbsDisclosureRequest)` produces a
+  minimally-disclosing credential — the issuer's mandatory group plus the holder's chosen
+  `RevealPointers` — as a zero-knowledge BBS proof, with no issuer interaction and no private key. Each
+  derivation draws a fresh CSPRNG presentation header from the engine RNG seam (`IRandomSource`, F9), so
+  repeated derivations of the same base are unlinkable; the CPU-bound derivation is offloaded at the role
+  boundary (F5). `IBbsDeriver` / `BbsDisclosureRequest` are draft-free (NFR-005) — the `Bbs2023Cryptosuite`
+  draft type is confined to the internal `Bbs2023Deriver`.
+- **Issuance (FR-014) is gated.** `DataProofsDotnet` exposes no key-store / `ISigner` BBS base-proof API —
+  only `CreateBaseProofAsync(rawPrivateKey)` — and exporting a raw private key would violate FR-015/NFR-006.
+  So a `bbs-2023` issuance request fails fast (`NotSupportedException`); only verify + derive ship. BBS
+  issuance lands the day DataProofs adds a key-store BBS create API (an **upstream** capability gap, not a
+  credentials-dotnet defect).
+- **Packaging / NFR-002:** bbs-2023 lives in the opt-in `Credentials.Rdfc` package (which already carries
+  `DataProofsDotnet.Rdfc` → dotNetRDF + Newtonsoft), so it adds **zero** new closure cost; the Core/DI
+  default closure stays System.Text.Json-only (re-verified). **Zero Core changes** — the deriver uses only
+  the public `IRandomSource` / `Credential` surface, and verify is pure suite registration. A reflection
+  test confirms no `DataProofsDotnet` / dotNetRDF / Newtonsoft type on the `Credentials.Rdfc` public surface
+  (NFR-005 / D3).
+
 ### Added — Milestone M4 (SD-JWT VC)
 
 - **SD-JWT VC issuance (FR-013):** `SdJwtVcIssuanceRequest` issues a VCDM 2.0 credential as a selectively

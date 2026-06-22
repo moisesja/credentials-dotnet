@@ -64,6 +64,16 @@ internal sealed class Bbs2023Deriver : IBbsDeriver
             throw new CredentialFormatException(
                 "The credential is not a valid bbs-2023 base credential, or the disclosure pointers are invalid.", ex);
         }
+        catch (ArgumentException ex)
+        {
+            // A malformed RFC 6901 reveal pointer (missing leading '/', a null element, …) makes the
+            // substrate's JSON Pointer parser throw ArgumentException / ArgumentNullException. That is
+            // malformed input, not a programming error — surface it as the contract's CredentialFormatException
+            // (never the raw substrate exception / internal pointer type). The top-level null-argument guards
+            // on baseCredential/request run before this and still propagate as ArgumentNullException.
+            throw new CredentialFormatException(
+                "The bbs-2023 disclosure reveal pointers are not valid RFC 6901 JSON Pointers.", ex);
+        }
 
         // Re-ingest the substrate-assembled reveal document as the derived credential: an embedded
         // Data Integrity credential carrying the derived proof, verifiable through the standard pipeline.

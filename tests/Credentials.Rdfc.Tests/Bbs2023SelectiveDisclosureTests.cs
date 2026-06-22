@@ -174,6 +174,79 @@ public sealed class Bbs2023SelectiveDisclosureTests
         result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
     }
 
+    // ---- adversarial regressions (M5 adversarial pass, 2026-06-22) ---------------------------------
+
+    [Theory]
+    [InlineData("credentialSubject/gpa")] // missing leading '/'
+    [InlineData("not-a-pointer")]
+    [InlineData(" /credentialSubject")]   // leading whitespace
+    [InlineData("\t")]
+    public async Task Bbs_malformed_reveal_pointer_maps_to_credential_format_exception(string pointer)
+    {
+        if (!BbsAvailable) { return; }
+        using var provider = BuildProvider();
+        var deriver = provider.GetRequiredService<IBbsDeriver>();
+        var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
+
+        // A malformed RFC 6901 pointer is malformed input → the documented CredentialFormatException,
+        // never a raw substrate ArgumentException (which would leak the internal JsonPointer type).
+        var act = () => deriver.DeriveAsync(baseCredential, new BbsDisclosureRequest { RevealPointers = [pointer] });
+        await act.Should().ThrowAsync<CredentialFormatException>();
+    }
+
+    [Fact]
+    public async Task Bbs_null_reveal_pointer_element_maps_to_credential_format_exception()
+    {
+        if (!BbsAvailable) { return; }
+        using var provider = BuildProvider();
+        var deriver = provider.GetRequiredService<IBbsDeriver>();
+        var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
+
+        var act = () => deriver.DeriveAsync(baseCredential, new BbsDisclosureRequest { RevealPointers = [null!] });
+        await act.Should().ThrowAsync<CredentialFormatException>();
+    }
+
+    [Fact]
+    public async Task Bbs_nonexistent_reveal_pointer_reveals_nothing_extra_and_still_verifies()
+    {
+        if (!BbsAvailable) { return; }
+        using var provider = BuildProvider();
+        var deriver = provider.GetRequiredService<IBbsDeriver>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
+
+        // A well-formed pointer to an absent path is not an error — it just reveals nothing extra.
+        var derived = await deriver.DeriveAsync(
+            baseCredential, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/doesNotExist"] });
+        (await verifier.VerifyCredentialAsync(derived)).Decision.Should().Be(VerificationDecision.Accepted);
+    }
+
+    [Fact]
+    public async Task Bbs_withheld_validity_claim_not_in_mandatory_group_is_an_inherent_issuer_side_residual()
+    {
+        if (!BbsAvailable) { return; }
+        using var provider = BuildProvider();
+        var deriver = provider.GetRequiredService<IBbsDeriver>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        // Characterizes the inherent selective-disclosure residual (same class as the M4 SD-JWT residual):
+        // an EXPIRED credential whose validUntil the issuer left OUT of the mandatory group. A holder
+        // withholding it produces a genuinely valid proof over the reduced disclosure, and the verifier
+        // cannot tell "no expiry" from "expiry hidden" — so it Accepts. The defence is issuer-side: validity
+        // claims MUST be mandatory (documented on IBbsDeriver). This engine does not issue bbs-2023 bases.
+        var notMandatory = await CraftExpiringBaseAsync(validUntilMandatory: false);
+        var hidden = await deriver.DeriveAsync(notMandatory, new BbsDisclosureRequest()); // withhold validUntil
+        (await verifier.VerifyCredentialAsync(hidden)).Decision.Should().Be(VerificationDecision.Accepted);
+
+        // Mitigation: when the issuer puts validUntil in the MANDATORY group, the holder cannot hide it
+        // (mandatory disclosure is cryptographically enforced) and the expired credential is correctly Rejected.
+        var mandatory = await CraftExpiringBaseAsync(validUntilMandatory: true);
+        var forced = await deriver.DeriveAsync(mandatory, new BbsDisclosureRequest());
+        var result = await verifier.VerifyCredentialAsync(forced);
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        result.Check(CheckKinds.Validity)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
     // ---- issuance gate (FR-014) --------------------------------------------------------------------
 
     [Fact]
@@ -251,6 +324,31 @@ public sealed class Bbs2023SelectiveDisclosureTests
             })
             .Seal();
 
+        return (await EmbedBaseProofAsync(credential, vm, bls, mandatoryPointers), vm);
+    }
+
+    /// <summary>Crafts a base credential carrying an EXPIRED <c>validUntil</c>, optionally in the mandatory group.</summary>
+    private static async Task<Credential> CraftExpiringBaseAsync(bool validUntilMandatory)
+    {
+        var bls = KeyGen.Generate(KeyType.Bls12381G2);
+        var signerDid = $"did:key:{bls.MultibasePublicKey}";
+        var vm = $"{signerDid}#{bls.MultibasePublicKey}";
+
+        var credential = Credential.Build()
+            .AddContext("https://www.w3.org/ns/credentials/examples/v2")
+            .WithIssuer(signerDid)
+            .AddSubject(new JsonObject { ["id"] = "did:example:abcdefgh", ["alumniOf"] = "The School of Examples" })
+            .WithValidUntil(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero))
+            .Seal();
+
+        string[] mandatory = validUntilMandatory
+            ? ["/issuer", "/credentialSubject/id", "/validUntil"]
+            : ["/issuer", "/credentialSubject/id"];
+        return await EmbedBaseProofAsync(credential, vm, bls, mandatory);
+    }
+
+    private static async Task<Credential> EmbedBaseProofAsync(Credential credential, string vm, KeyPair bls, string[] mandatoryPointers)
+    {
         var baseOptions = new DataIntegrityProof
         {
             Cryptosuite = Bbs2023Cryptosuite.CryptosuiteName,
@@ -271,7 +369,7 @@ public sealed class Bbs2023SelectiveDisclosureTests
 
         var node = JsonNode.Parse(credential.ToBytes())!.AsObject();
         node["proof"] = JsonSerializer.SerializeToNode(baseProof, DataProofsJsonOptions.Default);
-        return (Credential.Parse(JsonSerializer.SerializeToUtf8Bytes(node)), vm);
+        return Credential.Parse(JsonSerializer.SerializeToUtf8Bytes(node));
     }
 
     private static string ProofValueOf(Credential credential) =>
