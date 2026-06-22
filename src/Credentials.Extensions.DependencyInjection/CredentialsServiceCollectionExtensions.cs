@@ -111,6 +111,7 @@ public static class CredentialsServiceCollectionExtensions
             sp.GetRequiredService<IDigestService>()));
 
         services.TryAddSingleton<IIssuer>(sp => new DefaultIssuer(sp.GetRequiredService<SecuringMechanismRegistry>()));
+        services.TryAddSingleton<IHolder>(sp => new DefaultHolder(sp.GetRequiredService<SecuringMechanismRegistry>()));
         services.TryAddSingleton<IVerifier>(sp => new DefaultVerifier(
             sp.GetRequiredService<SecuringMechanismRegistry>(),
             sp.GetRequiredService<StatusStage>(),

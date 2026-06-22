@@ -40,6 +40,9 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
             VerificationMethod = request.VerificationMethod,
             ProofPurpose = request.ProofPurpose,
             Created = request.Created is { } created ? Rfc3339.Format(created) : null,
+            // Presentation authentication binding (null for an issuance proof).
+            Challenge = request.Challenge,
+            Domain = request.Domain,
         };
 
         var secured = await _pipeline.AddProofAsync(request.Document, proofOptions, request.Signer, cancellationToken)
@@ -87,6 +90,8 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
         var options = new ProofVerificationOptions
         {
             ExpectedProofPurpose = request.ExpectedProofPurpose,
+            ExpectedChallenge = request.ExpectedChallenge,
+            ExpectedDomain = request.ExpectedDomain,
             VerificationTime = request.VerificationTime,
         };
 

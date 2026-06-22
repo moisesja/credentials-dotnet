@@ -23,4 +23,7 @@ public static class CheckKinds
 
     /// <summary>The caller-supplied issuer-trust policy. Evaluated when a policy is configured.</summary>
     public const string IssuerTrust = "issuerTrust";
+
+    /// <summary>The presentation holder binding (proof of possession). Evaluated from M6.</summary>
+    public const string HolderBinding = "holderBinding";
 }

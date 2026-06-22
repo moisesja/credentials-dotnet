@@ -26,7 +26,7 @@ namespace Credentials.Securing;
 /// (→ Failed). A constant resolver is passed to the substrate so its result can never mean
 /// "key not found".</para>
 /// </summary>
-internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
+internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest, ISdJwtPresenter
 {
     // VCDM members that must stay in the clear because a verifier stage reads them from the
     // (selective-disclosure-stripped) issuer-JWT cleartext — never selectively disclosable. Hiding any
@@ -131,6 +131,56 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
         return Credential.FromEnvelope(inner, SecuringState.SdJwtVc, envelope);
     }
 
+    public async Task<string> PresentAsync(SdJwtPresentRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        SdJwtComponents components;
+        try
+        {
+            components = SdJwtComponents.Parse(request.IssuedCompact);
+        }
+        catch (MalformedJoseException ex)
+        {
+            throw new CredentialFormatException("The value is not a well-formed SD-JWT VC.", ex);
+        }
+
+        // Map the requested claim names to the encoded disclosure strings the substrate selects by.
+        // Disclosures with no claim name (array elements) are not selectable by name in this milestone.
+        var requested = new HashSet<string>(request.DiscloseClaims, StringComparer.Ordinal);
+        var reveal = components.Disclosures
+            .Where(d => d.ClaimName is { } name && requested.Contains(name))
+            .Select(d => d.Encoded)
+            .ToList();
+
+        // The holder signs the KB-JWT (typ=kb+jwt) over the selected presentation; sd_hash binds the exact
+        // disclosed set, aud/nonce bind the verifier + freshness. Honestly async over the signing (F5).
+        var holderSigner = new JwsSigner(request.HolderSigner, request.VerificationMethod);
+        return await SdJwtHolder.CreatePresentationWithKeyBindingAsync(
+                request.IssuedCompact, reveal, holderSigner, request.Audience, request.Nonce, issuedAt: null, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>The claim names that an issued SD-JWT VC carries as selectively disclosable (for holder selection).</summary>
+    public static IReadOnlyList<string> DisclosableClaimNames(string issuedCompact)
+    {
+        SdJwtComponents components;
+        try
+        {
+            components = SdJwtComponents.Parse(issuedCompact);
+        }
+        catch (MalformedJoseException ex)
+        {
+            throw new CredentialFormatException("The value is not a well-formed SD-JWT VC.", ex);
+        }
+
+        return components.Disclosures
+            .Where(d => d.ClaimName is not null)
+            .Select(d => d.ClaimName!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
     public async Task<SecuringVerificationResult> VerifyAsync(VerifyRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -198,10 +248,19 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest
             return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
         }
 
-        // M4 verifies the issuer-signed SD-JWT and its disclosures; holder Key-Binding-JWT verification is
-        // a later milestone (RequireKeyBinding = false). The constant resolver means a substrate negative
-        // is always a real crypto/profile failure, never a key-resolution failure (F7).
-        var options = new SdJwtVerificationOptions { RequireKeyBinding = false, CurrentTime = request.VerificationTime };
+        // Holder Key-Binding-JWT verification (M6): when a KB-JWT is present the substrate always verifies
+        // it (signature under the issuer-set cnf, sd_hash over the exact disclosed set, aud, nonce, iat
+        // freshness); RequireKeyBinding additionally makes its ABSENCE a failure. The constant resolver
+        // means a substrate negative is always a real crypto/profile/binding failure, never a key-resolution
+        // failure (F7). The aud/nonce are threaded from the (presentation) verification options.
+        var options = new SdJwtVerificationOptions
+        {
+            RequireKeyBinding = request.RequireHolderBinding,
+            ExpectedAudience = request.ExpectedAudience,
+            ExpectedNonce = request.ExpectedNonce,
+            MaxKeyBindingAge = request.MaxHolderBindingAge,
+            CurrentTime = request.VerificationTime,
+        };
         var metadataAdapter = _metadataResolver is null ? null : new TypeMetadataResolverAdapter(_metadataResolver);
 
         SdJwtVcVerificationResult result;
