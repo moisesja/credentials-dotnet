@@ -24,6 +24,13 @@ internal enum SecuringVerificationStatus
 /// <summary>A neutral securing problem (mapped from the substrate, secret-free).</summary>
 internal sealed record SecuringProblem(string Code, string? Message);
 
+/// <summary>Whether a securing operation targets a credential or a presentation (selects the JOSE <c>typ</c>: <c>vc+jwt</c> vs <c>vp+jwt</c>).</summary>
+internal enum SecuringDocumentKind
+{
+    Credential,
+    Presentation,
+}
+
 /// <summary>
 /// The neutral result of a securing-mechanism verification (no substrate types leak out). On a
 /// verified result, <see cref="VerificationMethods"/> carries the verification-method DID URLs whose
@@ -58,6 +65,16 @@ internal sealed record SecuringVerificationResult(
 /// Data Integrity path (the pipeline strips/attaches <c>proof</c>); <see cref="Payload"/> carries the
 /// exact UTF-8 bytes the enveloping (JOSE/COSE) forms sign verbatim. <see cref="Cryptosuite"/>,
 /// <see cref="ProofPurpose"/> and <see cref="Created"/> are Data-Integrity-only.
+/// <para>
+/// <b>Invariant — the two representations are NOT interchangeable.</b> For the enveloping forms (JOSE/COSE)
+/// <see cref="Payload"/> is the <em>sole</em> authority for the signed bytes; <see cref="Document"/> is
+/// ignored on that path (it is still <c>required</c> only because the embedded path needs it). When a caller
+/// mutates the bytes before signing — e.g. the holder injecting a presentation <c>nonce</c>/<c>aud</c> for
+/// replay defence (F1) — it MUST apply the mutation to <see cref="Payload"/>, and <see cref="Document"/> and
+/// <see cref="Payload"/> may then legitimately diverge. An enveloping mechanism reading <see cref="Document"/>
+/// instead of <see cref="Payload"/> would silently sign the wrong (e.g. freshness-stripped) bytes; the
+/// enveloping mechanisms therefore assert <see cref="Payload"/> is non-empty so that footgun fails loudly.
+/// </para>
 /// </summary>
 internal sealed record SecureRequest
 {
@@ -65,7 +82,11 @@ internal sealed record SecureRequest
     public required ISigner Signer { get; init; }
     public required string VerificationMethod { get; init; }
 
-    /// <summary>The exact UTF-8 payload bytes for the enveloping forms (signed verbatim, never re-serialized).</summary>
+    /// <summary>
+    /// The exact UTF-8 payload bytes for the enveloping forms (signed verbatim, never re-serialized).
+    /// Required and authoritative for JOSE/COSE; ignored by the embedded Data Integrity form (which signs
+    /// <see cref="Document"/>).
+    /// </summary>
     public ReadOnlyMemory<byte> Payload { get; init; }
 
     /// <summary>The Data Integrity cryptosuite name. Null for the enveloping forms.</summary>
@@ -76,6 +97,15 @@ internal sealed record SecureRequest
 
     /// <summary>The Data Integrity proof <c>created</c> timestamp.</summary>
     public DateTimeOffset? Created { get; init; }
+
+    /// <summary>Whether this secures a credential or a presentation — selects the JOSE <c>typ</c> (<c>vc+jwt</c> vs <c>vp+jwt</c>).</summary>
+    public SecuringDocumentKind Kind { get; init; } = SecuringDocumentKind.Credential;
+
+    /// <summary>The Data Integrity proof <c>challenge</c> (presentation authentication binding).</summary>
+    public string? Challenge { get; init; }
+
+    /// <summary>The Data Integrity proof <c>domain</c> (presentation authentication binding).</summary>
+    public string? Domain { get; init; }
 
     // ---- SD-JWT VC only (FR-013); null/ignored by the other forms. ----
 
@@ -173,4 +203,27 @@ internal sealed record VerifyRequest
 
     public string? ExpectedProofPurpose { get; init; }
     public DateTimeOffset? VerificationTime { get; init; }
+
+    // ---- Holder binding (SD-JWT VC Key Binding JWT; Data Integrity / JOSE presentation binding). ----
+
+    /// <summary>Require a holder binding (KB-JWT for SD-JWT VC) to be present and valid.</summary>
+    public bool RequireHolderBinding { get; init; }
+
+    /// <summary>The expected holder-binding audience (KB-JWT <c>aud</c>) / presentation audience.</summary>
+    public string? ExpectedAudience { get; init; }
+
+    /// <summary>The expected holder-binding nonce (KB-JWT <c>nonce</c>) / presentation nonce.</summary>
+    public string? ExpectedNonce { get; init; }
+
+    /// <summary>The maximum holder-binding age (KB-JWT <c>iat</c> freshness); <see langword="null"/> disables it.</summary>
+    public TimeSpan? MaxHolderBindingAge { get; init; }
+
+    /// <summary>The expected Data Integrity proof <c>challenge</c> (VP authentication binding).</summary>
+    public string? ExpectedChallenge { get; init; }
+
+    /// <summary>The expected Data Integrity proof <c>domain</c> (VP authentication binding).</summary>
+    public string? ExpectedDomain { get; init; }
+
+    /// <summary>Whether this verifies a credential or a presentation — selects the JOSE <c>typ</c> expected (<c>vc+jwt</c> vs <c>vp+jwt</c>).</summary>
+    public SecuringDocumentKind Kind { get; init; } = SecuringDocumentKind.Credential;
 }

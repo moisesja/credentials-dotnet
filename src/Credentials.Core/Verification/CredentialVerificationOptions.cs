@@ -42,6 +42,36 @@ public sealed record CredentialVerificationOptions
     /// </summary>
     public bool EvaluateIssuerTrust { get; init; } = true;
 
+    /// <summary>
+    /// Requires holder binding (proof of possession) on a credential that supports it — currently an
+    /// SD-JWT VC's Key Binding JWT. When <see langword="true"/>, a presented SD-JWT VC MUST carry a valid
+    /// KB-JWT bound to <see cref="ExpectedAudience"/> / <see cref="ExpectedNonce"/>; its absence or
+    /// invalidity is a proof failure. Default: <see langword="false"/> (verify the issuer-signed credential
+    /// without demanding holder binding). Has no effect on forms without holder binding (Data Integrity / JOSE / COSE).
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see langword="false"/> by design — the separate presentation-level
+    /// <see cref="PresentationVerificationOptions.RequireHolderBinding"/> (default <see langword="true"/>)
+    /// governs a VP's own proof of possession, a distinct concern from a standalone credential's KB-JWT.
+    /// </remarks>
+    public bool RequireHolderBinding { get; init; }
+
+    /// <summary>
+    /// The audience the holder binding (SD-JWT KB-JWT <c>aud</c>) must equal — the verifier's own
+    /// identifier. REQUIRED when a holder binding is verified (a present binding with a null expected
+    /// audience fails). Ignored when no holder binding is present and <see cref="RequireHolderBinding"/> is false.
+    /// </summary>
+    public string? ExpectedAudience { get; init; }
+
+    /// <summary>
+    /// The nonce the holder binding (SD-JWT KB-JWT <c>nonce</c>) must equal — the verifier-supplied
+    /// freshness/replay value. REQUIRED when a holder binding is verified.
+    /// </summary>
+    public string? ExpectedNonce { get; init; }
+
+    /// <summary>The maximum age of a holder binding (SD-JWT KB-JWT <c>iat</c>) — a freshness bound against replay. <see langword="null"/> disables the age check.</summary>
+    public TimeSpan? MaxHolderBindingAge { get; init; }
+
     /// <summary>The decision-composition policy. Defaults to fail-closed.</summary>
     public VerificationPolicy Policy { get; init; } = new();
 }

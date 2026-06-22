@@ -37,3 +37,37 @@ internal interface IEnvelopeIngest
     /// </summary>
     Credential Ingest(ReadOnlyMemory<byte> envelope);
 }
+
+/// <summary>
+/// Implemented by the SD-JWT VC mechanism: produces a holder presentation of an issued SD-JWT VC,
+/// revealing a chosen subset of disclosures and appending a Key Binding JWT bound to the verifier's
+/// audience and nonce (FR-032). The mechanism is the single place the SD-JWT holder substrate is called.
+/// </summary>
+internal interface ISdJwtPresenter
+{
+    /// <summary>Builds an SD-JWT VC presentation (issuer-JWT~chosen disclosures~KB-JWT) for the request.</summary>
+    /// <exception cref="CredentialFormatException">The issued SD-JWT is malformed.</exception>
+    Task<string> PresentAsync(SdJwtPresentRequest request, CancellationToken cancellationToken);
+}
+
+/// <summary>A neutral request to present an issued SD-JWT VC with a Key Binding JWT.</summary>
+internal sealed record SdJwtPresentRequest
+{
+    /// <summary>The full issued SD-JWT VC (carrying all disclosures).</summary>
+    public required string IssuedCompact { get; init; }
+
+    /// <summary>The claim names to reveal (their disclosures are kept; the rest are withheld).</summary>
+    public required IReadOnlyList<string> DiscloseClaims { get; init; }
+
+    /// <summary>The holder's signer (its public key must equal the issuer-set <c>cnf</c>).</summary>
+    public required NetCrypto.ISigner HolderSigner { get; init; }
+
+    /// <summary>The holder verification method (the KB-JWT <c>kid</c>).</summary>
+    public required string VerificationMethod { get; init; }
+
+    /// <summary>The intended verifier (KB-JWT <c>aud</c>).</summary>
+    public required string Audience { get; init; }
+
+    /// <summary>The verifier-supplied freshness/replay nonce (KB-JWT <c>nonce</c>).</summary>
+    public required string Nonce { get; init; }
+}

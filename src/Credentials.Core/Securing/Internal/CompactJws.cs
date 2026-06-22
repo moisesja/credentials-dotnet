@@ -13,7 +13,12 @@ namespace Credentials.Securing;
 internal static class CompactJws
 {
     /// <summary>Reads the protected-header <c>kid</c> of a compact JWS, or <see langword="null"/> if absent/malformed.</summary>
-    public static string? ReadKid(string compact)
+    public static string? ReadKid(string compact) => ReadHeaderString(compact, "kid");
+
+    /// <summary>Reads the protected-header <c>typ</c> of a compact JWS, or <see langword="null"/> if absent/malformed.</summary>
+    public static string? ReadTyp(string compact) => ReadHeaderString(compact, "typ");
+
+    private static string? ReadHeaderString(string compact, string member)
     {
         if (!TrySplit(compact, out var header, out _, out _))
         {
@@ -25,10 +30,10 @@ internal static class CompactJws
             var headerBytes = Base64Url.DecodeFromChars(header);
             using var document = JsonDocument.Parse(headerBytes);
             if (document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("kid", out var kid)
-                && kid.ValueKind == JsonValueKind.String)
+                && document.RootElement.TryGetProperty(member, out var value)
+                && value.ValueKind == JsonValueKind.String)
             {
-                return kid.GetString();
+                return value.GetString();
             }
         }
         catch (Exception ex) when (ex is FormatException or JsonException)

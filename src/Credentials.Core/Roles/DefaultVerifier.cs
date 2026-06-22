@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Credentials.Schema;
@@ -54,28 +55,7 @@ internal sealed class DefaultVerifier : IVerifier
     /// envelope, or any non-credential input, throws <see cref="CredentialFormatException"/>; a decodable
     /// envelope with a bad signature is a Failed result, not an exception.
     /// </summary>
-    private Credential Ingest(ReadOnlyMemory<byte> credential)
-    {
-        if (credential.Length > CredentialDocument.MaxInputBytes)
-        {
-            throw new CredentialFormatException(
-                $"The credential input is {credential.Length} bytes, exceeding the maximum of {CredentialDocument.MaxInputBytes} bytes.");
-        }
-
-        var form = EnvelopeDetector.Detect(credential.Span);
-        if (form is not { } envelopeForm)
-        {
-            return Credential.Parse(credential);
-        }
-
-        if (_registry.GetMechanism(envelopeForm) is not IEnvelopeIngest ingest)
-        {
-            throw new CredentialFormatException(
-                $"The input is an enveloped credential ({envelopeForm}) but no securing mechanism is registered to decode it.");
-        }
-
-        return ingest.Ingest(credential);
-    }
+    private Credential Ingest(ReadOnlyMemory<byte> credential) => EnvelopeIngest.Ingest(credential, _registry);
 
     public async ValueTask<CredentialVerificationResult> VerifyCredentialAsync(
         Credential credential,
@@ -99,6 +79,295 @@ internal sealed class DefaultVerifier : IVerifier
 
         var decision = DecisionComposer.Compose(checks, options.Policy);
         return new CredentialVerificationResult(decision, checks, credential.Version, credential.Securing);
+    }
+
+    // ---- Presentations (FR-041) -------------------------------------------------------------------
+
+    private enum PresentationBinding
+    {
+        /// <summary>A JSON-object VP whose binding (if any) is an embedded Data Integrity authentication proof.</summary>
+        Embedded,
+
+        /// <summary>A compact vp+jwt whose binding is the holder JWS over the VP payload.</summary>
+        Jose,
+    }
+
+    public ValueTask<PresentationVerificationResult> VerifyPresentationAsync(
+        VerifiablePresentation presentation, PresentationVerificationOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(presentation);
+        // A parsed VP carries its binding (if any) as an embedded Data Integrity proof; a vp+jwt binding is
+        // only reachable through the bytes overload (the compact, not the parsed VP, carries the JWS).
+        return VerifyPresentationCoreAsync(
+            presentation, PresentationBinding.Embedded, default, options ?? new PresentationVerificationOptions(), cancellationToken);
+    }
+
+    public ValueTask<PresentationVerificationResult> VerifyPresentationAsync(
+        ReadOnlyMemory<byte> presentation, PresentationVerificationOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        options ??= new PresentationVerificationOptions();
+        if (presentation.Length > CredentialDocument.MaxInputBytes)
+        {
+            throw new CredentialFormatException(
+                $"The presentation input is {presentation.Length} bytes, exceeding the maximum of {CredentialDocument.MaxInputBytes} bytes.");
+        }
+
+        var form = EnvelopeDetector.Detect(presentation.Span);
+        switch (form)
+        {
+            case SecuringForm.Jose:
+            {
+                // vp+jwt: the VP is the JWS payload; the holder JWS is the binding.
+                var compact = Encoding.UTF8.GetString(presentation.Span);
+                var payload = CompactJws.DecodePayload(compact);
+                var vp = VerifiablePresentation.Parse(payload);
+                return VerifyPresentationCoreAsync(vp, PresentationBinding.Jose, presentation, options, cancellationToken);
+            }
+
+            case null:
+            {
+                // A JSON-object presentation (embedded Data Integrity authentication proof, or unbound).
+                var vp = VerifiablePresentation.Parse(presentation);
+                return VerifyPresentationCoreAsync(vp, PresentationBinding.Embedded, default, options, cancellationToken);
+            }
+
+            default:
+                throw new CredentialFormatException($"The input is not a recognizable presentation ({form}).");
+        }
+    }
+
+    private async ValueTask<PresentationVerificationResult> VerifyPresentationCoreAsync(
+        VerifiablePresentation vp, PresentationBinding binding, ReadOnlyMemory<byte> envelope,
+        PresentationVerificationOptions options, CancellationToken ct)
+    {
+        var holderBinding = await RunHolderBindingAsync(vp, binding, envelope, options, ct).ConfigureAwait(false);
+        var structure = SafeRun(CheckKinds.Structure, () => CheckPresentationStructure(vp, options));
+
+        var credentialOptions = BuildContainedCredentialOptions(options);
+        var credentialResults = new List<CredentialVerificationResult>(vp.VerifiableCredentials.Count);
+        foreach (var contained in vp.VerifiableCredentials)
+        {
+            credentialResults.Add(await VerifyContainedAsync(contained, credentialOptions, ct).ConfigureAwait(false));
+        }
+
+        var presentationChecks = new[] { holderBinding, structure };
+        var decision = ComposePresentationDecision(presentationChecks, credentialResults, options.Policy);
+        var mechanism = binding == PresentationBinding.Jose ? SecuringState.Jose : vp.Securing;
+        return new PresentationVerificationResult(decision, presentationChecks, credentialResults, vp.Version, mechanism);
+    }
+
+    private async Task<CheckResult> RunHolderBindingAsync(
+        VerifiablePresentation vp, PresentationBinding binding, ReadOnlyMemory<byte> envelope,
+        PresentationVerificationOptions options, CancellationToken ct)
+    {
+        try
+        {
+            var isBound = binding == PresentationBinding.Jose || vp.Securing == SecuringState.DataIntegrity;
+            if (!isBound)
+            {
+                return options.RequireHolderBinding
+                    ? CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_missing",
+                        "The presentation is not bound to a holder key.")
+                    : CheckResult.Skipped(CheckKinds.HolderBinding, "The presentation carries no holder binding.");
+            }
+
+            // Replay defence is mandatory for a REQUIRED binding: the verifier must supply a challenge to bind
+            // against, else a captured presentation replays. (Both binding paths; fail closed, never fail open.)
+            if (options.RequireHolderBinding && string.IsNullOrEmpty(options.ExpectedChallenge))
+            {
+                return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_challenge_required",
+                    "Holder binding is required but no expected challenge was supplied to bind the presentation against (replay defence).");
+            }
+
+            if (binding == PresentationBinding.Jose)
+            {
+                // The JOSE mechanism verifies typ=vp+jwt + the holder signature over the VP (which carries the
+                // signed nonce/aud); the freshness comparison against the verifier's expectations is here.
+                var joseResult = await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.Jose, new VerifyRequest
+                {
+                    Document = vp.AsElement(),
+                    Envelope = envelope,
+                    ExpectedPayload = vp.AsUtf8(),
+                    Kind = SecuringDocumentKind.Presentation,
+                    VerificationTime = options.VerificationTime,
+                }, ct).ConfigureAwait(false);
+                return joseResult.Status == CheckStatus.Passed ? CheckPresentationFreshness(vp, options) : joseResult;
+            }
+
+            // Data Integrity authentication proof — the substrate enforces the challenge/domain match.
+            return await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.DataIntegrity, new VerifyRequest
+            {
+                Document = vp.AsElement(),
+                ExpectedProofPurpose = ProofPurpose.Authentication,
+                ExpectedChallenge = options.ExpectedChallenge,
+                ExpectedDomain = options.ExpectedDomain,
+                VerificationTime = options.VerificationTime,
+            }, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not CredentialFormatException and not ArgumentNullException)
+        {
+            return CheckResult.Indeterminate(CheckKinds.HolderBinding, "operation_error",
+                "An operational error prevented the holder-binding check from completing.");
+        }
+    }
+
+    private async Task<CheckResult> CheckHolderBindingViaMechanismAsync(
+        VerifiablePresentation vp, SecuringForm form, VerifyRequest request, CancellationToken ct)
+    {
+        var mechanism = _registry.GetMechanism(form);
+        if (mechanism is null)
+        {
+            return CheckResult.Indeterminate(CheckKinds.HolderBinding, "mechanism_unavailable",
+                $"No securing mechanism is available for the {form} form.");
+        }
+
+        var result = await mechanism.VerifyAsync(request, ct).ConfigureAwait(false);
+        return result.Status switch
+        {
+            SecuringVerificationStatus.Verified => BindHolder(vp, result),
+            SecuringVerificationStatus.Invalid => CheckResult.Failed(CheckKinds.HolderBinding, MapProofProblems(result.Problems)),
+            SecuringVerificationStatus.Unresolvable => CheckResult.Indeterminate(CheckKinds.HolderBinding,
+                "verification_method_unresolvable", "The holder binding's verification method could not be resolved."),
+            SecuringVerificationStatus.NoProof => CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_missing",
+                "The presentation carries no holder-binding proof."),
+            _ => CheckResult.Indeterminate(CheckKinds.HolderBinding, "unknown", "The holder-binding status is unknown."),
+        };
+    }
+
+    // vp+jwt replay defence: the holder signed `nonce` (= challenge) and `aud` (= domain) into the VP, so the
+    // JWS already proved they are the holder's; here the verifier requires them to equal its own
+    // expectations, so a captured vp+jwt does not replay against a verifier demanding fresh values.
+    private static CheckResult CheckPresentationFreshness(VerifiablePresentation vp, PresentationVerificationOptions options)
+    {
+        if (options.ExpectedChallenge is { } expectedChallenge
+            && !string.Equals(ReadStringMember(vp, "nonce"), expectedChallenge, StringComparison.Ordinal))
+        {
+            return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_replay",
+                "The presentation's nonce does not match the expected challenge.");
+        }
+
+        if (options.ExpectedDomain is { } expectedDomain
+            && !string.Equals(ReadStringMember(vp, "aud"), expectedDomain, StringComparison.Ordinal))
+        {
+            return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_replay",
+                "The presentation's audience does not match the expected domain.");
+        }
+
+        return CheckResult.Passed(CheckKinds.HolderBinding);
+    }
+
+    private static string? ReadStringMember(VerifiablePresentation vp, string member) =>
+        vp.GetMember(member) is JsonValue value && value.GetValueKind() == JsonValueKind.String
+            ? value.GetValue<string>()
+            : null;
+
+    // Bind the holder-binding proof to the presentation's holder: the binding key's base DID must equal the
+    // presentation's `holder` — to bind a presentation as a victim holder an attacker needs the victim's key.
+    private static CheckResult BindHolder(VerifiablePresentation vp, SecuringVerificationResult result)
+    {
+        var holderId = vp.Holder;
+        if (string.IsNullOrEmpty(holderId))
+        {
+            return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_missing",
+                "The presentation has no holder to bind the binding proof to.", "/holder");
+        }
+
+        if (result.VerificationMethods.Count == 0
+            || result.VerificationMethods.Any(vm => !string.Equals(BaseDid(vm), holderId, StringComparison.Ordinal)))
+        {
+            return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding",
+                "The holder-binding proof's verification method is not controlled by the holder.", "/proof/verificationMethod");
+        }
+
+        return CheckResult.Passed(CheckKinds.HolderBinding);
+    }
+
+    private async Task<CredentialVerificationResult> VerifyContainedAsync(
+        ContainedCredential contained, CredentialVerificationOptions options, CancellationToken ct)
+    {
+        try
+        {
+            return contained.IsEmbedded
+                ? await VerifyCredentialAsync(contained.AsEmbedded!, options, ct).ConfigureAwait(false)
+                : await VerifyCredentialAsync(Encoding.UTF8.GetBytes(contained.AsEnvelopedCompact!), options, ct).ConfigureAwait(false);
+        }
+        catch (CredentialFormatException)
+        {
+            // A malformed contained credential (e.g. a non-decodable enveloped token) is that child's
+            // failure, not a fault of the whole presentation: synthesize a Rejected result so the VP still
+            // composes to Rejected and every other child is evaluated (FR-045 graceful per-child handling),
+            // instead of letting the exception escape the whole VerifyPresentationAsync call.
+            var proof = CheckResult.Failed(CheckKinds.Proof, "contained_credential_malformed",
+                "The contained credential could not be decoded.");
+            return new CredentialVerificationResult(VerificationDecision.Rejected, [proof], VcdmVersion.Unknown, SecuringState.Unsecured);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not ArgumentNullException)
+        {
+            // Defence in depth: every reachable ingest path converts malformed input to
+            // CredentialFormatException today, but a contained-credential fault must never escape the whole
+            // VerifyPresentationAsync regardless of which substrate exception type surfaces (the same
+            // fault-isolation guard RunHolderBindingAsync/RunProofAsync use). An operational fault is
+            // non-deterministic, so report it as Indeterminate (not a definitive child rejection); real
+            // programming errors (null args) and cancellation still propagate.
+            var proof = CheckResult.Indeterminate(CheckKinds.Proof, "operation_error",
+                "An operational error prevented the contained credential from being evaluated.");
+            return new CredentialVerificationResult(VerificationDecision.Indeterminate, [proof], VcdmVersion.Unknown, SecuringState.Unsecured);
+        }
+    }
+
+    // Each contained credential is verified with the presentation's verification time and, for SD-JWT VC
+    // children, the presentation's audience/nonce so a contained SD-JWT VC's Key Binding JWT is checked.
+    private static CredentialVerificationOptions BuildContainedCredentialOptions(PresentationVerificationOptions options)
+    {
+        var c = options.CredentialOptions;
+        return c with
+        {
+            VerificationTime = options.VerificationTime ?? c.VerificationTime,
+            RequireHolderBinding = c.RequireHolderBinding || options.ExpectedAudience is not null,
+            ExpectedAudience = options.ExpectedAudience ?? c.ExpectedAudience,
+            ExpectedNonce = options.ExpectedNonce ?? c.ExpectedNonce,
+        };
+    }
+
+    private static CheckResult CheckPresentationStructure(VerifiablePresentation vp, PresentationVerificationOptions options)
+    {
+        var result = vp.ValidateStructure();
+        var diagnostics = result.Problems
+            .Select(p => new CheckDiagnostic(p.Code, p.Message, DiagnosticSeverity.Error, p.JsonPointer))
+            .ToList();
+
+        // FR-033: a presentation is built from one or more credentials. An empty/absent verifiableCredential
+        // would otherwise compose to Accepted (no child to reject), proving only holder-key possession.
+        if (options.RequireAtLeastOneCredential && vp.VerifiableCredentials.Count == 0)
+        {
+            diagnostics.Add(new CheckDiagnostic("presentation_no_credentials",
+                "The presentation contains no credentials.", DiagnosticSeverity.Error, "/verifiableCredential"));
+        }
+
+        return diagnostics.Count == 0
+            ? CheckResult.Passed(CheckKinds.Structure)
+            : CheckResult.Failed(CheckKinds.Structure, diagnostics);
+    }
+
+    // A presentation is Accepted only when every presentation-level check and every contained credential is
+    // accepted; any Failed (or Rejected credential) ⇒ Rejected; else any Indeterminate ⇒ Indeterminate
+    // (Rejected under the fail-closed default).
+    private static VerificationDecision ComposePresentationDecision(
+        IReadOnlyList<CheckResult> presentationChecks, IReadOnlyList<CredentialVerificationResult> credentials, VerificationPolicy policy)
+    {
+        if (presentationChecks.Any(c => c.Status == CheckStatus.Failed)
+            || credentials.Any(c => c.Decision == VerificationDecision.Rejected))
+        {
+            return VerificationDecision.Rejected;
+        }
+
+        if (presentationChecks.Any(c => c.Status == CheckStatus.Indeterminate)
+            || credentials.Any(c => c.Decision == VerificationDecision.Indeterminate))
+        {
+            return policy.TreatIndeterminateAsFailure ? VerificationDecision.Rejected : VerificationDecision.Indeterminate;
+        }
+
+        return VerificationDecision.Accepted;
     }
 
     private async Task<ProofOutcome> RunProofAsync(Credential credential, CredentialVerificationOptions options, CancellationToken ct)
@@ -155,6 +424,11 @@ internal sealed class DefaultVerifier : IVerifier
                 Envelope = credential.EnvelopeBytes,
                 ExpectedPayload = credential.AsUtf8(),
                 VerificationTime = options.VerificationTime,
+                // Holder binding (SD-JWT VC KB-JWT); ignored by the JOSE/COSE mechanisms.
+                RequireHolderBinding = options.RequireHolderBinding,
+                ExpectedAudience = options.ExpectedAudience,
+                ExpectedNonce = options.ExpectedNonce,
+                MaxHolderBindingAge = options.MaxHolderBindingAge,
             };
 
         var result = await mechanism.VerifyAsync(request, ct).ConfigureAwait(false);

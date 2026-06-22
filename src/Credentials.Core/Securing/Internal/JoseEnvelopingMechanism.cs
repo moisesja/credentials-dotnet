@@ -19,6 +19,9 @@ namespace Credentials.Securing;
 /// </summary>
 internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIngest
 {
+    // The W3C VC-JOSE-COSE presentation media type / JWS typ for an enveloped Verifiable Presentation.
+    private const string VpJwtType = "vp+jwt";
+
     private readonly IEnvelopeKeyResolver _keyResolver;
 
     public JoseEnvelopingMechanism(IEnvelopeKeyResolver keyResolver) =>
@@ -34,11 +37,24 @@ internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        // The enveloping forms sign Payload, never Document (SecureRequest invariant) — fail loudly if a
+        // caller forgot to set it rather than silently signing empty bytes (or the wrong, unmutated Document).
+        if (request.Payload.IsEmpty)
+        {
+            throw new InvalidOperationException(
+                "JOSE enveloping signs SecureRequest.Payload (Document is ignored); Payload must be non-empty.");
+        }
+
         // JwsSigner derives the JOSE alg from the signer's key type and throws NotSupportedException for
         // an unsupported key (P-521/RSA) — fail fast at issuance rather than mis-sign.
         var signer = new JwsSigner(request.Signer, request.VerificationMethod);
-        var compact = await VcJose.EnvelopeCredentialAsync(request.Payload, signer, cancellationToken)
-            .ConfigureAwait(false);
+
+        // A presentation is bound as a generic compact JWS with typ=vp+jwt (no vp helper in the substrate,
+        // G1); a credential uses VcJose (typ=vc+jwt, cty=vc). Both sign the exact payload bytes.
+        var compact = request.Kind == SecuringDocumentKind.Presentation
+            ? await JwsBuilder.BuildCompactAsync(request.Payload, signer, typ: VpJwtType, cancellationToken: cancellationToken)
+                .ConfigureAwait(false)
+            : await VcJose.EnvelopeCredentialAsync(request.Payload, signer, cancellationToken).ConfigureAwait(false);
         return SecureOutcome.ForJose(compact);
     }
 
@@ -110,20 +126,45 @@ internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
         }
 
         byte[] verifiedPayload;
-        try
+        if (request.Kind == SecuringDocumentKind.Presentation)
         {
-            // The resolver already fetched the published key for this kid; the callback ignores its arg.
-            verifiedPayload = VcJose.VerifyCredential(compact, _ => jwk, cryptoProvider: null);
+            // Presentation binding: assert typ=vp+jwt (the substrate's generic parser does not), then
+            // verify the holder signature over the verbatim token.
+            if (!string.Equals(CompactJws.ReadTyp(compact), VpJwtType, StringComparison.Ordinal))
+            {
+                return SecuringVerificationResult.Invalid("envelope_malformed");
+            }
+
+            try
+            {
+                verifiedPayload = JwsParser.ParseCompact(compact, _ => jwk, new JoseCryptoProvider()).PayloadBytes;
+            }
+            catch (MalformedJoseException)
+            {
+                return SecuringVerificationResult.Invalid("envelope_malformed");
+            }
+            catch (JoseCryptoException)
+            {
+                return SecuringVerificationResult.Invalid("PROOF_VERIFICATION_ERROR");
+            }
         }
-        catch (MalformedJoseException)
+        else
         {
-            // Wrong/absent typ/cty or a structurally invalid token — a definitive negative.
-            return SecuringVerificationResult.Invalid("envelope_malformed");
-        }
-        catch (JoseCryptoException)
-        {
-            // The signature did not verify against the resolved key — a definitive negative.
-            return SecuringVerificationResult.Invalid("PROOF_VERIFICATION_ERROR");
+            try
+            {
+                // The resolver already fetched the published key for this kid; the callback ignores its arg.
+                verifiedPayload = VcJose.VerifyCredential(compact, _ => jwk, cryptoProvider: null);
+            }
+            catch (MalformedJoseException)
+            {
+                // Wrong/absent typ/cty or a structurally invalid token — a definitive negative.
+                return SecuringVerificationResult.Invalid("envelope_malformed");
+            }
+            catch (JoseCryptoException)
+            {
+                // The signature did not verify against the resolved key — a definitive negative.
+                return SecuringVerificationResult.Invalid("PROOF_VERIFICATION_ERROR");
+            }
         }
 
         // The bytes the downstream stages validate (the ingested inner document) must be exactly the
