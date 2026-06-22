@@ -6,6 +6,67 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M5 (bbs-2023 selective disclosure)
+
+- **Verification (FR-042):** `UseBbs2023()` registers the `bbs-2023` cryptosuite, so a **derived**
+  bbs-2023 proof verifies through the existing `IVerifier` with no new verifier code — the Data Integrity
+  pipeline dispatches by cryptosuite name, the existing resolver produces the issuer's BLS12-381-G2 key, and
+  the M1 issuer binding applies. Mandatory disclosure is cryptographically enforced by the substrate (the
+  verifier recomputes the BBS header from the revealed mandatory statements), so a holder cannot drop or
+  alter a mandatory claim.
+- **Holder derivation (FR-031):** `IBbsDeriver.DeriveAsync(baseCredential, BbsDisclosureRequest)` produces a
+  minimally-disclosing credential — the issuer's mandatory group plus the holder's chosen
+  `RevealPointers` — as a zero-knowledge BBS proof, with no issuer interaction and no private key. Each
+  derivation draws a fresh CSPRNG presentation header from the engine RNG seam (`IRandomSource`, F9), so
+  repeated derivations of the same base are unlinkable; the CPU-bound derivation is offloaded at the role
+  boundary (F5). `IBbsDeriver` / `BbsDisclosureRequest` are draft-free (NFR-005) — the `Bbs2023Cryptosuite`
+  draft type is confined to the internal `Bbs2023Deriver`.
+- **Issuance (FR-014) is gated.** `DataProofsDotnet` exposes no key-store / `ISigner` BBS base-proof API —
+  only `CreateBaseProofAsync(rawPrivateKey)` — and exporting a raw private key would violate FR-015/NFR-006.
+  So a `bbs-2023` issuance request fails fast (`NotSupportedException`); only verify + derive ship. BBS
+  issuance lands the day DataProofs adds a key-store BBS create API (an **upstream** capability gap, not a
+  credentials-dotnet defect).
+- **Packaging / NFR-002:** bbs-2023 lives in the opt-in `Credentials.Rdfc` package (which already carries
+  `DataProofsDotnet.Rdfc` → dotNetRDF + Newtonsoft), so it adds **zero** new closure cost; the Core/DI
+  default closure stays System.Text.Json-only (re-verified). **Zero Core changes** — the deriver uses only
+  the public `IRandomSource` / `Credential` surface, and verify is pure suite registration. A reflection
+  test confirms no `DataProofsDotnet` / dotNetRDF / Newtonsoft type on the `Credentials.Rdfc` public surface
+  (NFR-005 / D3).
+
+### Security / hardening — M5 adversarial review (2026-06-22)
+
+Three adversarial agents attacked the disclosure-forgery, F7/DoS, and leakage/residual surfaces by
+compiling and running ~50 exploits against the real `UseBbs2023()` wiring with the BBS native library
+present. **No cryptographic forgery was found** — every attempt to drop or alter a mandatory claim (incl.
+CBOR surgery on the derived proofValue's index sets and label map), forge `issuer=victim`, hide the issuer,
+splice a proof across credentials, or inject an unsigned claim was Rejected. Mandatory-group enforcement
+(the recomputed BBS header) and issuer binding both held cryptographically; F7 held (a malformed/forged
+proof is `Failed`, the most lenient outcome is `Indeterminate`, never a false Accept); NFR-005 surface and
+NFR-002 closure are clean. Two items were addressed:
+
+- **`DeriveAsync` malformed-pointer leak (medium — fixed):** a malformed RFC 6901 `RevealPointers` entry
+  (missing leading `/`, a `null` element) made the substrate's JSON Pointer parser throw a raw
+  `ArgumentException` that escaped `DeriveAsync`, violating its documented contract and surfacing the
+  internal substrate pointer type. It is now mapped to `CredentialFormatException`; a well-formed pointer to
+  an absent path correctly reveals nothing extra.
+- **Withheld validity/status claim (high — inherent issuer-side residual, documented):** a holder can
+  withhold a verification-critical claim (`validUntil`, `credentialStatus`) that the issuer left out of the
+  mandatory group, so an expired/revoked credential verifies — the verifier cannot distinguish "no expiry"
+  from "expiry hidden". This is the **same inherent selective-disclosure limitation as the M4 SD-JWT
+  residual**; the defence is issuer-side (the issuer must place `validUntil`/`validFrom`/`credentialStatus`/
+  `issuer`/`id`/`type`/`@context` in the mandatory group, where disclosure is cryptographically enforced).
+  `IBbsDeriver` / `BbsDisclosureRequest` now document the issuer's mandatory-group obligation, and a
+  characterization test shows the residual and its mitigation. **This engine does not issue bbs-2023 bases**
+  (issuance is gated), so the mandatory-group choice is the third-party issuer's responsibility; the engine
+  will enforce it when bbs-2023 issuance ships.
+
+Documented, non-blocking (default fail-closed posture is safe): a bad derived proof can be steered
+`Failed → Indeterminate` by an unresolvable `verificationMethod` (a general Data Integrity property, not
+BBS-specific — under the default `TreatIndeterminateAsFailure` it is still `Rejected`); a derived proofValue
+is not bit-canonical (no forgery / no extra disclosure); a substrate (`dataproofs-dotnet`) round-trip
+failure at very large message counts (fails closed); and a bare derived credential has no replay protection
+until the presentation/holder milestone binds the BBS presentation header to a verifier challenge.
+
 ### Added — Milestone M4 (SD-JWT VC)
 
 - **SD-JWT VC issuance (FR-013):** `SdJwtVcIssuanceRequest` issues a VCDM 2.0 credential as a selectively
