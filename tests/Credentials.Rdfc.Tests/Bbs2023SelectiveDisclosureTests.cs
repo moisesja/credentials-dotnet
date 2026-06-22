@@ -27,8 +27,12 @@ public sealed class Bbs2023SelectiveDisclosureTests
     private static readonly DefaultCryptoProvider Crypto = new();
     private static readonly DefaultKeyGenerator KeyGen = new();
 
-    // The BBS native library ships with NetCrypto's closure; if a host lacks it, the lifecycle methods
-    // throw and these tests are not meaningful. Gate on the capability so a binary-less host is a no-op.
+    // The BBS native library ships in NetCrypto for every supported RID (osx-arm64/x64, linux-x64/arm64,
+    // win-x64), so on a supported host BbsAvailable is true and the crypto tests below run for real.
+    // COVERAGE NOTE: on a host that lacks the native library the `if (!BbsAvailable) { return; }` guards
+    // make those tests a silent no-op — they report Passed without exercising any BBS path. A CI audit on
+    // an unsupported RID must therefore read a green M5 crypto run as "not covered", not "verified".
+    // (The non-crypto tests — issuance gate, capabilities, surface confinement — run unconditionally.)
     private static readonly bool BbsAvailable = new Bbs2023Cryptosuite().IsAvailable;
 
     private static ServiceProvider BuildProvider() =>

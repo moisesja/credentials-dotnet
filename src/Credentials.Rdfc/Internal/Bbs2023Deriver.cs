@@ -22,6 +22,12 @@ internal sealed class Bbs2023Deriver : IBbsDeriver
     private const int PresentationHeaderBytes = 32;
 
     private readonly IRandomSource _random;
+
+    // One instance shared across concurrent DeriveAsync calls (the deriver is a DI singleton). This is
+    // safe: Bbs2023Cryptosuite is documented immutable + thread-safe after construction (DataProofs
+    // NFR-4), and its BBS provider (DefaultBbsCryptoProvider) is stateless — every DeriveProof passes all
+    // inputs as parameters into local buffers and a stateless native FFI, holding no per-instance handle
+    // or reused buffer. Sharing it also avoids re-initialising the RDFC canonicalizer on every derive.
     private readonly Bbs2023Cryptosuite _suite = new();
 
     public Bbs2023Deriver(IRandomSource random) =>
