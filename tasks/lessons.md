@@ -199,6 +199,37 @@ soft-DoS). **Rule:** an informational/non-gating hook must be wrapped so a fault
 (best-effort), never a verification outcome; reserve Indeterminate for faults in checks that actually gate the
 decision. (A gating hook is the opposite — its fault *should* be Indeterminate, fail-closed.)
 
+## The withheld-disclosure residual is mechanism-independent — it recurs on every selective-disclosure path (2026-06-22)
+
+M4 (SD-JWT) and M5 (bbs-2023) are different mechanisms but hit the *identical* residual: a holder who
+**withholds** a verification-critical claim (`validUntil`, `credentialStatus`) the issuer made
+selectively-disclosable produces a genuinely valid proof over the reduced set, and the verifier cannot tell
+"the credential never had an expiry" from "the holder hid the expiry." Both times the adversarial pass
+confirmed an expired/revoked credential Accepts. The defence is the same and is **issuer-side**: those
+claims must be non-disclosable (SD-JWT reserved set) / in the mandatory group (bbs-2023, where disclosure is
+cryptographically enforced). The verifier-side guards only catch a *revealed-but-inconsistent* member, never
+an *omitted* one. **Rule:** when you add any new selective-disclosure mechanism, the verification-critical
+member set (`validFrom`/`validUntil`/`issuanceDate`/`expirationDate`/`credentialStatus`/`credentialSchema`/
+`issuer`/`id`/`type`/`@context`) must be forced-revealed at issuance, and you must *document the residual*
+for credentials this engine verifies but did not issue — don't re-discover it per mechanism. Where this
+engine issues, it makes them non-disclosable (so its own credentials are immune); where it only verifies
+(e.g. M5's gated issuance), it is the third-party issuer's responsibility and the most you can do is document
++ enforce-at-issuance-when-it-ships.
+
+## Map a throwing substrate's argument exceptions at the boundary, or you leak its types and break your own contract (2026-06-22)
+
+The bbs-2023 deriver caught the substrate's `BbsUnavailableException` and `ProofGenerationException` but not
+the `ArgumentException`/`ArgumentNullException` that the substrate's JSON-Pointer parser throws on a
+malformed reveal pointer (missing leading `/`, a null element — a trivially common caller mistake). The
+adversarial pass turned a holder-supplied bad pointer into an uncaught exception that (a) violated the
+method's documented `CredentialFormatException` contract — a caller's `catch (CredentialFormatException)`
+misses it → a wallet 500 — and (b) surfaced the internal substrate `JsonPointer` type across the boundary
+NFR-005 means to keep clean. **Rule:** at a mechanism boundary that forwards caller-controlled input into a
+throw-based substrate, enumerate *every* exception the substrate throws on bad input (not just the
+crypto/availability ones) and map them to your documented exception type — `ArgumentException` covers
+`ArgumentNullException`; order it after the more-specific catches; keep the top-level null-argument guards
+(real programming errors) propagating. Malformed input must never escape as a raw substrate exception.
+
 ## Transitive deps defeat "no Newtonsoft in the closure" even with a clean public API (2026-06-19)
 
 Referencing `DataProofsDotnet.Rdfc` (for RDFC suites) pulled dotNetRDF → Newtonsoft.Json + AngleSharp +
