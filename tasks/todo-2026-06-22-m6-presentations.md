@@ -168,4 +168,40 @@ House conventions (xUnit + FluentAssertions 7.0.0, NSubstitute, DI + `did:key` `
 ---
 
 ## 9. Review
-*(to be completed after implementation + adversarial pass)*
+
+**Delivered (one PR, `feature/m6-presentations`).** The full Holder role (`IHolder`: `Ingest` /
+`InspectSdJwt` / `PresentSdJwtAsync` / `BuildPresentation` / `BindWithDataIntegrityAsync` /
+`BindWithJoseEnvelopeAsync`) + presentation verification (`IVerifier.VerifyPresentationAsync`, VP-object and
+bytes overloads) over the existing securing seam (`SecureRequest`/`VerifyRequest` gained `Challenge`/
+`Domain`/`Kind`; a `vp+jwt` JOSE path via the generic `JwsBuilder`/`JwsParser`; a shared `EnvelopeIngest`).
+Verification composes holder-binding + structure + every contained credential (self-recursive) fail-closed.
+
+**Scope cuts held** (all in §2): BBS derivation stayed in `Credentials.Rdfc` (NFR-002); COSE VPs and the
+`data:`-URI wrapper deferred; caller supplies the holder `ISigner` (no `IHolderKeyResolver`); `InspectSdJwt`
+shipped, `InspectBbsBase` deferred; per-credential challenge-bound BBS deferred (VP-level binding gives the
+replay defence).
+
+**Adversarial pass — findings & resolutions:**
+- **F1 vp+jwt replay** — *fixed.* The `vp+jwt` path had no freshness binding (the generic JWS builder has no
+  header-claim hook). Now the holder signs `nonce`/`aud` into the VP payload and the verifier requires them
+  to equal `ExpectedChallenge`/`ExpectedDomain` (`holder_binding_replay`). Regression:
+  `Jose_vp_jwt_replay_against_a_fresh_challenge_is_rejected`.
+- **F2 fail-open required binding** — *fixed.* A required binding with no `ExpectedChallenge` now fails
+  (`holder_binding_challenge_required`) rather than accepting any captured VP — the substrate is fail-open,
+  so the orchestrator enforces the expectation's presence. Regression:
+  `Required_holder_binding_without_an_expected_challenge_is_rejected`.
+- **F4 malformed child throws** — *fixed.* `VerifyContainedAsync` wraps the child pipeline; a broken child is
+  a rejected credential (`contained_credential_malformed`), never thrown. Regression:
+  `Presentation_with_a_malformed_contained_credential_is_rejected_not_thrown`.
+- **F6 empty VP** — *fixed.* `RequireAtLeastOneCredential` (default true) makes an empty `verifiableCredential`
+  a structure failure (`presentation_no_credentials`). Regression:
+  `Empty_presentation_is_rejected_when_at_least_one_credential_required`.
+- **F5 withheld-disclosure residual** — *documented* (the M4/M5 inherent residual; a verifier-side guard
+  over-rejects compliant credentials — RFC 9901 §4.2.7). Posture stays issuer-side + docs; precise fix needs
+  Type-Metadata disclosability (future). Code comment in `SdJwtVcMechanism` updated.
+- **F3 holder↔subject** — *documented*: the binding proves holder-key possession, not that the holder is the
+  credential subject; that's a verifier policy concern (out of M6 scope).
+
+**Verification:** full suite green — **294 tests** (Core 135 + DI 138 + Rdfc 21), up from 290 (+4 regression
+tests). NFR-002 (System.Text.Json-only default closure) and NFR-005 (no substrate type on the holder/
+presentation public surface) re-checked clean.

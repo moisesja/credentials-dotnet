@@ -317,8 +317,13 @@ internal sealed class SdJwtVcMechanism : ISecuringMechanism, IEnvelopeIngest, IS
         // payload) cannot be detected here — the leftover `_sd` digest is dropped as an indistinguishable
         // decoy (RFC 9901 §4.2.7). The defence against that is keeping these claims non-disclosable at
         // issuance (this engine's own SD-JWT VCs always do, so they are immune; the same posture the
-        // SD-JWT VC profile assumes for iss/nbf/exp/status). A presentation-completeness / Type-Metadata
-        // disclosability policy for third-party credentials is a later (M6) concern.
+        // SD-JWT VC profile assumes for iss/nbf/exp/status). M6 (presentations) evaluated a verifier-side
+        // guard and confirmed it cannot be made precise: a top-level `_sd` digest is indistinguishable
+        // between a hidden validity/status member and a legitimately-disclosed non-validity claim (e.g.
+        // `name`), so any verifier-side check over-rejects compliant credentials. The principled fix is
+        // Type-Metadata-driven disclosability (a future milestone); until then the posture is issuer-side
+        // (our issuance is immune) + documentation that a third-party SD-JWT VC with disclosable
+        // validity/status members is not safely verifiable for expiry/revocation.
         foreach (var member in NonDisclosableMembers)
         {
             if (disclosed.ContainsKey(member) && !clearPayload.ContainsKey(member))

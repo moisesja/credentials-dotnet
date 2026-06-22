@@ -115,11 +115,31 @@ internal sealed class DefaultHolder : IHolder
         var mechanism = _registry.GetMechanism(SecuringForm.Jose)
             ?? throw new NotSupportedException("No JOSE securing mechanism is registered.");
 
+        // Bind the verifier-supplied freshness into the SIGNED payload (the substrate's generic compact-JWS
+        // builder has no header-claim hook): a `nonce` (= challenge) and `aud` (= domain) become VP members,
+        // so a captured vp+jwt is not a bearer token — the verifier rejects it unless the nonce/aud match.
+        var payload = presentation.AsUtf8();
+        if (request.Challenge is { Length: > 0 } || request.Domain is { Length: > 0 })
+        {
+            var node = JsonNode.Parse(presentation.ToBytes())!.AsObject();
+            if (request.Challenge is { Length: > 0 } challenge)
+            {
+                node["nonce"] = challenge;
+            }
+
+            if (request.Domain is { Length: > 0 } domain)
+            {
+                node["aud"] = domain;
+            }
+
+            payload = JsonSerializer.SerializeToUtf8Bytes(node);
+        }
+
         var outcome = await mechanism.SecureAsync(
             new SecureRequest
             {
                 Document = presentation.AsElement(),
-                Payload = presentation.AsUtf8(),
+                Payload = payload,
                 Signer = request.HolderSigner,
                 VerificationMethod = request.VerificationMethod,
                 Kind = SecuringDocumentKind.Presentation,

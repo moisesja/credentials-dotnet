@@ -141,7 +141,7 @@ internal sealed class DefaultVerifier : IVerifier
         PresentationVerificationOptions options, CancellationToken ct)
     {
         var holderBinding = await RunHolderBindingAsync(vp, binding, envelope, options, ct).ConfigureAwait(false);
-        var structure = SafeRun(CheckKinds.Structure, () => CheckPresentationStructure(vp));
+        var structure = SafeRun(CheckKinds.Structure, () => CheckPresentationStructure(vp, options));
 
         var credentialOptions = BuildContainedCredentialOptions(options);
         var credentialResults = new List<CredentialVerificationResult>(vp.VerifiableCredentials.Count);
@@ -162,9 +162,28 @@ internal sealed class DefaultVerifier : IVerifier
     {
         try
         {
+            var isBound = binding == PresentationBinding.Jose || vp.Securing == SecuringState.DataIntegrity;
+            if (!isBound)
+            {
+                return options.RequireHolderBinding
+                    ? CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_missing",
+                        "The presentation is not bound to a holder key.")
+                    : CheckResult.Skipped(CheckKinds.HolderBinding, "The presentation carries no holder binding.");
+            }
+
+            // Replay defence is mandatory for a REQUIRED binding: the verifier must supply a challenge to bind
+            // against, else a captured presentation replays. (Both binding paths; fail closed, never fail open.)
+            if (options.RequireHolderBinding && string.IsNullOrEmpty(options.ExpectedChallenge))
+            {
+                return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_challenge_required",
+                    "Holder binding is required but no expected challenge was supplied to bind the presentation against (replay defence).");
+            }
+
             if (binding == PresentationBinding.Jose)
             {
-                return await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.Jose, new VerifyRequest
+                // The JOSE mechanism verifies typ=vp+jwt + the holder signature over the VP (which carries the
+                // signed nonce/aud); the freshness comparison against the verifier's expectations is here.
+                var joseResult = await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.Jose, new VerifyRequest
                 {
                     Document = vp.AsElement(),
                     Envelope = envelope,
@@ -172,25 +191,18 @@ internal sealed class DefaultVerifier : IVerifier
                     Kind = SecuringDocumentKind.Presentation,
                     VerificationTime = options.VerificationTime,
                 }, ct).ConfigureAwait(false);
+                return joseResult.Status == CheckStatus.Passed ? CheckPresentationFreshness(vp, options) : joseResult;
             }
 
-            if (vp.Securing == SecuringState.DataIntegrity)
+            // Data Integrity authentication proof — the substrate enforces the challenge/domain match.
+            return await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.DataIntegrity, new VerifyRequest
             {
-                return await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.DataIntegrity, new VerifyRequest
-                {
-                    Document = vp.AsElement(),
-                    ExpectedProofPurpose = ProofPurpose.Authentication,
-                    ExpectedChallenge = options.ExpectedChallenge,
-                    ExpectedDomain = options.ExpectedDomain,
-                    VerificationTime = options.VerificationTime,
-                }, ct).ConfigureAwait(false);
-            }
-
-            // Unbound presentation.
-            return options.RequireHolderBinding
-                ? CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_missing",
-                    "The presentation is not bound to a holder key.")
-                : CheckResult.Skipped(CheckKinds.HolderBinding, "The presentation carries no holder binding.");
+                Document = vp.AsElement(),
+                ExpectedProofPurpose = ProofPurpose.Authentication,
+                ExpectedChallenge = options.ExpectedChallenge,
+                ExpectedDomain = options.ExpectedDomain,
+                VerificationTime = options.VerificationTime,
+            }, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not CredentialFormatException and not ArgumentNullException)
         {
@@ -222,6 +234,33 @@ internal sealed class DefaultVerifier : IVerifier
         };
     }
 
+    // vp+jwt replay defence: the holder signed `nonce` (= challenge) and `aud` (= domain) into the VP, so the
+    // JWS already proved they are the holder's; here the verifier requires them to equal its own
+    // expectations, so a captured vp+jwt does not replay against a verifier demanding fresh values.
+    private static CheckResult CheckPresentationFreshness(VerifiablePresentation vp, PresentationVerificationOptions options)
+    {
+        if (options.ExpectedChallenge is { } expectedChallenge
+            && !string.Equals(ReadStringMember(vp, "nonce"), expectedChallenge, StringComparison.Ordinal))
+        {
+            return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_replay",
+                "The presentation's nonce does not match the expected challenge.");
+        }
+
+        if (options.ExpectedDomain is { } expectedDomain
+            && !string.Equals(ReadStringMember(vp, "aud"), expectedDomain, StringComparison.Ordinal))
+        {
+            return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_replay",
+                "The presentation's audience does not match the expected domain.");
+        }
+
+        return CheckResult.Passed(CheckKinds.HolderBinding);
+    }
+
+    private static string? ReadStringMember(VerifiablePresentation vp, string member) =>
+        vp.GetMember(member) is JsonValue value && value.GetValueKind() == JsonValueKind.String
+            ? value.GetValue<string>()
+            : null;
+
     // Bind the holder-binding proof to the presentation's holder: the binding key's base DID must equal the
     // presentation's `holder` — to bind a presentation as a victim holder an attacker needs the victim's key.
     private static CheckResult BindHolder(VerifiablePresentation vp, SecuringVerificationResult result)
@@ -246,9 +285,22 @@ internal sealed class DefaultVerifier : IVerifier
     private async Task<CredentialVerificationResult> VerifyContainedAsync(
         ContainedCredential contained, CredentialVerificationOptions options, CancellationToken ct)
     {
-        return contained.IsEmbedded
-            ? await VerifyCredentialAsync(contained.AsEmbedded!, options, ct).ConfigureAwait(false)
-            : await VerifyCredentialAsync(Encoding.UTF8.GetBytes(contained.AsEnvelopedCompact!), options, ct).ConfigureAwait(false);
+        try
+        {
+            return contained.IsEmbedded
+                ? await VerifyCredentialAsync(contained.AsEmbedded!, options, ct).ConfigureAwait(false)
+                : await VerifyCredentialAsync(Encoding.UTF8.GetBytes(contained.AsEnvelopedCompact!), options, ct).ConfigureAwait(false);
+        }
+        catch (CredentialFormatException)
+        {
+            // A malformed contained credential (e.g. a non-decodable enveloped token) is that child's
+            // failure, not a fault of the whole presentation: synthesize a Rejected result so the VP still
+            // composes to Rejected and every other child is evaluated (FR-045 graceful per-child handling),
+            // instead of letting the exception escape the whole VerifyPresentationAsync call.
+            var proof = CheckResult.Failed(CheckKinds.Proof, "contained_credential_malformed",
+                "The contained credential could not be decoded.");
+            return new CredentialVerificationResult(VerificationDecision.Rejected, [proof], VcdmVersion.Unknown, SecuringState.Unsecured);
+        }
     }
 
     // Each contained credential is verified with the presentation's verification time and, for SD-JWT VC
@@ -265,18 +317,24 @@ internal sealed class DefaultVerifier : IVerifier
         };
     }
 
-    private static CheckResult CheckPresentationStructure(VerifiablePresentation vp)
+    private static CheckResult CheckPresentationStructure(VerifiablePresentation vp, PresentationVerificationOptions options)
     {
         var result = vp.ValidateStructure();
-        if (result.IsValid)
-        {
-            return CheckResult.Passed(CheckKinds.Structure);
-        }
-
         var diagnostics = result.Problems
             .Select(p => new CheckDiagnostic(p.Code, p.Message, DiagnosticSeverity.Error, p.JsonPointer))
             .ToList();
-        return CheckResult.Failed(CheckKinds.Structure, diagnostics);
+
+        // FR-033: a presentation is built from one or more credentials. An empty/absent verifiableCredential
+        // would otherwise compose to Accepted (no child to reject), proving only holder-key possession.
+        if (options.RequireAtLeastOneCredential && vp.VerifiableCredentials.Count == 0)
+        {
+            diagnostics.Add(new CheckDiagnostic("presentation_no_credentials",
+                "The presentation contains no credentials.", DiagnosticSeverity.Error, "/verifiableCredential"));
+        }
+
+        return diagnostics.Count == 0
+            ? CheckResult.Passed(CheckKinds.Structure)
+            : CheckResult.Failed(CheckKinds.Structure, diagnostics);
     }
 
     // A presentation is Accepted only when every presentation-level check and every contained credential is

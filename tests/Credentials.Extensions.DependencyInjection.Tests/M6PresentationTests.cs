@@ -103,16 +103,155 @@ public sealed class M6PresentationTests
         {
             HolderSigner = holderKey.Signer,
             VerificationMethod = holderKey.VerificationMethod,
+            Challenge = Challenge,
+            Domain = Domain,
         });
         vpJwt.Split('.').Should().HaveCount(3); // compact JWS
 
         var result = await verifier.VerifyPresentationAsync(
-            Encoding.UTF8.GetBytes(vpJwt), new PresentationVerificationOptions());
+            Encoding.UTF8.GetBytes(vpJwt),
+            new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
 
         result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
         result.Mechanism.Should().Be(SecuringState.Jose);
         result.Check(CheckKinds.HolderBinding)!.Status.Should().Be(CheckStatus.Passed);
         result.Credentials[0].Decision.Should().Be(VerificationDecision.Accepted);
+    }
+
+    [Fact]
+    public async Task Jose_vp_jwt_replay_against_a_fresh_challenge_is_rejected()
+    {
+        // F1 (adversarial): a vp+jwt is captured and replayed to a verifier that demands a DIFFERENT
+        // challenge. The holder signed nonce/aud into the VP, so the verifier rejects the stale binding.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        var vp = BuildVp(holder, held, holderKey.Did);
+
+        var vpJwt = await holder.BindWithJoseEnvelopeAsync(vp, new VpBindingRequest
+        {
+            HolderSigner = holderKey.Signer,
+            VerificationMethod = holderKey.VerificationMethod,
+            Challenge = Challenge,
+            Domain = Domain,
+        });
+
+        var result = await verifier.VerifyPresentationAsync(
+            Encoding.UTF8.GetBytes(vpJwt),
+            new PresentationVerificationOptions { ExpectedChallenge = "a-fresh-challenge", ExpectedDomain = Domain });
+
+        result.Decision.Should().Be(VerificationDecision.Rejected, result.ToString());
+        var binding = result.Check(CheckKinds.HolderBinding)!;
+        binding.Status.Should().Be(CheckStatus.Failed);
+        binding.Diagnostics.Should().Contain(d => d.Code == "holder_binding_replay");
+    }
+
+    [Fact]
+    public async Task Required_holder_binding_without_an_expected_challenge_is_rejected()
+    {
+        // F2 (adversarial): RequireHolderBinding must fail CLOSED — a verifier that demands a binding but
+        // supplies no challenge to bind against would otherwise accept any captured presentation.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        var vp = BuildVp(holder, held, holderKey.Did);
+        var bound = await holder.BindWithDataIntegrityAsync(vp, new VpBindingRequest
+        {
+            HolderSigner = holderKey.Signer,
+            VerificationMethod = holderKey.VerificationMethod,
+            Challenge = Challenge,
+            Domain = Domain,
+        });
+
+        var result = await verifier.VerifyPresentationAsync(
+            bound, new PresentationVerificationOptions()); // RequireHolderBinding defaults true, no ExpectedChallenge
+
+        result.Decision.Should().Be(VerificationDecision.Rejected, result.ToString());
+        var binding = result.Check(CheckKinds.HolderBinding)!;
+        binding.Status.Should().Be(CheckStatus.Failed);
+        binding.Diagnostics.Should().Contain(d => d.Code == "holder_binding_challenge_required");
+    }
+
+    [Fact]
+    public async Task Presentation_with_a_malformed_contained_credential_is_rejected_not_thrown()
+    {
+        // F4 (adversarial): a structurally broken contained credential must be REPORTED as a rejected
+        // child, never throw out of the verifier.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        var vp = BuildVp(holder, held, holderKey.Did);
+        var bound = await holder.BindWithDataIntegrityAsync(vp, new VpBindingRequest
+        {
+            HolderSigner = holderKey.Signer,
+            VerificationMethod = holderKey.VerificationMethod,
+            Challenge = Challenge,
+            Domain = Domain,
+        });
+
+        // Replace the embedded child with a non-object junk node.
+        var node = JsonNode.Parse(bound.ToBytes())!.AsObject();
+        node["verifiableCredential"]!.AsArray()[0] = "not-a-credential";
+        var brokenBytes = Encoding.UTF8.GetBytes(node.ToJsonString());
+
+        var result = await verifier.VerifyPresentationAsync(
+            brokenBytes,
+            new PresentationVerificationOptions
+            {
+                RequireHolderBinding = false, // isolate the contained-credential path
+                ExpectedChallenge = Challenge,
+                ExpectedDomain = Domain,
+            });
+
+        result.Decision.Should().Be(VerificationDecision.Rejected, result.ToString());
+        result.Credentials.Should().HaveCount(1);
+        result.Credentials[0].Decision.Should().Be(VerificationDecision.Rejected);
+    }
+
+    [Fact]
+    public async Task Empty_presentation_is_rejected_when_at_least_one_credential_required()
+    {
+        // F6 (adversarial): a VP with no credentials proves only holder-key possession; it must not compose
+        // to Accepted by default. RequireAtLeastOneCredential (default true) makes it a structure failure.
+        using var provider = BuildProvider();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var holderKey = TestKeys.New(KeyType.Ed25519);
+        var vp = holder.BuildPresentation(new VpAssemblyRequest { Holder = holderKey.Did, Credentials = [] });
+        var bound = await holder.BindWithDataIntegrityAsync(vp, new VpBindingRequest
+        {
+            HolderSigner = holderKey.Signer,
+            VerificationMethod = holderKey.VerificationMethod,
+            Challenge = Challenge,
+            Domain = Domain,
+        });
+
+        var rejected = await verifier.VerifyPresentationAsync(
+            bound, new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
+        rejected.Decision.Should().Be(VerificationDecision.Rejected, rejected.ToString());
+        rejected.Check(CheckKinds.Structure)!.Status.Should().Be(CheckStatus.Failed);
+        rejected.Check(CheckKinds.Structure)!.Diagnostics.Should().Contain(d => d.Code == "presentation_no_credentials");
+
+        // ...but accepted when the caller opts out (e.g. a key-possession-only presentation).
+        var allowed = await verifier.VerifyPresentationAsync(
+            bound,
+            new PresentationVerificationOptions
+            {
+                ExpectedChallenge = Challenge,
+                ExpectedDomain = Domain,
+                RequireAtLeastOneCredential = false,
+            });
+        allowed.Check(CheckKinds.Structure)!.Status.Should().Be(CheckStatus.Passed);
     }
 
     [Theory]

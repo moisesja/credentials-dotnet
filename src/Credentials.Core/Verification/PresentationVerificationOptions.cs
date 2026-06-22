@@ -32,6 +32,13 @@ public sealed record PresentationVerificationOptions
     /// <summary>The nonce an SD-JWT VC child's Key Binding JWT (<c>nonce</c>) must equal.</summary>
     public string? ExpectedNonce { get; init; }
 
+    /// <summary>
+    /// Require the presentation to contain at least one credential (FR-033). Default: <see langword="true"/>.
+    /// When <see langword="true"/>, an empty/absent <c>verifiableCredential</c> is a structure failure — so
+    /// an <see cref="VerificationDecision.Accepted"/> decision implies a credential was actually presented.
+    /// </summary>
+    public bool RequireAtLeastOneCredential { get; init; } = true;
+
     /// <summary>The instant to evaluate validity and freshness against. Defaults to now.</summary>
     public DateTimeOffset? VerificationTime { get; init; }
 

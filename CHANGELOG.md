@@ -6,6 +6,60 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M6 (presentations + holder binding)
+
+- **Holder role (`IHolder`):** `Ingest` (FR-030) materializes a received credential (JSON / JOSE / SD-JWT)
+  into a `HeldCredential`; `InspectSdJwt` lists an SD-JWT VC's disclosable claims + whether it supports
+  holder binding; `PresentSdJwtAsync` (FR-032) reveals a chosen disclosure subset and appends a Key Binding
+  JWT — the holder signs through a caller-supplied `NetCrypto.ISigner` (never raw keys), and the KB-JWT binds
+  the verifier's `aud`/`nonce` and the exact disclosed set (`sd_hash`). `BuildPresentation` (FR-033)
+  assembles a VP from embedded + enveloped (verbatim compact) children; `BindWithDataIntegrityAsync` /
+  `BindWithJoseEnvelopeAsync` (FR-034) bind it to the holder key as a Data Integrity `authentication` proof
+  (with `challenge`/`domain`) or a compact `vp+jwt`.
+- **Presentation verification (FR-041):** `IVerifier.VerifyPresentationAsync` (VP-object and bytes
+  overloads) verifies the **holder binding**, the VP **structure**, and **every contained credential**
+  through the full credential pipeline (self-recursive). The holder binding applies the M1 look-up-then-bind
+  to the **holder**: the binding key's base DID must equal the VP `holder` (a forged holder needs the
+  holder's key); the DI path enforces `proofPurpose=authentication` + `challenge`/`domain`, the `vp+jwt`
+  path asserts `typ=vp+jwt`. A presentation is `Accepted` only when the binding (when required), the
+  structure, and every child are accepted (fail-closed). New `PresentationVerificationOptions` /
+  `PresentationVerificationResult`, `CheckKinds.HolderBinding`, and `RequireHolderBinding` /
+  `ExpectedAudience` / `ExpectedNonce` on `CredentialVerificationOptions` (the SD-JWT KB-JWT path).
+- **Securing seam:** `SecureRequest`/`VerifyRequest` gain `Challenge`/`Domain`/`Kind`; the Data Integrity
+  mechanism threads challenge/domain; the JOSE mechanism gains a `vp+jwt` path (the generic `JwsBuilder` /
+  `JwsParser`, since the substrate has no VP-specific helper — `typ` asserted on verify, G1); a shared
+  `EnvelopeIngest` routes ingest for both the verifier and the holder. All signing/binding paths are
+  honestly async over the substrate sign (F5).
+- **Scope (deferred):** BBS derivation stays in `Credentials.Rdfc` (`IBbsDeriver`) rather than absorbed into
+  Core's `IHolder` (NFR-002 — Core cannot pull dotNetRDF); a BBS credential is presented as an embedded VP
+  child, replay-protected by the VP binding. COSE VPs (`vp+cose`), the `EnvelopedVerifiableCredential`
+  `data:`-URI wrapper, `IHolderKeyResolver`, and `InspectBbsBase` are deferred. Core/DI default closure
+  unchanged (System.Text.Json-only); no substrate type on the holder/presentation public surface (NFR-005).
+
+#### Security & hardening (M6 adversarial review)
+
+- **vp+jwt replay (F1):** the generic compact-JWS builder has no header-claim hook, so the `vp+jwt` path
+  signs the verifier's `nonce` (= `challenge`) and `aud` (= `domain`) **into** the VP payload, and the
+  verifier requires them to equal its own `ExpectedChallenge`/`ExpectedDomain` (`holder_binding_replay`). A
+  captured `vp+jwt` is therefore not a bearer token — it does not replay against a verifier demanding fresh
+  values.
+- **Fail-closed required binding (F2):** a required holder binding with **no** `ExpectedChallenge` now fails
+  (`holder_binding_challenge_required`) instead of accepting any captured presentation — the substrate's
+  challenge/domain check is fail-open (only enforced when an expectation is supplied), so the orchestrator
+  enforces the expectation's presence itself.
+- **Malformed contained credential (F4):** a structurally broken child is reported as a rejected credential
+  (`contained_credential_malformed`), never thrown out of `VerifyPresentationAsync`.
+- **Empty presentation (F6):** `RequireAtLeastOneCredential` (default `true`) makes an empty/absent
+  `verifiableCredential` a structure failure (`presentation_no_credentials`) — an `Accepted` decision now
+  implies a credential was actually presented, not merely holder-key possession.
+- **Withheld-disclosure residual (F5, documented):** M6 confirmed the verifier cannot precisely detect a
+  holder who *withholds* a disclosure for a validity/status member — the leftover top-level `_sd` digest is
+  indistinguishable from a legitimately-disclosed non-validity claim (RFC 9901 §4.2.7), so any verifier-side
+  guard over-rejects compliant credentials. The posture stays issuer-side (this engine's own SD-JWT VCs keep
+  validity/status non-disclosable, so they are immune) plus documentation; a precise fix needs Type-Metadata
+  disclosability (a future milestone). The holder↔subject relationship (F3) likewise remains a verifier
+  policy concern, not enforced by the binding.
+
 ### Added — Milestone M5 (bbs-2023 selective disclosure)
 
 - **Verification (FR-042):** `UseBbs2023()` registers the `bbs-2023` cryptosuite, so a **derived**

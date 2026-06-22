@@ -2,6 +2,32 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A fail-open substrate check makes the orchestrator responsible for enforcing the expectation's presence (2026-06-22)
+
+The DataProofs substrate only checks `challenge`/`domain` when the verifier supplies a non-null expectation
+(`ExpectedChallenge != null`) — so a verifier that *requires* a holder binding but forgets to set
+`ExpectedChallenge` would accept **any** captured presentation (the binding verifies, the freshness is never
+checked). The substrate is fail-open *by design* (the expectation is optional); the fail-**closed** policy is
+the caller's to add. M6's adversarial pass (F2) caught this: `RequireHolderBinding == true &&
+ExpectedChallenge == null` now fails (`holder_binding_challenge_required`) before the binding check runs.
+**Rule:** whenever a substrate enforces a security property only when an expectation is supplied (fail-open),
+and your layer exposes a `Require…` flag, the flag must *also* require the corresponding expectation to be
+present — never let "required" mean "verify the signature but skip the replay defence." Test the
+require-but-omit-expectation path explicitly, not just the happy path.
+
+## When the signing substrate has no header-claim hook, bind freshness *into the signed payload* (2026-06-22)
+
+The `vp+jwt` holder binding uses the generic compact-JWS builder, which signs a payload but exposes no hook
+to add protected header claims (`nonce`/`aud`). So a naive `vp+jwt` is a **bearer token**: capture it, replay
+it (F1). The fix is to inject the verifier's `nonce` (= challenge) and `aud` (= domain) as **members of the
+VP JSON before signing**, so the holder's signature covers them, and have the verifier require them to equal
+its own fresh expectations. **Rule:** replay defence requires the freshness values to be *inside the
+signature's coverage*. If the envelope API won't let you put them in the header, put them in the signed body
+— and always pair "holder signed a nonce" with "verifier checks the nonce equals what it just issued," or you
+have proof-of-possession without proof-of-freshness. (Contrast the DI path, where the substrate's
+`DataIntegrityProof.Challenge`/`Domain` are already in the proof's signed scope — there you only thread the
+expectation through; F1 only bit the path where the substrate gave no slot.)
+
 ## Ground dependency surfaces against the real packages before coding (2026-06-18)
 
 The implementation plan was synthesized from agent recon, which got most things right but
