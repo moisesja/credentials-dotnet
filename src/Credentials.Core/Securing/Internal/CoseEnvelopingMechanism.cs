@@ -35,6 +35,14 @@ internal sealed class CoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        // The enveloping forms sign Payload, never Document (SecureRequest invariant) — fail loudly if a
+        // caller forgot to set it rather than silently signing empty bytes (or the wrong, unmutated Document).
+        if (request.Payload.IsEmpty)
+        {
+            throw new InvalidOperationException(
+                "COSE enveloping signs SecureRequest.Payload (Document is ignored); Payload must be non-empty.");
+        }
+
         var algorithm = ToCoseAlgorithm(request.Signer.KeyType);   // fail fast on an unsupported key
         var keyId = Encoding.UTF8.GetBytes(request.VerificationMethod);
         var bytes = await VcCose.EnvelopeCredentialAsync(request.Payload, request.Signer, algorithm, keyId, cancellationToken)

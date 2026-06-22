@@ -65,6 +65,16 @@ internal sealed record SecuringVerificationResult(
 /// Data Integrity path (the pipeline strips/attaches <c>proof</c>); <see cref="Payload"/> carries the
 /// exact UTF-8 bytes the enveloping (JOSE/COSE) forms sign verbatim. <see cref="Cryptosuite"/>,
 /// <see cref="ProofPurpose"/> and <see cref="Created"/> are Data-Integrity-only.
+/// <para>
+/// <b>Invariant — the two representations are NOT interchangeable.</b> For the enveloping forms (JOSE/COSE)
+/// <see cref="Payload"/> is the <em>sole</em> authority for the signed bytes; <see cref="Document"/> is
+/// ignored on that path (it is still <c>required</c> only because the embedded path needs it). When a caller
+/// mutates the bytes before signing — e.g. the holder injecting a presentation <c>nonce</c>/<c>aud</c> for
+/// replay defence (F1) — it MUST apply the mutation to <see cref="Payload"/>, and <see cref="Document"/> and
+/// <see cref="Payload"/> may then legitimately diverge. An enveloping mechanism reading <see cref="Document"/>
+/// instead of <see cref="Payload"/> would silently sign the wrong (e.g. freshness-stripped) bytes; the
+/// enveloping mechanisms therefore assert <see cref="Payload"/> is non-empty so that footgun fails loudly.
+/// </para>
 /// </summary>
 internal sealed record SecureRequest
 {
@@ -72,7 +82,11 @@ internal sealed record SecureRequest
     public required ISigner Signer { get; init; }
     public required string VerificationMethod { get; init; }
 
-    /// <summary>The exact UTF-8 payload bytes for the enveloping forms (signed verbatim, never re-serialized).</summary>
+    /// <summary>
+    /// The exact UTF-8 payload bytes for the enveloping forms (signed verbatim, never re-serialized).
+    /// Required and authoritative for JOSE/COSE; ignored by the embedded Data Integrity form (which signs
+    /// <see cref="Document"/>).
+    /// </summary>
     public ReadOnlyMemory<byte> Payload { get; init; }
 
     /// <summary>The Data Integrity cryptosuite name. Null for the enveloping forms.</summary>

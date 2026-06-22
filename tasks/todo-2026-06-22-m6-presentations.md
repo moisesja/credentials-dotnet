@@ -205,3 +205,17 @@ replay defence).
 **Verification:** full suite green — **294 tests** (Core 135 + DI 138 + Rdfc 21), up from 290 (+4 regression
 tests). NFR-002 (System.Text.Json-only default closure) and NFR-005 (no substrate type on the holder/
 presentation public surface) re-checked clean.
+
+**Post-review pass (PR #6).** Each of the 8 review concerns was independently validated against the real code
+(8-investigator workflow) before acting. Verdicts:
+- *Misreads (no change):* C1 credential-level fail-open (substrate fails closed via `KB_JWT_AUDIENCE/NONCE_UNCHECKED`);
+  C2 `BindHolder` empty-VM-list bug (already guarded by an explicit `Count == 0 ||` clause the review snippet omitted).
+- *Fixed:* C3 widened `VerifyContainedAsync` catch (any fault → `Indeterminate` child, never escapes) + 2 decode-path
+  tests; C4 documented + asserted the `SecureRequest` Payload-not-Document invariant (`Payload.IsEmpty` guard in
+  JOSE/COSE); C5 `<remarks>` on the `RequireHolderBinding` default asymmetry; C6 JOSE-leg F2 test; C7 `InspectSdJwt`
+  throw test; C8(1) deferred the wasted `AsUtf8()` alloc on the freshness path.
+- *Declined (nits):* C8(2) duplicate `ReadString`/`ReadStringMember` (premature — 2 sites, different types);
+  C8(3) `EnvelopeIngest` `wireBytes` guard (impossible — it's a struct; empty is handled downstream).
+- *Defence-in-depth test:* C1 pinned with a credential-level required-binding/null-`aud`-`nonce` → rejected test.
+
+Result: **299 tests** (Core 135 + DI 143 + Rdfc 21).

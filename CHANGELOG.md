@@ -60,6 +60,26 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
   disclosability (a future milestone). The holder↔subject relationship (F3) likewise remains a verifier
   policy concern, not enforced by the binding.
 
+#### Post-review hardening (M6 PR review)
+
+- **Contained-credential fault isolation:** `VerifyContainedAsync` now isolates *any* fault from a child
+  (not only `CredentialFormatException`) — an operational fault becomes an `Indeterminate` child
+  (`operation_error`) instead of escaping `VerifyPresentationAsync`; cancellation and null-argument
+  programming errors still propagate. Regression tests feed JOSE-shaped and SD-JWT-shaped malformed enveloped
+  children (the decode paths the F4 test did not reach) and assert a rejected child, no throw.
+- **`SecureRequest` Document/Payload invariant:** documented that the enveloping forms (JOSE/COSE) sign
+  `Payload` as the sole authority and ignore `Document` (so a caller's payload mutation — e.g. the holder's
+  `nonce`/`aud` injection — must go into `Payload`); the JOSE and COSE mechanisms now assert `Payload` is
+  non-empty, turning a future "sign `Document` by mistake" footgun into a loud failure.
+- **Docs/tests:** a `<remarks>` makes the deliberate `RequireHolderBinding` default asymmetry explicit
+  (VP-level `true` vs credential-level `false`); added a JOSE-leg negative test for the shared
+  `holder_binding_challenge_required` guard, a credential-level test pinning the SD-JWT substrate's
+  fail-closed `KB_JWT_AUDIENCE/NONCE_UNCHECKED` contract (required binding with null `aud`/`nonce` → rejected),
+  and a throw test for `InspectSdJwt` on a non-SD-JWT credential. The reviewer's two "must fix" items — a
+  credential-level fail-open and a `BindHolder` empty-VM-list bug — were verified against the substrate and the
+  full guard and found to be non-issues (both already fail closed; the empty-VM case is guarded by an explicit
+  `Count == 0` clause). 299 tests (was 294).
+
 ### Added — Milestone M5 (bbs-2023 selective disclosure)
 
 - **Verification (FR-042):** `UseBbs2023()` registers the `bbs-2023` cryptosuite, so a **derived**

@@ -158,6 +158,67 @@ public sealed class M6HolderPresentationTests
     }
 
     [Fact]
+    public async Task Require_holder_binding_with_null_audience_and_nonce_is_rejected()
+    {
+        // C1 (defence-in-depth): a present KB-JWT with RequireHolderBinding=true but NO ExpectedAudience/
+        // ExpectedNonce must fail closed — pins the SD-JWT substrate's KB_JWT_AUDIENCE_UNCHECKED /
+        // KB_JWT_NONCE_UNCHECKED contract (a present binding the verifier cannot pin against is not trusted)
+        // so a future substrate change that silently accepted unpinned bindings would break this test.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (issued, _, holderKey) = await IssueAsync(issuer);
+        var held = holder.Ingest(Encoding.UTF8.GetBytes(issued));
+        var presentation = await holder.PresentSdJwtAsync(held, new SdJwtPresentationRequest
+        {
+            DiscloseClaims = ["given_name"],
+            HolderSigner = holderKey.Signer,
+            VerificationMethod = holderKey.VerificationMethod,
+            Audience = Audience,
+            Nonce = Nonce,
+        });
+
+        // RequireHolderBinding=true but expectations left null — the binding is present and well-formed, yet
+        // the verifier supplied nothing to bind it against, so it must NOT accept (no fail-open).
+        var result = await verifier.VerifyCredentialAsync(
+            Encoding.UTF8.GetBytes(presentation),
+            new CredentialVerificationOptions { RequireHolderBinding = true });
+
+        result.Decision.Should().Be(VerificationDecision.Rejected, result.ToString());
+        result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
+    [Fact]
+    public async Task InspectSdJwt_on_a_non_sd_jwt_credential_throws()
+    {
+        // C7: the RequireSdJwt guard must reject a non-SD-JWT held credential rather than misread it.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+
+        var issuerKey = TestKeys.New(KeyType.Ed25519);
+        var credential = Credential.Build()
+            .WithIssuer(issuerKey.Did)
+            .AddSubject(new JsonObject { ["id"] = "did:example:subject" })
+            .Seal();
+        var issued = await issuer.IssueAsync(credential, new DataIntegrityIssuanceRequest
+        {
+            Cryptosuite = "eddsa-jcs-2022",
+            Signer = issuerKey.Signer,
+            VerificationMethod = issuerKey.VerificationMethod,
+        });
+
+        var held = holder.Ingest(issued.Credential.ToBytes());
+        held.Securing.Should().NotBe(SecuringState.SdJwtVc);
+
+        ((Action)(() => holder.InspectSdJwt(held))).Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage("The held credential is not an SD-JWT VC.");
+    }
+
+    [Fact]
     public async Task Kb_jwt_signed_by_a_non_cnf_key_is_rejected()
     {
         using var provider = BuildProvider();

@@ -18,6 +18,16 @@ public sealed record PresentationVerificationOptions
     /// <see langword="true"/>. When <see langword="false"/>, an unbound presentation's holder-binding check
     /// is <see cref="CheckStatus.Skipped"/>; when <see langword="true"/>, an absent/invalid binding fails.
     /// </summary>
+    /// <remarks>
+    /// Deliberately defaults to <see langword="true"/>, unlike
+    /// <see cref="CredentialVerificationOptions.RequireHolderBinding"/> (default <see langword="false"/>). The
+    /// two are NOT the same knob: this one governs the <em>presentation's own</em> proof of possession (the
+    /// whole point of a VP — a holder proving control to a verifier), whereas the credential-level flag
+    /// governs a standalone credential's SD-JWT VC Key Binding JWT, which a bare issuer-signed credential need
+    /// not carry. Per-contained-credential holder binding is additionally enabled whenever
+    /// <see cref="ExpectedAudience"/> is supplied (see the verifier's contained-options derivation), so a
+    /// verifier that names itself still enforces each child's KB-JWT without changing the credential-level default.
+    /// </remarks>
     public bool RequireHolderBinding { get; init; } = true;
 
     /// <summary>The challenge the Data Integrity authentication binding must declare (replay defence).</summary>

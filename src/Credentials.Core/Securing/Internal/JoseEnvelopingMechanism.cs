@@ -37,6 +37,14 @@ internal sealed class JoseEnvelopingMechanism : ISecuringMechanism, IEnvelopeIng
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        // The enveloping forms sign Payload, never Document (SecureRequest invariant) — fail loudly if a
+        // caller forgot to set it rather than silently signing empty bytes (or the wrong, unmutated Document).
+        if (request.Payload.IsEmpty)
+        {
+            throw new InvalidOperationException(
+                "JOSE enveloping signs SecureRequest.Payload (Document is ignored); Payload must be non-empty.");
+        }
+
         // JwsSigner derives the JOSE alg from the signer's key type and throws NotSupportedException for
         // an unsupported key (P-521/RSA) — fail fast at issuance rather than mis-sign.
         var signer = new JwsSigner(request.Signer, request.VerificationMethod);

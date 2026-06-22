@@ -2,6 +2,34 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## Validate every review concern against the real code before acting — reviewers misread too (2026-06-22)
+
+The M6 PR review (itself a Claude Code review) named its two highest-priority "must fix before merge" items: a
+credential-level holder-binding **fail-open**, and a `BindHolder` empty-VM-list **bug**. Both were wrong. The
+fail-open didn't exist — the SD-JWT substrate already fails closed (`KB_JWT_AUDIENCE_UNCHECKED` /
+`KB_JWT_NONCE_UNCHECKED` when a binding is present but the verifier supplied no `aud`/`nonce` to pin it).
+The empty-VM "bug" was guarded by an explicit `Count == 0 ||` clause the reviewer's quoted snippet omitted
+(`All()` returns true on an empty sequence, so the leading `Count == 0` is exactly what prevents the fail-open
+they feared). **Rule:** treat a review like an adversarial finding — reproduce each claim against the actual
+source and the real dependency behavior (decompile/read the substrate if the claim hinges on it) before
+changing anything. The cost of trusting a confident-but-wrong "fix" is a regression or a needless,
+footgun-carrying rewrite. The valid residue (here: a narrow catch, an undocumented invariant, missing tests)
+is still worth fixing — but separate it from the misreads with evidence, and *say which were which*.
+
+## When two representations of the same payload share one request, assert which is authoritative — don't just comment it (2026-06-22)
+
+`SecureRequest` carries both `Document` (a `JsonElement`) and `Payload` (raw bytes). The embedded Data
+Integrity path signs `Document`; the enveloping JOSE/COSE paths sign `Payload` and ignore `Document`. The
+holder's `vp+jwt` binding deliberately makes them DIVERGE — it injects `nonce`/`aud` into `Payload` only, so
+the freshness is in the signed bytes (F1). That's correct, but a future enveloping mechanism (or a careless
+refactor) that read `Document` instead of `Payload` would silently sign the freshness-stripped bytes —
+re-opening the replay hole — and nothing would catch it because `Document` is validly populated. **Rule:**
+when a request has two representations of "the thing to sign" and only one is authoritative per path, encode
+the invariant in code, not just prose — assert the authoritative field is present (the enveloping mechanisms
+now throw if `Payload.IsEmpty`) so the wrong-field mistake fails loudly instead of producing a valid signature
+over the wrong bytes. A silent valid-signature-over-wrong-bytes is the most dangerous failure mode in a
+signing seam.
+
 ## A fail-open substrate check makes the orchestrator responsible for enforcing the expectation's presence (2026-06-22)
 
 The DataProofs substrate only checks `challenge`/`domain` when the verifier supplies a non-null expectation

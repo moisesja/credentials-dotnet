@@ -420,6 +420,66 @@ public sealed class M6PresentationTests
     }
 
     [Fact]
+    public async Task Jose_required_holder_binding_without_an_expected_challenge_is_rejected()
+    {
+        // F2 (adversarial, JOSE leg): the fail-closed guard must fire on the vp+jwt path too — a verifier
+        // that demands a binding but supplies no challenge to bind against must not accept a captured vp+jwt.
+        // (The DI leg is covered by Required_holder_binding_without_an_expected_challenge_is_rejected; the
+        // holder_binding_challenge_required guard is shared, so this pins the JOSE dispatch against a refactor.)
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        var vp = BuildVp(holder, held, holderKey.Did);
+        var vpJwt = await holder.BindWithJoseEnvelopeAsync(vp, new VpBindingRequest
+        {
+            HolderSigner = holderKey.Signer,
+            VerificationMethod = holderKey.VerificationMethod,
+            Challenge = Challenge,
+            Domain = Domain,
+        });
+
+        var result = await verifier.VerifyPresentationAsync(
+            Encoding.UTF8.GetBytes(vpJwt),
+            new PresentationVerificationOptions()); // RequireHolderBinding defaults true, no ExpectedChallenge
+
+        result.Decision.Should().Be(VerificationDecision.Rejected, result.ToString());
+        var binding = result.Check(CheckKinds.HolderBinding)!;
+        binding.Status.Should().Be(CheckStatus.Failed);
+        binding.Diagnostics.Should().Contain(d => d.Code == "holder_binding_challenge_required");
+    }
+
+    [Theory]
+    [InlineData("eyJhbGciOiJFZERTQSJ9.WzEsMiwzXQ.c2ln")]            // JOSE-shaped: payload is [1,2,3], not an object
+    [InlineData("eyJhbGciOiJFZERTQSJ9.eyJ2Y3QiOiJ4In0.c2ln~$$$~")] // SD-JWT-shaped: a malformed disclosure
+    public async Task Presentation_with_a_malformed_enveloped_child_is_rejected_not_thrown(string badToken)
+    {
+        // C3 (review): a malformed ENVELOPED child must decode-fail to a rejected child, never throw out of
+        // VerifyPresentationAsync. The existing F4 test only feeds a non-token JSON string (routed to
+        // Credential.Parse); these token-shaped payloads exercise the JOSE and SD-JWT mechanism Ingest paths.
+        // A throw here (instead of a Rejected child) fails the test — that is the non-throw contract.
+        using var provider = BuildProvider();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var holderKey = TestKeys.New(KeyType.Ed25519);
+        var vp = holder.BuildPresentation(new VpAssemblyRequest
+        {
+            Holder = holderKey.Did,
+            Credentials = [ContainedCredential.Enveloped(badToken)],
+        });
+
+        var result = await verifier.VerifyPresentationAsync(
+            vp, new PresentationVerificationOptions { RequireHolderBinding = false }); // isolate the child decode path
+
+        result.Decision.Should().Be(VerificationDecision.Rejected, result.ToString());
+        result.Credentials.Should().HaveCount(1);
+        result.Credentials[0].Decision.Should().Be(VerificationDecision.Rejected);
+    }
+
+    [Fact]
     public void Holder_and_verifier_are_registered()
     {
         using var provider = BuildProvider();

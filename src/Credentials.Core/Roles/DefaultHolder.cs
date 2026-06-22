@@ -118,7 +118,9 @@ internal sealed class DefaultHolder : IHolder
         // Bind the verifier-supplied freshness into the SIGNED payload (the substrate's generic compact-JWS
         // builder has no header-claim hook): a `nonce` (= challenge) and `aud` (= domain) become VP members,
         // so a captured vp+jwt is not a bearer token — the verifier rejects it unless the nonce/aud match.
-        var payload = presentation.AsUtf8();
+        // Only materialize the freshness-injected bytes when there is freshness to inject; otherwise sign the
+        // VP verbatim (deferring AsUtf8 avoids re-serializing the whole VP in the inject path).
+        ReadOnlyMemory<byte>? injected = null;
         if (request.Challenge is { Length: > 0 } || request.Domain is { Length: > 0 })
         {
             var node = JsonNode.Parse(presentation.ToBytes())!.AsObject();
@@ -132,14 +134,14 @@ internal sealed class DefaultHolder : IHolder
                 node["aud"] = domain;
             }
 
-            payload = JsonSerializer.SerializeToUtf8Bytes(node);
+            injected = JsonSerializer.SerializeToUtf8Bytes(node);
         }
 
         var outcome = await mechanism.SecureAsync(
             new SecureRequest
             {
                 Document = presentation.AsElement(),
-                Payload = payload,
+                Payload = injected ?? presentation.AsUtf8(),
                 Signer = request.HolderSigner,
                 VerificationMethod = request.VerificationMethod,
                 Kind = SecuringDocumentKind.Presentation,

@@ -301,6 +301,18 @@ internal sealed class DefaultVerifier : IVerifier
                 "The contained credential could not be decoded.");
             return new CredentialVerificationResult(VerificationDecision.Rejected, [proof], VcdmVersion.Unknown, SecuringState.Unsecured);
         }
+        catch (Exception ex) when (ex is not OperationCanceledException and not ArgumentNullException)
+        {
+            // Defence in depth: every reachable ingest path converts malformed input to
+            // CredentialFormatException today, but a contained-credential fault must never escape the whole
+            // VerifyPresentationAsync regardless of which substrate exception type surfaces (the same
+            // fault-isolation guard RunHolderBindingAsync/RunProofAsync use). An operational fault is
+            // non-deterministic, so report it as Indeterminate (not a definitive child rejection); real
+            // programming errors (null args) and cancellation still propagate.
+            var proof = CheckResult.Indeterminate(CheckKinds.Proof, "operation_error",
+                "An operational error prevented the contained credential from being evaluated.");
+            return new CredentialVerificationResult(VerificationDecision.Indeterminate, [proof], VcdmVersion.Unknown, SecuringState.Unsecured);
+        }
     }
 
     // Each contained credential is verified with the presentation's verification time and, for SD-JWT VC

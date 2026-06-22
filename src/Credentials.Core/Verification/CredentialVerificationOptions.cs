@@ -49,6 +49,11 @@ public sealed record CredentialVerificationOptions
     /// invalidity is a proof failure. Default: <see langword="false"/> (verify the issuer-signed credential
     /// without demanding holder binding). Has no effect on forms without holder binding (Data Integrity / JOSE / COSE).
     /// </summary>
+    /// <remarks>
+    /// Defaults to <see langword="false"/> by design — the separate presentation-level
+    /// <see cref="PresentationVerificationOptions.RequireHolderBinding"/> (default <see langword="true"/>)
+    /// governs a VP's own proof of possession, a distinct concern from a standalone credential's KB-JWT.
+    /// </remarks>
     public bool RequireHolderBinding { get; init; }
 
     /// <summary>
