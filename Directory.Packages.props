@@ -12,11 +12,11 @@
          ============================================================================ -->
     <!-- Proofs + the faithful System.Text.Json serializer options (DataProofsJsonOptions.Default,
          which CredentialJson.Faithful derives from so signed-bytes == wire-bytes). -->
-    <PackageVersion Include="DataProofsDotnet.Core" Version="1.0.1" />
-    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="1.0.1" />          <!-- M5: bbs-2023 / RDFC -->
-    <PackageVersion Include="DataProofsDotnet.Jose" Version="1.0.1" />          <!-- M3/M4: JOSE + SD-JWT VC -->
-    <PackageVersion Include="DataProofsDotnet.Cose" Version="1.0.1" />          <!-- M3: COSE -->
-    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="1.0.1" />
+    <PackageVersion Include="DataProofsDotnet.Core" Version="1.1.0" />
+    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="1.1.0" />          <!-- M5: bbs-2023 / RDFC -->
+    <PackageVersion Include="DataProofsDotnet.Jose" Version="1.1.0" />          <!-- M3/M4: JOSE + SD-JWT VC -->
+    <PackageVersion Include="DataProofsDotnet.Cose" Version="1.1.0" />          <!-- M3: COSE -->
+    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="1.1.0" />
     <!-- Engine crypto operations the engine performs itself: hashing/digests (NetCrypto.Hash),
          ISigner abstraction, JWK conversion. NetCrypto exposes no RNG abstraction; the engine's
          RNG seam wraps the BCL RandomNumberGenerator (see Credentials.Cryptography). -->
