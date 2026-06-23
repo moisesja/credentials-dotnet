@@ -1,10 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Credentials.Json;
 using Credentials.Schema;
 using Credentials.Securing;
 using Credentials.Status;
 using Credentials.Trust;
+using Credentials.Validation;
 using Credentials.Verification;
 
 namespace Credentials.Roles;
@@ -594,14 +596,17 @@ internal sealed class DefaultVerifier : IVerifier
         // expirationDate, 2.0 reads validFrom/validUntil). Only the diagnostic must name the member that
         // actually exists in THIS document — a 1.1 credential has no /validFrom, so point at /issuanceDate.
         // Unknown is handled explicitly (not lumped with 2.0): an Unknown doc is rejected by structure
-        // regardless, but its validity diagnostic must still be honest — mirror ValidityProjection's Unknown
-        // fallback (prefer the 2.0 member, else the 1.1 member) so the pointer names the member actually read.
+        // regardless, but its validity diagnostic must still be honest. ValidityProjection's Unknown fallback
+        // selects the window value by PARSE SUCCESS (validFrom ?? issuanceDate), not member presence, so name
+        // the member the same way — `Parses` mirrors ValidityProjection.Read so the pointer names the member
+        // whose value was actually used (a present-but-malformed validFrom must not steal the name).
+        static bool Parses(JsonNode? node) => Rfc3339.TryParse(JsonShape.AsString(node), out _);
         var (notBeforeMember, notAfterMember) = credential.Version switch
         {
             VcdmVersion.V1_1 => ("issuanceDate", "expirationDate"),
             VcdmVersion.V2_0 => ("validFrom", "validUntil"),
-            _ => (credential.GetMember("validFrom") is not null ? "validFrom" : "issuanceDate",
-                  credential.GetMember("validUntil") is not null ? "validUntil" : "expirationDate"),
+            _ => (Parses(credential.GetMember("validFrom")) ? "validFrom" : "issuanceDate",
+                  Parses(credential.GetMember("validUntil")) ? "validUntil" : "expirationDate"),
         };
 
         if (credential.ValidFrom is { } from && now < from - skew)

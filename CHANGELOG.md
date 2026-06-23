@@ -10,8 +10,12 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 - **VCDM 1.1 verification (FR-044 / D8):** the verifier now accepts **VCDM 1.1** credentials and
   presentations alongside 2.0, gated by `CredentialVerificationOptions.AcceptVcdm11` (default `true`).
-  **Issuance stays 2.0-only** — 1.1 is verified, never minted — and a 1.1 document is **never upgraded** to
-  2.0 (its `@context`, members, and detected version survive a serialize→re-parse round-trip unchanged).
+  **Issuance is 2.0-only — now enforced at the role boundary:** `IIssuer.IssueAsync` rejects any non-2.0
+  credential (`InvalidOperationException`) before signing, for every securing form. Previously the 2.0-only
+  contract was only assumed from the builder (which seals 2.0), but a caller could parse a 1.1 document and
+  mint it through the public issuer — that gap is now closed, so "verify 1.1, never issue it" is true of the
+  public API, not just a convention. A 1.1 document is also **never upgraded** to 2.0 (its `@context`, members,
+  and detected version survive a serialize→re-parse round-trip unchanged).
   Most of the version-aware machinery already existed (positive `@context[0]` detection in `VersionProjection`;
   the structural validator's 1.1 branch requiring `issuanceDate` and forbidding `validFrom`/`validUntil`; the
   validity window projected per version in `ValidityProjection`); M7 closes the two remaining gaps:
@@ -25,12 +29,13 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
     were 2.0-only. The stable codes `not_yet_valid` / `expired` are unchanged.
   - Contained-credential `AcceptVcdm11` inheritance through `BuildContainedCredentialOptions` is now documented
     (the `with` copy preserves it), so a 1.1 child in a 2.0 VP is gated by the same flag.
-- **Tests (+17):** 8 Core unit (`ValidityProjection` 1.1 **and** 2.0 branches each ignoring the other version's
+- **Tests (+19):** 8 Core unit (`ValidityProjection` 1.1 **and** 2.0 branches each ignoring the other version's
   members — no cross-version read; 1.1 inverted window; 1.1 credential + presentation no-upgrade round-trip) and
-  9 integration (DI-secured 1.1 credential and holder-bound 1.1 VP → Accepted; G1 1.1-VP rejection; G2
-  `/issuanceDate`÷`/expirationDate` pointers; G3 1.1 child in a 2.0 VP rejected; Unknown-context rejection; the
-  Unknown-version diagnostic-honesty regression below). A secured 1.1 fixture is produced the way a foreign 1.1
-  issuer would — a hand-built 1.1 document signed faithfully through the Data Integrity issuance path.
+  11 integration (DI-secured 1.1 credential and holder-bound 1.1 VP → Accepted; G1 1.1-VP rejection; G2
+  `/issuanceDate`÷`/expirationDate` pointers; G3 1.1 child in a 2.0 VP rejected; Unknown-context rejection;
+  `IssueAsync` rejects a 1.1 credential; the two Unknown-version diagnostic-honesty regressions). A secured 1.1
+  fixture is produced the way a foreign 1.1 issuer would — a hand-built 1.1 document signed faithfully through
+  the engine's internal Data Integrity mechanism (**not** the public issuer, which is 2.0-only).
 
 #### Security & hardening (M7 adversarial review)
 
@@ -49,6 +54,18 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
   `ValidityProjection`'s Unknown fallback) from `expirationDate`. Now an explicit `switch` on the version names
   the member that actually exists (Unknown mirrors the projection's prefer-2.0-then-1.1 fallback). No decision
   impact (Unknown is rejected by structure regardless); the stable codes `not_yet_valid`/`expired` are unchanged.
+
+#### Post-review (PR #7)
+
+- **Blocking — issuance 2.0-only contract was not enforced (fixed):** the PR review found that, although the
+  docs say issuance is 2.0-only, `IIssuer.IssueAsync` only rejected *already-secured* credentials — a caller
+  could `Credential.Parse` a 1.1 document and mint it through the public issuer (the M7 test helper itself did
+  exactly this). Added a `credential.Version != V2_0` guard at the role boundary (before the form switch, so it
+  covers DI/JOSE/COSE/SD-JWT), a negative test, and re-pointed the secured-1.1 test fixture at the engine's
+  internal Data Integrity mechanism instead of the public issuer.
+- **Diagnostic honesty (low):** the `Unknown`-version validity pointer now follows **parse success** (mirroring
+  `ValidityProjection.Read`), not member presence — a present-but-malformed `validUntil` no longer steals the
+  pointer from the `expirationDate` that actually supplied the window value.
 
 ### Added — Milestone M6 (presentations + holder binding)
 

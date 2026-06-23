@@ -1,6 +1,8 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
+using Credentials.Securing;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,32 +44,41 @@ public sealed class M7Vcdm11Tests
         return obj.ToJsonString();
     }
 
-    /// <summary>DI-signs a hand-built 1.1 credential through the issuer (signs the bytes faithfully).</summary>
-    private static async Task<(IssuedCredential Issued, TestKey IssuerKey)> SignV11CredentialAsync(
-        IIssuer issuer, string issuanceDate = "2020-01-01T00:00:00Z", string? expirationDate = null)
+    /// <summary>
+    /// Produces a Data-Integrity-secured VCDM 1.1 credential the way a foreign 1.1 issuer would — by signing a
+    /// hand-built 1.1 document through the engine's INTERNAL Data Integrity mechanism, deliberately NOT the
+    /// public <see cref="IIssuer"/>, which is VCDM 2.0 only by contract (D8) and rejects 1.1. The signed bytes
+    /// are byte-identical to what the issuer would produce for the same document (sign-exact-bytes).
+    /// </summary>
+    private static async Task<Credential> SignV11CredentialAsync(
+        ServiceProvider provider, string issuanceDate = "2020-01-01T00:00:00Z", string? expirationDate = null)
     {
         var issuerKey = TestKeys.New(KeyType.Ed25519);
         var unsecured = Credential.Parse(V11CredentialJson(issuerKey.Did, issuanceDate, expirationDate));
-        var issued = await issuer.IssueAsync(unsecured, new DataIntegrityIssuanceRequest
+
+        var mechanism = provider.GetRequiredService<SecuringMechanismRegistry>()
+            .ResolveForIssue(SecuringForm.DataIntegrity, "eddsa-jcs-2022");
+        var outcome = await mechanism.SecureAsync(new SecureRequest
         {
+            Document = unsecured.AsElement(),
             Cryptosuite = "eddsa-jcs-2022",
             Signer = issuerKey.Signer,
             VerificationMethod = issuerKey.VerificationMethod,
-        });
-        return (issued, issuerKey);
+        }, CancellationToken.None);
+
+        return Credential.Parse(JsonSerializer.SerializeToUtf8Bytes(outcome.Document));
     }
 
     [Fact]
     public async Task V11_credential_di_secured_verifies_and_is_accepted()
     {
         using var provider = BuildProvider();
-        var issuer = provider.GetRequiredService<IIssuer>();
         var verifier = provider.GetRequiredService<IVerifier>();
 
-        var (issued, _) = await SignV11CredentialAsync(issuer);
+        var secured = await SignV11CredentialAsync(provider);
 
         var result = await verifier.VerifyCredentialAsync(
-            issued.Credential.ToBytes(), new CredentialVerificationOptions { AcceptVcdm11 = true });
+            secured.ToBytes(), new CredentialVerificationOptions { AcceptVcdm11 = true });
 
         result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
         result.Version.Should().Be(VcdmVersion.V1_1);
@@ -80,13 +91,12 @@ public sealed class M7Vcdm11Tests
     public async Task V11_credential_is_rejected_when_1_1_is_not_accepted()
     {
         using var provider = BuildProvider();
-        var issuer = provider.GetRequiredService<IIssuer>();
         var verifier = provider.GetRequiredService<IVerifier>();
 
-        var (issued, _) = await SignV11CredentialAsync(issuer);
+        var secured = await SignV11CredentialAsync(provider);
 
         var result = await verifier.VerifyCredentialAsync(
-            issued.Credential.ToBytes(), new CredentialVerificationOptions { AcceptVcdm11 = false });
+            secured.ToBytes(), new CredentialVerificationOptions { AcceptVcdm11 = false });
 
         result.Decision.Should().Be(VerificationDecision.Rejected, result.ToString());
         result.Check(CheckKinds.Structure)!.Diagnostics.Should().Contain(d => d.Code == "vcdm11_not_accepted");
@@ -138,11 +148,10 @@ public sealed class M7Vcdm11Tests
     public async Task V11_presentation_di_bound_verifies_and_is_accepted()
     {
         using var provider = BuildProvider();
-        var issuer = provider.GetRequiredService<IIssuer>();
         var holder = provider.GetRequiredService<IHolder>();
         var verifier = provider.GetRequiredService<IVerifier>();
 
-        var (issued, _) = await SignV11CredentialAsync(issuer);
+        var secured = await SignV11CredentialAsync(provider);
         var holderKey = TestKeys.New(KeyType.Ed25519);
 
         // A hand-built 1.1 presentation embedding the secured 1.1 credential, then holder-bound (DI auth proof).
@@ -151,7 +160,7 @@ public sealed class M7Vcdm11Tests
             ["@context"] = new JsonArray("https://www.w3.org/2018/credentials/v1"),
             ["type"] = new JsonArray("VerifiablePresentation"),
             ["holder"] = holderKey.Did,
-            ["verifiableCredential"] = new JsonArray(JsonNode.Parse(issued.Credential.ToBytes())!),
+            ["verifiableCredential"] = new JsonArray(JsonNode.Parse(secured.ToBytes())!),
         };
         var vp = VerifiablePresentation.Parse(vpObject.ToJsonString());
         vp.Version.Should().Be(VcdmVersion.V1_1);
@@ -217,14 +226,13 @@ public sealed class M7Vcdm11Tests
         // G3: a 2.0 VP can legitimately carry a 1.1 credential; with AcceptVcdm11=false the CHILD is rejected
         // (inherited flag), while the 2.0 VP envelope's own structure still passes.
         using var provider = BuildProvider();
-        var issuer = provider.GetRequiredService<IIssuer>();
         var holder = provider.GetRequiredService<IHolder>();
         var verifier = provider.GetRequiredService<IVerifier>();
 
-        var (issued, _) = await SignV11CredentialAsync(issuer);
+        var secured = await SignV11CredentialAsync(provider);
         var holderKey = TestKeys.New(KeyType.Ed25519);
 
-        var held = holder.Ingest(issued.Credential.ToBytes());
+        var held = holder.Ingest(secured.ToBytes());
         var vp = holder.BuildPresentation(new VpAssemblyRequest // builder pins the VP envelope to 2.0
         {
             Holder = holderKey.Did,
@@ -253,6 +261,58 @@ public sealed class M7Vcdm11Tests
         result.Credentials[0].Decision.Should().Be(VerificationDecision.Rejected);
         result.Credentials[0].Check(CheckKinds.Structure)!.Diagnostics
             .Should().Contain(d => d.Code == "vcdm11_not_accepted");
+    }
+
+    [Fact]
+    public async Task IssueAsync_rejects_a_vcdm_1_1_credential()
+    {
+        // D8/FR-044: issuance is VCDM 2.0 only. The public issuer must REJECT a (parsed) 1.1 credential rather
+        // than mint it — the contract is enforced at the role boundary, not merely assumed from the builder.
+        // This is the guard that makes "we verify 1.1, we never issue it" true of the public API.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var issuerKey = TestKeys.New(KeyType.Ed25519);
+        var v11 = Credential.Parse(V11CredentialJson(issuerKey.Did, "2020-01-01T00:00:00Z"));
+
+        var act = async () => await issuer.IssueAsync(v11, new DataIntegrityIssuanceRequest
+        {
+            Cryptosuite = "eddsa-jcs-2022",
+            Signer = issuerKey.Signer,
+            VerificationMethod = issuerKey.VerificationMethod,
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*VCDM 2.0 only*");
+    }
+
+    [Fact]
+    public async Task Unknown_version_diagnostic_follows_parse_success_not_member_presence()
+    {
+        // Point 2 (review): the Unknown diagnostic pointer must follow PARSE SUCCESS (like ValidityProjection's
+        // `validUntil ?? expirationDate`), not member presence. A present-but-MALFORMED validUntil must not
+        // steal the pointer from the expirationDate whose value actually supplied the window.
+        using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        const string json =
+            """
+            {
+              "@context": ["https://example.com/not-a-vcdm-context"],
+              "type": ["VerifiableCredential"],
+              "issuer": "did:example:issuer",
+              "issuanceDate": "2010-01-01T00:00:00Z",
+              "validUntil": "not-a-date",
+              "expirationDate": "2015-01-01T00:00:00Z",
+              "credentialSubject": { "id": "did:example:subject" }
+            }
+            """;
+        var result = await verifier.VerifyCredentialAsync(Credential.Parse(json), new CredentialVerificationOptions
+        {
+            VerificationTime = DateTimeOffset.Parse("2020-01-01T00:00:00Z"),
+        });
+
+        var validity = result.Check(CheckKinds.Validity)!;
+        validity.Diagnostics.Should().Contain(d => d.Code == "expired" && d.JsonPointer == "/expirationDate");
+        validity.Diagnostics.Should().NotContain(d => d.JsonPointer == "/validUntil");
     }
 
     [Fact]
