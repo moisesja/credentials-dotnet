@@ -25,11 +25,12 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
     were 2.0-only. The stable codes `not_yet_valid` / `expired` are unchanged.
   - Contained-credential `AcceptVcdm11` inheritance through `BuildContainedCredentialOptions` is now documented
     (the `with` copy preserves it), so a 1.1 child in a 2.0 VP is gated by the same flag.
-- **Tests (+15):** 7 Core unit (`ValidityProjection` 1.1 branch incl. no cross-version read; 1.1 inverted
-  window; 1.1 credential + presentation no-upgrade round-trip) and 8 integration (DI-secured 1.1 credential and
-  holder-bound 1.1 VP → Accepted; G1 1.1-VP rejection; G2 `/issuanceDate`÷`/expirationDate` pointers; G3 1.1
-  child in a 2.0 VP rejected; Unknown-context rejection). A secured 1.1 fixture is produced the way a foreign
-  1.1 issuer would — a hand-built 1.1 document signed faithfully through the Data Integrity issuance path.
+- **Tests (+17):** 8 Core unit (`ValidityProjection` 1.1 **and** 2.0 branches each ignoring the other version's
+  members — no cross-version read; 1.1 inverted window; 1.1 credential + presentation no-upgrade round-trip) and
+  9 integration (DI-secured 1.1 credential and holder-bound 1.1 VP → Accepted; G1 1.1-VP rejection; G2
+  `/issuanceDate`÷`/expirationDate` pointers; G3 1.1 child in a 2.0 VP rejected; Unknown-context rejection; the
+  Unknown-version diagnostic-honesty regression below). A secured 1.1 fixture is produced the way a foreign 1.1
+  issuer would — a hand-built 1.1 document signed faithfully through the Data Integrity issuance path.
 
 #### Security & hardening (M7 adversarial review)
 
