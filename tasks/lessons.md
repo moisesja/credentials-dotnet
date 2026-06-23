@@ -2,6 +2,36 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A contract enforced only by an upstream construction convention is NOT enforced — guard it at the role boundary (2026-06-22)
+
+M7's "issuance is VCDM 2.0 only" (D8) was *assumed* true because `CredentialBuilder.Seal()` always pins
+`V2_0` — so every credential built the normal way is 2.0. But `IIssuer.IssueAsync` accepted *any* unsecured
+`Credential`, and `Credential.Parse(1.1 json)` produces a 1.1 unsecured credential, which the issuer would
+then sign for any form (DI/JOSE/COSE/SD-JWT). My own M7 test helper minted a 1.1 credential through the public
+issuer — proving the contract was a convention, not an enforced invariant. The PR reviewer (correctly) treated
+this as blocking: the PR *contradicted its own stated contract*. Fix: a `credential.Version != V2_0` guard at
+the `IssueAsync` boundary, before the form switch. **Rule:** when a doc/PRD states a contract ("we only
+issue/accept/emit X"), enforce it at the public API boundary that the contract is about — not by relying on the
+fact that the *usual* construction path happens to satisfy it. Ask: "can a caller reach this API with an input
+that violates the contract, via any public constructor/parser/factory?" If yes (here: `Parse`), the boundary
+needs an explicit guard + a negative test. Bonus tell: if a *test* has to do something the contract forbids to
+set up a fixture (mint 1.1 to test 1.1 verify), that setup is itself evidence the boundary is unguarded — route
+the fixture through a lower-level/internal path and guard the public one.
+
+## A version/enum branch must handle every case explicitly — a boolean split silently lumps the third case with the wrong one (2026-06-22)
+
+M7's first cut of the version-aware validity diagnostic used `var isV11 = credential.Version == V1_1;` then
+`isV11 ? (1.1 members) : (2.0 members)`. That `else` quietly swept `VcdmVersion.Unknown` in with `V2_0`, so an
+Unknown-version credential's expiry diagnostic named `/validUntil` even though the window had actually been
+read (via `ValidityProjection`'s Unknown best-effort fallback) from `expirationDate` — the pointer named a
+member that wasn't in the document. No security impact (Unknown is rejected by structure anyway), but the
+adversarial pass (ATK5) caught the dishonest diagnostic. The fix was a `switch` on the three-valued enum with
+an explicit `Unknown` arm that mirrors the projection's fallback. **Rule:** when a three-(or-more)-valued enum
+(`VcdmVersion`, securing form, decision) drives behavior, branch with a `switch` over all cases, not a boolean
+over one — and make every consumer of the value agree on the third case (here: the diagnostic must name the
+member the *projection* actually read for Unknown, not whatever the two-way split defaulted to). A boolean
+split is fine only when the two outcomes are genuinely exhaustive.
+
 ## Validate every review concern against the real code before acting — reviewers misread too (2026-06-22)
 
 The M6 PR review (itself a Claude Code review) named its two highest-priority "must fix before merge" items: a
