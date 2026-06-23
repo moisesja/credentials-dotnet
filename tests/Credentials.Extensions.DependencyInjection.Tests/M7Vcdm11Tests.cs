@@ -14,9 +14,10 @@ namespace Credentials.Extensions.DependencyInjection.Tests;
 /// <summary>
 /// M7 — VCDM 1.1 verify (FR-044 / D8). The engine ISSUES 2.0 only but VERIFIES 1.1 on both the credential and
 /// presentation paths, honoring <c>AcceptVcdm11</c>, projecting validity from <c>issuanceDate</c>/
-/// <c>expirationDate</c>, and never upgrading a 1.1 document to 2.0. A secured 1.1 fixture is produced the way
-/// a foreign 1.1 issuer would: a hand-built 1.1 document signed faithfully via the Data Integrity path (the
-/// issuer signs the document's exact bytes; the 2.0 pin lives only in <c>CredentialBuilder</c>).
+/// <c>expirationDate</c>, and never upgrading a 1.1 document to 2.0. Issuance being 2.0-only is enforced at the
+/// role boundary — <see cref="IIssuer"/> rejects a non-2.0 credential — so a secured 1.1 fixture cannot be
+/// minted through the public issuer; it is produced the way a foreign 1.1 issuer would, by signing a hand-built
+/// 1.1 document's exact bytes through the engine's internal Data Integrity mechanism.
 /// </summary>
 public sealed class M7Vcdm11Tests
 {
