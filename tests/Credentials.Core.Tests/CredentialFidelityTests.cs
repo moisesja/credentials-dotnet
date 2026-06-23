@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json.Nodes;
 using Credentials;
+using Credentials.TestSupport;
 using FluentAssertions;
 using Xunit;
 
@@ -27,6 +28,7 @@ public sealed class CredentialFidelityTests
     }
 
     [Fact]
+    [FrTag("FR-001")]
     public void Unknown_members_survive_round_trip()
     {
         var credential = Credential.Parse(ReceivedJson);
@@ -75,6 +77,7 @@ public sealed class CredentialFidelityTests
     }
 
     [Fact]
+    [FrTag("NFR-003")]
     public void Concurrent_serialization_is_thread_safe_and_deterministic()
     {
         var credential = Credential.Build()

@@ -11,4 +11,16 @@
   <ItemGroup Condition="'$(IsPackable)' != 'false' AND Exists('$(MSBuildThisFileDirectory)README.md')">
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
+
+  <!--
+    Public-API surface tracking for the shippable libraries only (IsPackable != false). RS0016 fails
+    the build when a public member is missing from PublicAPI.{Shipped,Unshipped}.txt and RS0017 when a
+    declared one is removed, so the public surface cannot change without a reviewable text diff
+    (NFR-005). Imported here (after the project body) so $(IsPackable) is resolved.
+  -->
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="$(MSBuildProjectDirectory)\PublicAPI.Unshipped.txt" />
+  </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 using System;
 using Credentials.Status;
+using Credentials.TestSupport;
 using FluentAssertions;
 using NetCid;
 using Xunit;
@@ -24,6 +25,7 @@ public sealed class StatusBitstringTests
     }
 
     [Fact]
+    [FrTag("FR-020")]
     public void Encode_then_Decode_round_trips_a_populated_bitstring()
     {
         var bits = StatusBitstring.CreateEmpty();
@@ -108,6 +110,7 @@ public sealed class StatusBitstringTests
     }
 
     [Fact]
+    [FrTag("NFR-006")]
     public void Decode_caps_decompression_to_defeat_a_gzip_bomb()
     {
         // A 2×-minimum all-zero bitstring compresses tiny but inflates to 32 KiB; decoding with a cap at the

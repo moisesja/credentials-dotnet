@@ -1,4 +1,5 @@
 using Credentials.Cryptography;
+using Credentials.TestSupport;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -10,6 +11,7 @@ namespace Credentials.Extensions.DependencyInjection.Tests;
 public sealed class AddCredentialsTests
 {
     [Fact]
+    [FrTag("FR-052")]
     public void Registers_default_crypto_seams()
     {
         using var provider = new ServiceCollection().AddCredentials(b => b.UseNetDid()).BuildServiceProvider();

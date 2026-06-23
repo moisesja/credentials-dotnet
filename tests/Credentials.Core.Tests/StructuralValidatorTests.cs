@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Credentials.TestSupport;
 using Credentials.Validation;
 using FluentAssertions;
 using Xunit;
@@ -19,6 +20,7 @@ public sealed class StructuralValidatorTests
         CodesFor(root, VcRole.Credential, VcdmVersion.V2_0);
 
     [Fact]
+    [FrTag("FR-005")]
     public void Valid_v2_credential_passes()
     {
         StructuralValidator.Validate(TestVectors.ValidV2Credential(), VcRole.Credential, VcdmVersion.V2_0)

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +50,7 @@ public sealed class M6HolderPresentationTests
     }
 
     [Fact]
+    [FrTag("FR-030")]
     public async Task Holder_ingest_inspect_present_then_verify_round_trips()
     {
         using var provider = BuildProvider();
@@ -84,6 +86,7 @@ public sealed class M6HolderPresentationTests
     }
 
     [Fact]
+    [FrTag("FR-032")]
     public async Task Holder_can_withhold_a_disclosable_claim_and_it_still_verifies()
     {
         using var provider = BuildProvider();

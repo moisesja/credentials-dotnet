@@ -322,3 +322,52 @@ Newtonsoft type was on our public API. Fix: keep the default System.Text.Json-on
 RDFC behind an opt-in package (`Credentials.Rdfc`) that contributes `ICryptosuite` services to a
 DI-collected registry. Also watch for *unused* substrate DI packages (`DataProofsDotnet.Extensions.DependencyInjection`)
 silently re-introducing the same transitive — check `dotnet list package --include-transitive`.
+
+## A "no Newtonsoft loaded in this process" assertion is contaminated by the test SDK — assert on the declared graph, not the runtime (2026-06-23)
+
+M8a's first cut of the NFR-002 runtime check exercised the engine then asserted
+`AppDomain.CurrentDomain.GetAssemblies()` contains no `Newtonsoft.Json`. It failed instantly — because
+**`Microsoft.NET.Test.Sdk` loads its own Newtonsoft.Json** into every test host, so the assertion can
+never pass and proves nothing about *our* closure. A dependency-closure property must be asserted on the
+**declared graph**, which the test host cannot contaminate: (a) the libraries' compile-time reference
+graph (walk `Assembly.GetReferencedAssemblies()` transitively via `MetadataLoadContext`, by path, so the
+opt-in Newtonsoft carrier isn't runtime-loaded), and (b) the **package** graph
+(`dotnet list package --include-transitive` over a real packed-and-restored consumer). **Caveat that bit
+the adversarial pass:** the *reference-graph* walk only sees assemblies whose **types are actually used**
+(the C# compiler omits a reference to an unused assembly), so an unused-yet-declared `PackageReference`
+that drags Newtonsoft in transitively is **invisible** to it — the **package-level** check is the
+authoritative one. **Rule:** never prove "X is not in the closure" by inspecting loaded assemblies; use
+the declared reference graph for a fast pre-check and the package transitive closure as the
+authority, and document that the static check only catches *used* references.
+
+## A pack→restore gate that reuses a fixed package version is hollow — NuGet serves stale same-version content (2026-06-23)
+
+The M8a ConsumerProbe packed `Credentials.Core` at the fixed `0.1.0`, restored a consumer against it,
+and asserted no Newtonsoft in the transitive closure. The adversarial pass added a Newtonsoft
+`PackageReference` to Core and the gate **still reported clean** — a hollow false-pass. Cause: **NuGet
+caches package *metadata* by id+version**, so re-packing the same `0.1.0` with different dependencies
+serves the *prior* run's dependency list (the freshly-extracted nuspec even had Newtonsoft, but the
+resolved `project.assets.json` did not). The gate was effectively frozen at the first run's result. Fix:
+pack under a **unique per-run version**. And because `dotnet list package` (the step that reads the
+resolved graph) **does not accept `-p:` properties**, deliver that version as an **environment-variable
+MSBuild property** (`export ProbePackageVersion=…` consumed by `<PackageReference Version="$(ProbePackageVersion)">`),
+which `restore`, `build`, *and* `list` all read consistently — whereas `$(CredentialsVersion)` couldn't
+be overridden by an env var because `Directory.Build.props` pins it explicitly (explicit property beats
+env var in MSBuild precedence). **Rule:** any gate that re-packs and re-restores the *same* version to
+test a dependency/API change is suspect — vary the version per run, and thread it through *every* command
+the gate uses (mind which `dotnet` verbs accept `-p:` and which need an env-var property or a persisted
+property). Always prove a gate has teeth by making the violation it guards against and watching it fail.
+
+## Seeding the PublicAPI analyzers (RS0016/17): annotate first, the message IS the entry, and RS0026/27 are opinions (2026-06-23)
+
+Wiring `Microsoft.CodeAnalysis.PublicApiAnalyzers` onto a mature surface (~145 types) means populating
+`PublicAPI.Unshipped.txt` with every public member in the analyzer's exact format. Three gotchas: (1) put
+`#nullable enable` as the **first line before** extracting entries — otherwise RS0016 reports the
+unannotated form and you get a second wave of RS0036 "missing nullability annotations"; with the directive
+present, RS0016 emits the `string!`/`string?` form. (2) The **RS0016 message itself contains the exact
+entry** between the quotes (`Symbol '<entry>' is not part of the declared public API`), so you can
+populate the file deterministically from build output — more reliable than fighting `dotnet format`
+against `TreatWarningsAsErrors`. (3) RS0026/RS0027 ("don't add overloads/constructors with optional
+parameters") are **API-design opinions**, not correctness: disable them in `.editorconfig`
+(`dotnet_diagnostic.RS0026.severity = none`) when the overloads are intentional and unambiguous (e.g. a
+typed-object + wire-bytes verify pair), rather than redesigning a shipped API to satisfy an analyzer.

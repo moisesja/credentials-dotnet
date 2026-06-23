@@ -42,6 +42,16 @@
     <!-- Source Link -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.300" />
 
+    <!-- Public-API surface tracking (RS0016/RS0017): every public member must be declared in the
+         committed PublicAPI.{Shipped,Unshipped}.txt, so an accidental surface change fails the build
+         and an intentional one shows up as a reviewable text diff (NFR-005 semver guard). -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="4.14.0" />
+
+    <!-- Architecture/surface tests: inspect built assemblies' public surface (incl. the opt-in
+         Credentials.Rdfc) by metadata only, without runtime-loading them — so the no-Newtonsoft
+         runtime-closure assertion stays valid in the same test host. -->
+    <PackageVersion Include="System.Reflection.MetadataLoadContext" Version="10.0.8" />
+
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />

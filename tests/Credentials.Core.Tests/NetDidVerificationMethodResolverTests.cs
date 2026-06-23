@@ -1,4 +1,5 @@
 using Credentials.Resolution;
+using Credentials.TestSupport;
 using FluentAssertions;
 using NetCrypto;
 using NetDid.Core;
@@ -70,6 +71,7 @@ public sealed class NetDidVerificationMethodResolverTests
     }
 
     [Fact]
+    [FrTag("FR-080")]
     public async Task Resolves_a_keyed_method_with_its_relationship()
     {
         const string vm = "did:example:subject#key-1";

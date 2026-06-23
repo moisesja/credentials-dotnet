@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
 using Credentials.Schema;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -78,6 +79,7 @@ public sealed class M2SchemaVerifyTests
     }
 
     [Fact]
+    [FrTag("FR-070")]
     public async Task Conforming_credential_passes_schema()
     {
         var key = TestKeys.New(KeyType.Ed25519);

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,7 @@ public sealed class M1IssueVerifyTests
     [Theory]
     [InlineData("eddsa-jcs-2022", KeyType.Ed25519)]
     [InlineData("ecdsa-jcs-2019", KeyType.P256)]
+    [FrTag("FR-040")]
     public async Task Issue_then_verify_round_trips(string cryptosuite, KeyType keyType)
     {
         using var provider = BuildProvider();
@@ -74,6 +76,7 @@ public sealed class M1IssueVerifyTests
     }
 
     [Fact]
+    [FrTag("FR-045")]
     public async Task Tampered_credential_is_rejected_not_thrown()
     {
         using var provider = BuildProvider();
@@ -97,6 +100,7 @@ public sealed class M1IssueVerifyTests
     }
 
     [Fact]
+    [FrTag("NFR-008")]
     public async Task Issuer_spoofing_is_rejected_by_issuer_binding()
     {
         using var provider = BuildProvider();
@@ -235,6 +239,7 @@ public sealed class M1IssueVerifyTests
     }
 
     [Fact]
+    [FrTag("FR-043")]
     public async Task Unresolvable_verification_method_is_indeterminate()
     {
         using var provider = BuildProvider();
@@ -291,6 +296,7 @@ public sealed class M1IssueVerifyTests
     }
 
     [Fact]
+    [FrTag("FR-053")]
     public void Capabilities_report_the_registered_suites()
     {
         using var provider = BuildProvider();
