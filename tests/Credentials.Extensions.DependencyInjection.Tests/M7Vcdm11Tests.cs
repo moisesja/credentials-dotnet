@@ -256,6 +256,37 @@ public sealed class M7Vcdm11Tests
     }
 
     [Fact]
+    public async Task Unknown_version_expired_diagnostic_names_the_member_that_exists()
+    {
+        // ATK5 (adversarial): an Unknown-version credential is rejected by structure regardless, but its
+        // validity diagnostic must stay honest — it carries expirationDate (no validUntil), and the Unknown
+        // branch mirrors ValidityProjection's fallback, so the pointer must name /expirationDate, not /validUntil.
+        using var provider = BuildProvider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        const string json =
+            """
+            {
+              "@context": ["https://example.com/not-a-vcdm-context"],
+              "type": ["VerifiableCredential"],
+              "issuer": "did:example:issuer",
+              "issuanceDate": "2010-01-01T00:00:00Z",
+              "expirationDate": "2015-01-01T00:00:00Z",
+              "credentialSubject": { "id": "did:example:subject" }
+            }
+            """;
+        var result = await verifier.VerifyCredentialAsync(Credential.Parse(json), new CredentialVerificationOptions
+        {
+            VerificationTime = DateTimeOffset.Parse("2020-01-01T00:00:00Z"),
+        });
+
+        result.Decision.Should().Be(VerificationDecision.Rejected); // Unknown rejected by structure
+        var validity = result.Check(CheckKinds.Validity)!;
+        validity.Diagnostics.Should().Contain(d => d.Code == "expired" && d.JsonPointer == "/expirationDate");
+        validity.Diagnostics.Should().NotContain(d => d.JsonPointer == "/validUntil");
+    }
+
+    [Fact]
     public async Task Unknown_context_credential_is_rejected()
     {
         // Positive version detection: a non-VCDM base context is Unknown and rejected (never guessed as 1.1/2.0).

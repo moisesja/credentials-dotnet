@@ -593,10 +593,16 @@ internal sealed class DefaultVerifier : IVerifier
         // The window itself is already projected per version (ValidityProjection: 1.1 reads issuanceDate/
         // expirationDate, 2.0 reads validFrom/validUntil). Only the diagnostic must name the member that
         // actually exists in THIS document — a 1.1 credential has no /validFrom, so point at /issuanceDate.
-        var isV11 = credential.Version == VcdmVersion.V1_1;
-        var (notBeforeMember, notAfterMember) = isV11
-            ? ("issuanceDate", "expirationDate")
-            : ("validFrom", "validUntil");
+        // Unknown is handled explicitly (not lumped with 2.0): an Unknown doc is rejected by structure
+        // regardless, but its validity diagnostic must still be honest — mirror ValidityProjection's Unknown
+        // fallback (prefer the 2.0 member, else the 1.1 member) so the pointer names the member actually read.
+        var (notBeforeMember, notAfterMember) = credential.Version switch
+        {
+            VcdmVersion.V1_1 => ("issuanceDate", "expirationDate"),
+            VcdmVersion.V2_0 => ("validFrom", "validUntil"),
+            _ => (credential.GetMember("validFrom") is not null ? "validFrom" : "issuanceDate",
+                  credential.GetMember("validUntil") is not null ? "validUntil" : "expirationDate"),
+        };
 
         if (credential.ValidFrom is { } from && now < from - skew)
         {

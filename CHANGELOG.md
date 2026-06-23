@@ -31,6 +31,24 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
   child in a 2.0 VP rejected; Unknown-context rejection). A secured 1.1 fixture is produced the way a foreign
   1.1 issuer would — a hand-built 1.1 document signed faithfully through the Data Integrity issuance path.
 
+#### Security & hardening (M7 adversarial review)
+
+- **Adversarial pass: zero vulnerabilities.** Five attackers each ran throwaway exploits against the verify
+  pipeline. Confirmed: (1) the `AcceptVcdm11=false` gate holds on **all** paths — credential, 1.1 VP envelope,
+  1.1 child in a 2.0 VP, the **recursive** status-list / schema-credential paths (a 1.1 status list →
+  `Indeterminate`/`status.list_unverified`, never Accepted), and enveloped 1.1; (2) version detection and
+  validity-member selection are driven by a **single** detected version, so they can't be desynchronized;
+  (3) a structurally inconsistent document (e.g. a v2 `@context` carrying 1.1 date members) is always Rejected
+  — the validity check may pass over the absent members, but the structural validator independently fails it
+  (`version.mismatch_dates_v2`), so an expired/not-yet-valid credential never reaches Accepted (defense in
+  depth); (4) **no upgrade** holds — a received 1.1 document's verbatim bytes, `@context`, members, and proof
+  survive verify/serialize/holder-binding unchanged, and 1.1 replay defence is identical to 2.0's.
+- **Fixed (low — diagnostic accuracy):** `CheckValidity` lumped `Unknown`-version credentials with 2.0, so an
+  Unknown document's expiry diagnostic named `/validUntil` even when the window was read (via
+  `ValidityProjection`'s Unknown fallback) from `expirationDate`. Now an explicit `switch` on the version names
+  the member that actually exists (Unknown mirrors the projection's prefer-2.0-then-1.1 fallback). No decision
+  impact (Unknown is rejected by structure regardless); the stable codes `not_yet_valid`/`expired` are unchanged.
+
 ### Added — Milestone M6 (presentations + holder binding)
 
 - **Holder role (`IHolder`):** `Ingest` (FR-030) materializes a received credential (JSON / JOSE / SD-JWT)

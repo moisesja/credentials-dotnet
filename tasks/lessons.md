@@ -2,6 +2,20 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A version/enum branch must handle every case explicitly — a boolean split silently lumps the third case with the wrong one (2026-06-22)
+
+M7's first cut of the version-aware validity diagnostic used `var isV11 = credential.Version == V1_1;` then
+`isV11 ? (1.1 members) : (2.0 members)`. That `else` quietly swept `VcdmVersion.Unknown` in with `V2_0`, so an
+Unknown-version credential's expiry diagnostic named `/validUntil` even though the window had actually been
+read (via `ValidityProjection`'s Unknown best-effort fallback) from `expirationDate` — the pointer named a
+member that wasn't in the document. No security impact (Unknown is rejected by structure anyway), but the
+adversarial pass (ATK5) caught the dishonest diagnostic. The fix was a `switch` on the three-valued enum with
+an explicit `Unknown` arm that mirrors the projection's fallback. **Rule:** when a three-(or-more)-valued enum
+(`VcdmVersion`, securing form, decision) drives behavior, branch with a `switch` over all cases, not a boolean
+over one — and make every consumer of the value agree on the third case (here: the diagnostic must name the
+member the *projection* actually read for Unknown, not whatever the two-way split defaulted to). A boolean
+split is fine only when the two outcomes are genuinely exhaustive.
+
 ## Validate every review concern against the real code before acting — reviewers misread too (2026-06-22)
 
 The M6 PR review (itself a Claude Code review) named its two highest-priority "must fix before merge" items: a
