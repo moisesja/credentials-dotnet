@@ -6,6 +6,31 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M7 (VCDM 1.1 verify)
+
+- **VCDM 1.1 verification (FR-044 / D8):** the verifier now accepts **VCDM 1.1** credentials and
+  presentations alongside 2.0, gated by `CredentialVerificationOptions.AcceptVcdm11` (default `true`).
+  **Issuance stays 2.0-only** — 1.1 is verified, never minted — and a 1.1 document is **never upgraded** to
+  2.0 (its `@context`, members, and detected version survive a serialize→re-parse round-trip unchanged).
+  Most of the version-aware machinery already existed (positive `@context[0]` detection in `VersionProjection`;
+  the structural validator's 1.1 branch requiring `issuanceDate` and forbidding `validFrom`/`validUntil`; the
+  validity window projected per version in `ValidityProjection`); M7 closes the two remaining gaps:
+  - **Presentation-path gate (G1):** `CheckPresentationStructure` now rejects a **1.1 presentation envelope**
+    with `vcdm11_not_accepted` when 1.1 is disallowed — previously only contained credentials were gated, so a
+    1.1 VP itself slipped through. There is **no** new presentation-level flag: the single
+    `CredentialOptions.AcceptVcdm11` governs both the VP envelope and its children (one source of truth).
+  - **Version-correct validity diagnostics (G2):** a not-yet-valid / expired **1.1** credential now reports the
+    member that actually exists in the document — `/issuanceDate` ÷ `/expirationDate` — instead of the 2.0
+    `/validFrom` ÷ `/validUntil`. The computed window was already correct; only the diagnostic pointer/message
+    were 2.0-only. The stable codes `not_yet_valid` / `expired` are unchanged.
+  - Contained-credential `AcceptVcdm11` inheritance through `BuildContainedCredentialOptions` is now documented
+    (the `with` copy preserves it), so a 1.1 child in a 2.0 VP is gated by the same flag.
+- **Tests (+15):** 7 Core unit (`ValidityProjection` 1.1 branch incl. no cross-version read; 1.1 inverted
+  window; 1.1 credential + presentation no-upgrade round-trip) and 8 integration (DI-secured 1.1 credential and
+  holder-bound 1.1 VP → Accepted; G1 1.1-VP rejection; G2 `/issuanceDate`÷`/expirationDate` pointers; G3 1.1
+  child in a 2.0 VP rejected; Unknown-context rejection). A secured 1.1 fixture is produced the way a foreign
+  1.1 issuer would — a hand-built 1.1 document signed faithfully through the Data Integrity issuance path.
+
 ### Added — Milestone M6 (presentations + holder binding)
 
 - **Holder role (`IHolder`):** `Ingest` (FR-030) materializes a received credential (JSON / JOSE / SD-JWT)

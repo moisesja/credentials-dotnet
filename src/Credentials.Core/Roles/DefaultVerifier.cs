@@ -317,6 +317,8 @@ internal sealed class DefaultVerifier : IVerifier
 
     // Each contained credential is verified with the presentation's verification time and, for SD-JWT VC
     // children, the presentation's audience/nonce so a contained SD-JWT VC's Key Binding JWT is checked.
+    // The `c with { … }` record copy preserves every field not named here — notably AcceptVcdm11 (D8), so a
+    // 1.1 child is gated by the same flag that gates the VP envelope; only the fields below are overridden.
     private static CredentialVerificationOptions BuildContainedCredentialOptions(PresentationVerificationOptions options)
     {
         var c = options.CredentialOptions;
@@ -335,6 +337,15 @@ internal sealed class DefaultVerifier : IVerifier
         var diagnostics = result.Problems
             .Select(p => new CheckDiagnostic(p.Code, p.Message, DiagnosticSeverity.Error, p.JsonPointer))
             .ToList();
+
+        // FR-044/D8: honor AcceptVcdm11 on the presentation path too (not only the credential path) — a 1.1
+        // presentation envelope is rejected when the verifier disallows 1.1. There is no presentation-level
+        // flag by design; the single AcceptVcdm11 on CredentialOptions governs both the VP and its children.
+        if (vp.Version == VcdmVersion.V1_1 && !options.CredentialOptions.AcceptVcdm11)
+        {
+            diagnostics.Add(new CheckDiagnostic("vcdm11_not_accepted",
+                "VCDM 1.1 presentations are not accepted by this verifier configuration.", DiagnosticSeverity.Error));
+        }
 
         // FR-033: a presentation is built from one or more credentials. An empty/absent verifiableCredential
         // would otherwise compose to Accepted (no child to reject), proving only holder-key possession.
@@ -579,16 +590,26 @@ internal sealed class DefaultVerifier : IVerifier
         var skew = options.ClockSkew;
         var diagnostics = new List<CheckDiagnostic>();
 
+        // The window itself is already projected per version (ValidityProjection: 1.1 reads issuanceDate/
+        // expirationDate, 2.0 reads validFrom/validUntil). Only the diagnostic must name the member that
+        // actually exists in THIS document — a 1.1 credential has no /validFrom, so point at /issuanceDate.
+        var isV11 = credential.Version == VcdmVersion.V1_1;
+        var (notBeforeMember, notAfterMember) = isV11
+            ? ("issuanceDate", "expirationDate")
+            : ("validFrom", "validUntil");
+
         if (credential.ValidFrom is { } from && now < from - skew)
         {
             diagnostics.Add(new CheckDiagnostic("not_yet_valid",
-                "The credential is not yet valid (validFrom is in the future).", DiagnosticSeverity.Error, "/validFrom"));
+                $"The credential is not yet valid ({notBeforeMember} is in the future).",
+                DiagnosticSeverity.Error, "/" + notBeforeMember));
         }
 
         if (credential.ValidUntil is { } until && now > until + skew)
         {
             diagnostics.Add(new CheckDiagnostic("expired",
-                "The credential has expired (validUntil is in the past).", DiagnosticSeverity.Error, "/validUntil"));
+                $"The credential has expired ({notAfterMember} is in the past).",
+                DiagnosticSeverity.Error, "/" + notAfterMember));
         }
 
         return diagnostics.Count == 0

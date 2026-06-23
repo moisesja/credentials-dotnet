@@ -200,6 +200,16 @@ public sealed class StructuralValidatorTests
         CredentialCodes(c).Should().Contain("validity.window_inverted");
     }
 
+    [Fact]
+    public void V1_inverted_validity_window_is_rejected()
+    {
+        // The 1.1 window is issuanceDate→expirationDate; an inverted one is rejected just like 2.0's.
+        var c = TestVectors.ValidV1Credential();
+        c["issuanceDate"] = "2026-06-01T00:00:00Z";
+        c["expirationDate"] = "2026-01-01T00:00:00Z";
+        CodesFor(c, VcRole.Credential, VcdmVersion.V1_1).Should().Contain("validity.window_inverted");
+    }
+
     // --- H2/H3/H4: typed-member requirements ---
 
     [Fact]

@@ -38,4 +38,14 @@ internal static class TestVectors
           "holder": "did:example:holder"
         }
         """)!;
+
+    /// <summary>A structurally valid VCDM 1.1 presentation as a fresh mutable <see cref="JsonObject"/>.</summary>
+    public static JsonObject ValidV1Presentation() => (JsonObject)JsonNode.Parse(
+        """
+        {
+          "@context": ["https://www.w3.org/2018/credentials/v1"],
+          "type": ["VerifiablePresentation"],
+          "holder": "did:example:holder"
+        }
+        """)!;
 }
