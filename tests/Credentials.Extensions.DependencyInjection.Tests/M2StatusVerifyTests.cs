@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
 using Credentials.Status;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,6 +85,7 @@ public sealed class M2StatusVerifyTests
     }
 
     [Fact]
+    [FrTag("FR-022")]
     public async Task Clear_bit_passes_status_and_accepts()
     {
         var key = TestKeys.New(KeyType.Ed25519);
@@ -98,6 +100,7 @@ public sealed class M2StatusVerifyTests
     }
 
     [Fact]
+    [FrTag("FR-016")]
     public async Task Revoked_bit_fails_status_and_rejects()
     {
         var key = TestKeys.New(KeyType.Ed25519);

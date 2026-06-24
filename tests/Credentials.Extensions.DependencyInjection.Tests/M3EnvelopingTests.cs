@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
 using Credentials.Securing;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using DataProofsDotnet.Cose;
 using FluentAssertions;
@@ -38,6 +39,7 @@ public sealed class M3EnvelopingTests
     [Theory]
     [InlineData(KeyType.Ed25519)]
     [InlineData(KeyType.P256)]
+    [FrTag("FR-012")]
     public async Task Jose_issue_then_verify_round_trips(KeyType keyType)
     {
         using var provider = BuildProvider();

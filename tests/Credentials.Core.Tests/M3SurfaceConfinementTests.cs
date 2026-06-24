@@ -1,5 +1,6 @@
 using System.Reflection;
 using Credentials;
+using Credentials.TestSupport;
 using FluentAssertions;
 using Xunit;
 
@@ -16,6 +17,7 @@ namespace Credentials.Tests;
 public sealed class M3SurfaceConfinementTests
 {
     [Fact]
+    [FrTag("FR-050")]
     public void Public_surface_exposes_no_jose_or_cose_substrate_type()
     {
         var assembly = typeof(Credential).Assembly;

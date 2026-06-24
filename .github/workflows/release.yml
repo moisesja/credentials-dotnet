@@ -1,0 +1,70 @@
+name: Release
+
+# Tag-driven publish. Push a v-prefixed SemVer tag (e.g. v0.2.0) to build, gate, pack and push the
+# three NuGet packages. The package version is taken from the tag.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    name: pack + publish
+    runs-on: ubuntu-latest
+    # Protected environment: configure NUGET_API_KEY (and any required reviewers) under
+    # Settings → Environments → nuget-release.
+    environment: nuget-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Derive version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore + tools
+        run: |
+          dotnet restore Credentials.sln
+          dotnet tool restore
+
+      # Full gate before anything is published.
+      - name: Build (warnings-as-errors)
+        run: dotnet build Credentials.sln -c Release --no-restore -p:CredentialsVersion="${{ steps.version.outputs.version }}"
+      - name: Test
+        run: dotnet test Credentials.sln -c Release --no-build --filter "Category!=Conformance"
+      - name: No-Newtonsoft closure
+        run: ./tools/check-no-newtonsoft-closure.sh
+      - name: ApiCompat against published baseline
+        run: ./tools/check-api-compat.sh
+
+      - name: Pack (.nupkg + .snupkg)
+        run: |
+          for proj in \
+            src/Credentials.Core/Credentials.Core.csproj \
+            src/Credentials.Extensions.DependencyInjection/Credentials.Extensions.DependencyInjection.csproj \
+            src/Credentials.Rdfc/Credentials.Rdfc.csproj ; do
+            dotnet pack "$proj" -c Release --no-build \
+              -p:CredentialsVersion="${{ steps.version.outputs.version }}" \
+              -o ./artifacts/packages
+          done
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: ./artifacts/packages/*.*nupkg
+
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        # Globbing *.nupkg is intentional: `dotnet nuget push` automatically pushes the matching
+        # symbol package (`<id>.<ver>.snupkg`) sitting alongside each `.nupkg` to nuget.org's symbol
+        # server, so symbols publish without a separate push (and without risking a double-push).
+        run: |
+          dotnet nuget push "./artifacts/packages/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

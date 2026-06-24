@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Credentials;
+using Credentials.TestSupport;
 using Credentials.Validation;
 using FluentAssertions;
 using Xunit;
@@ -61,6 +62,7 @@ public sealed class CredentialBuilderTests
     }
 
     [Fact]
+    [FrTag("FR-010")]
     public void Multiple_subjects_are_promoted_to_an_array()
     {
         var credential = Credential.Build()

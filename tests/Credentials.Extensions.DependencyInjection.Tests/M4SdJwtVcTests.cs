@@ -5,6 +5,7 @@ using Credentials;
 using Credentials.Roles;
 using Credentials.Schema;
 using Credentials.Securing;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using DataProofsDotnet.Jose.SdJwt;
 using DataProofsDotnet.Jose.SdJwt.Vc;
@@ -46,6 +47,7 @@ public sealed class M4SdJwtVcTests
     [Theory]
     [InlineData(KeyType.Ed25519)]
     [InlineData(KeyType.P256)]
+    [FrTag("FR-013")]
     public async Task SdJwtVc_issue_then_verify_round_trips(KeyType keyType)
     {
         using var provider = BuildProvider();

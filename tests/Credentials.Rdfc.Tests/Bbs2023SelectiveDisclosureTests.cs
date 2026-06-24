@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Rdfc;
 using Credentials.Roles;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using DataProofsDotnet;
 using DataProofsDotnet.DataIntegrity;
@@ -41,6 +42,7 @@ public sealed class Bbs2023SelectiveDisclosureTests
     // ---- derive → verify ---------------------------------------------------------------------------
 
     [Fact]
+    [FrTag("FR-031")]
     public async Task Bbs_derive_then_verify_round_trips()
     {
         if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
@@ -88,6 +90,7 @@ public sealed class Bbs2023SelectiveDisclosureTests
     }
 
     [Fact]
+    [FrTag("FR-042")]
     public async Task Bbs_two_derivations_are_unlinkable_and_both_verify()
     {
         if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
@@ -254,6 +257,8 @@ public sealed class Bbs2023SelectiveDisclosureTests
     // ---- issuance gate (FR-014) --------------------------------------------------------------------
 
     [Fact]
+    [FrTag("FR-014")]
+    [FrTag("FR-015")] // the gate exists because raw-key BBS issuance is refused — keys flow only via ISigner
     public async Task Bbs_issuance_is_gated()
     {
         using var provider = BuildProvider();

@@ -6,6 +6,69 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M8a (Quality & release gates)
+
+The first of three M8 PRs (M8 = conformance + interop + samples + gates). M8a lands the pure-.NET
+quality and release gates — no external runtime — closing the package/surface/doc halves of NFR-002,
+NFR-005, NFR-009 empirically and wiring CI/CD. Test count **318 → 338**; build stays 0-warning under
+`TreatWarningsAsErrors`.
+
+- **`Credentials.TestSupport`** — a shared, non-packable library holding the `[FrTag]` requirement-
+  coverage attribute and `RequirementIds`, the single source of truth for the PRD §8 set (34 FR + 9 NFR).
+- **`Credentials.ArchitectureTests`** — invariant gates inspected by metadata only
+  (`System.Reflection.MetadataLoadContext`, so the opt-in Credentials.Rdfc is examined without loading
+  its Newtonsoft into the test host):
+  - `PublicSurface_ExposesNoDataProofsType` (FR-051 / NFR-005, F3) — no `DataProofsDotnet` type may
+    appear in any public/protected signature of the three libraries (return/parameter/field/property/
+    generic-argument/base/interface vectors all covered).
+  - `DefaultLibrary_ReferenceClosure_HasNoNewtonsoft` (NFR-002, static half) — the compile-time
+    reference closure of Core + DI is Newtonsoft-free. Documented scope: catches a *used* Newtonsoft
+    type; the authoritative package-level guarantee is the ConsumerProbe (below).
+  - `PublicSurface_EveryDocumentedMember_HasNonEmptySummary` (NFR-009) — complements CS1591-as-error
+    (missing docs) by catching *empty* `<summary>` on public-surface members.
+  - `RoleMethods_NamedAsync_ReturnTaskOrValueTask` (NFR-004) and `Library_TargetsNet10` (NFR-001).
+  - `EveryRequirement_HasAtLeastOneTaggedTest` (the **FrCoverage gate**) — every PRD §8 requirement has
+    ≥1 `[FrTag]`-tagged test (deferring NFR-007 to M8c with a logged reason); a typo'd/unknown id fails.
+- **`Credentials.RoundTripTests`** (FR-003) — byte-fidelity DoD per securing family this engine issues
+  end-to-end (unsecured received-bytes verbatim; embedded DI in JCS+RDFC byte-stable with exactly one
+  `proof`; JOSE/SD-JWT verbatim compact + signed-payload == source bytes; COSE verbatim wire bytes;
+  H1 `<>&`/non-BMP-emoji value fidelity).
+- **`Credentials.ConsumerProbe`** + `tools/check-no-newtonsoft-closure.sh` (NFR-002, authoritative
+  package half) — packs Core + DI, restores a real package consumer against a local feed, and asserts
+  Newtonsoft is absent from the transitive closure (`dotnet list package --include-transitive`).
+- **Public-API surface tracking (NFR-005 semver)** — `Microsoft.CodeAnalysis.PublicApiAnalyzers`
+  (RS0016/RS0017) wired for the three shippable libraries via `Directory.Build.targets`, with the
+  current surface committed to `PublicAPI.{Shipped,Unshipped}.txt` (749 / 26 / 16 entries). Any public-
+  surface change now fails the build until the API file is updated — a reviewable text diff. RS0026/
+  RS0027 (the "no overloads with optional parameters" opinion) are disabled for the deliberate, in-place
+  ergonomic role overloads. `Microsoft.DotNet.ApiCompat.Tool` (local tool manifest) +
+  `tools/check-api-compat.sh` add the package-compat check against the last published version (skip-
+  logged pre-release; honest, never falsely green).
+- **`[FrTag]` tagging** — a representative existing test tagged for each of the 42 currently-coverable
+  requirements, plus two new tests: FR-004 (lazy projections memoized over the frozen document, proven
+  via `ReferenceEquals`) and FR-021 (`StatusListManager` set→re-produce→read and clear→re-produce→read).
+- **CI/CD** — `.github/workflows/ci.yml` (ubuntu+windows build/test matrix with `TreatWarningsAsErrors`
+  as the XML-doc + public-API gate, plus `no-newtonsoft` and `semver` jobs) and `release.yml` (tag-
+  driven pack + gate + push under a protected `nuget-release` environment).
+
+#### Security & hardening (M8a adversarial review)
+
+An adversarial pass attacked each gate to confirm it has teeth (not hollow). The surface, semver
+(RS0016), doc (CS1591/empty-summary), and FrCoverage (missing-tag + unknown-id) gates all failed
+correctly when defeat was attempted. Two real findings were fixed:
+
+- **ConsumerProbe was hollow (stale-cache false-pass).** Re-packing the fixed version `0.1.0` with new
+  dependencies served *stale* package metadata from nuget's id+version-keyed cache, so a Newtonsoft
+  dependency added to Core was invisible to the closure check — it always reported the first run's
+  result. Fixed by packing under a unique per-run version delivered as an environment-variable MSBuild
+  property (consistent across restore/build/`dotnet list`, which does not accept `-p:`). Verified: the
+  fixed gate now reports the violation when Newtonsoft is present and clean otherwise.
+- **The static reference-closure check has an inherent blind spot** — the C# compiler only records
+  references to *used* assemblies, so an unused-yet-declared `PackageReference` carrying Newtonsoft is
+  invisible to it. Documented honestly; recursion broadened to every non-BCL assembly (so a *used*
+  Newtonsoft edge hidden behind an intermediate is still caught); the package-level ConsumerProbe is the
+  authoritative NFR-002 gate. The FrCoverage scan was also hardened to ignore commented-out `[FrTag]`s.
+
 ### Added — Milestone M7 (VCDM 1.1 verify)
 
 - **VCDM 1.1 verification (FR-044 / D8):** the verifier now accepts **VCDM 1.1** credentials and

@@ -1,5 +1,6 @@
 using Credentials;
 using Credentials.Status;
+using Credentials.TestSupport;
 using FluentAssertions;
 using Xunit;
 
@@ -91,4 +92,35 @@ public sealed class StatusListManagerTests
 
         _manager.GetStatus(reparsed, 500).Should().BeTrue();
     }
+
+    [Fact]
+    [FrTag("FR-021")]
+    public void Set_reproduce_read_then_clear_reproduce_read_round_trips_the_bit()
+    {
+        const long index = 1_234;
+
+        // Baseline: a freshly produced list reads the index clear.
+        var produced = CreateRevocationList();
+        _manager.GetStatus(Reproduce(produced), index).Should().BeFalse(
+            "a freshly produced list has every bit clear");
+
+        // Set (revoke) → re-produce (serialize→re-parse) → the bit reads back SET.
+        var revoked = _manager.Revoke(produced, index);
+        var revokedReparsed = Reproduce(revoked);
+        _manager.GetStatus(revokedReparsed, index).Should().BeTrue(
+            "the re-produced list carries the set bit across a byte round-trip");
+        // The re-produced encodedList differs from the baseline — the bitstring was genuinely re-encoded.
+        EncodedListOf(revokedReparsed).Should().NotBe(EncodedListOf(produced));
+
+        // Clear (reinstate) → re-produce → the bit reads back CLEAR again.
+        var reinstated = _manager.Reinstate(revokedReparsed, index);
+        var reinstatedReparsed = Reproduce(reinstated);
+        _manager.GetStatus(reinstatedReparsed, index).Should().BeFalse(
+            "reinstating clears the bit and the cleared state survives re-production");
+    }
+
+    private static Credential Reproduce(Credential statusList) => Credential.Parse(statusList.ToBytes());
+
+    private static string EncodedListOf(Credential statusList) =>
+        statusList.CredentialSubjects[0]["encodedList"]!.GetValue<string>();
 }

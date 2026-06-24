@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
+using Credentials.TestSupport;
 using Credentials.Trust;
 using Credentials.Verification;
 using FluentAssertions;
@@ -52,6 +53,7 @@ public sealed class M2IssuerTrustTests
     }
 
     [Fact]
+    [FrTag("FR-082")]
     public async Task Trusted_issuer_passes()
     {
         var key = TestKeys.New(KeyType.Ed25519);
@@ -106,6 +108,7 @@ public sealed class M2IssuerTrustTests
     }
 
     [Fact]
+    [FrTag("FR-081")]
     public async Task Policy_receives_the_proof_verified_issuer_and_verification_method()
     {
         var key = TestKeys.New(KeyType.Ed25519);

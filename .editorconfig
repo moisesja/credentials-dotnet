@@ -13,6 +13,13 @@ insert_final_newline = true
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
 
+# Public-API analyzers (RS0016/RS0017 surface tracking, NFR-005). RS0026/RS0027 forbid adding
+# overloads/constructors with optional parameters: the role API deliberately ships ergonomic
+# typed-object + wire-bytes overloads (e.g. IVerifier.VerifyCredentialAsync), which are unambiguous
+# (the leading parameter type differs) and predate M8 — so these two design opinions are disabled.
+dotnet_diagnostic.RS0026.severity = none
+dotnet_diagnostic.RS0027.severity = none
+
 # Namespace
 csharp_style_namespace_declarations = file_scoped:suggestion
 

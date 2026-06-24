@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,6 +26,7 @@ public sealed class RdfcIssueVerifyTests
     [Theory]
     [InlineData("eddsa-rdfc-2022", KeyType.Ed25519)]
     [InlineData("ecdsa-rdfc-2019", KeyType.P256)]
+    [FrTag("FR-011")]
     public async Task Rdfc_issue_then_verify_round_trips(string cryptosuite, KeyType keyType)
     {
         using var provider = BuildProvider();

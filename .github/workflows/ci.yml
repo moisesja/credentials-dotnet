@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore Credentials.sln
+      # Release build with TreatWarningsAsErrors is itself the XML-doc (CS1591) and public-API
+      # (RS0016/RS0017) gate — a missing doc or an undeclared public member fails here.
+      - name: Build (warnings-as-errors)
+        run: dotnet build Credentials.sln -c Release --no-restore
+      # Exclude the W3C conformance suite (it needs the Node test suite + the ASP.NET shim; runs in
+      # conformance.yml). The filter is a no-op until those tests are tagged Category=Conformance in M8c.
+      - name: Test
+        run: dotnet test Credentials.sln -c Release --no-build --filter "Category!=Conformance"
+
+  no-newtonsoft:
+    name: no-Newtonsoft consumer closure
+    runs-on: ubuntu-latest
+    # Gate on the build so a compile break surfaces as one root-cause job, not three red peers.
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      # Packs Core + DI, restores the ConsumerProbe against them, asserts Newtonsoft is absent from
+      # the transitive closure (NFR-002). The opt-in Credentials.Rdfc is the sanctioned carrier.
+      - name: Assert default closure is Newtonsoft-free
+        run: ./tools/check-no-newtonsoft-closure.sh
+
+  semver:
+    name: API compatibility (semver)
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore tools
+        run: dotnet tool restore
+      # Compares each packed library against its last published nuget.org version (NFR-005). Skips a
+      # package when it has no published baseline yet (pre-release) — logged, never falsely green.
+      - name: ApiCompat against published baseline
+        run: ./tools/check-api-compat.sh

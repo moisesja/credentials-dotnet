@@ -1,3 +1,4 @@
+using Credentials.TestSupport;
 using Credentials.Validation;
 using FluentAssertions;
 using Xunit;
@@ -45,6 +46,7 @@ public sealed class ValidityProjectionTests
     }
 
     [Fact]
+    [FrTag("FR-044")]
     public void V2_reads_validFrom_and_validUntil()
     {
         var c = TestVectors.ValidV2Credential();

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -53,6 +54,7 @@ public sealed class M6PresentationTests
         });
 
     [Fact]
+    [FrTag("FR-002")]
     public async Task Data_integrity_bound_presentation_round_trips()
     {
         using var provider = BuildProvider();
@@ -89,6 +91,7 @@ public sealed class M6PresentationTests
     }
 
     [Fact]
+    [FrTag("FR-033")]
     public async Task Jose_vp_jwt_bound_presentation_round_trips()
     {
         using var provider = BuildProvider();
@@ -282,6 +285,7 @@ public sealed class M6PresentationTests
     }
 
     [Fact]
+    [FrTag("FR-034")]
     public async Task Holder_binding_forgery_is_rejected()
     {
         using var provider = BuildProvider();
@@ -312,6 +316,7 @@ public sealed class M6PresentationTests
     }
 
     [Fact]
+    [FrTag("FR-041")]
     public async Task Unbound_presentation_is_rejected_when_holder_binding_required()
     {
         using var provider = BuildProvider();
