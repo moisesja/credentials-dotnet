@@ -6,6 +6,34 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M8c (Conformance + interop) — the M8 finale
+
+The last of three M8 PRs: empirical W3C VCDM 2.0 conformance + cross-implementation interop, closing
+NFR-007. Test count **352 → 357** (+5 interop) plus the conformance harness; build stays 0-warning.
+
+- **`Credentials.Conformance.VcApi`** — a minimal ASP.NET VC-API shim over `IIssuer`/`IVerifier`
+  (`POST /credentials/issue`, `/credentials/verify`, `/presentations/verify`; `GET /` returns the shim's
+  `did:key`). It issues with `eddsa-rdfc-2022`, validates structure before signing (so the suite's negative
+  issue cases reject), and maps non-conforming input to HTTP ≥ 400. The suite injects the shim's own
+  `did:key` as the credential issuer, so issuance satisfies the engine's issuer-binding with no field
+  rewriting.
+- **`Credentials.Conformance.Tests`** — boots the shim on loopback, writes `localConfig.cjs`, runs the
+  [`w3c/vc-data-model-2.0-test-suite`](https://github.com/w3c/vc-data-model-2.0-test-suite), and asserts a
+  passing **baseline of 36** (a `SkippableFact`, `Category=Conformance`, that skips visibly when the Node
+  suite isn't prepared). **Current result: 36 / 59 passing** — the engine passes the structural / issue /
+  verify core; the 23 not-yet-passing tests are documented known limitations (full JSON-LD term mapping,
+  `relatedResource` integrity, `name`/`description` language objects, a VP authentication-proof interop
+  gap) in [docs/conformance.md](docs/conformance.md), not a "fully conformant" claim. The baseline guards
+  against regression.
+- **`Credentials.InteropTests`** (NFR-007): SD-JWT VC disclosure digests are cross-checked against the
+  spec algorithm (`base64url(SHA-256(ascii(disclosure)))` recomputed independently and matched to the
+  issued `_sd`), with the tampered- and unmatched-disclosure negatives and the `dc+sd-jwt` drift sentinel;
+  bbs-2023 (`IsAvailable`-gated) pins the `bbs-2023` cryptosuite + multibase `proofValue` drift sentinels,
+  verifies a derived proof, and rejects a tampered mandatory value.
+- **CI** — `.github/workflows/conformance.yml` (PR + nightly): clones + installs the Node suite, builds
+  the shim, runs the harness. The FrCoverage gate's NFR-007 deferral is removed now that it is tagged.
+- **Docs** — [docs/conformance.md](docs/conformance.md) records the honest conformance + interop status.
+
 ### Added — Milestone M8b (Samples matrix & API-coverage gate)
 
 The second of three M8 PRs. A first-class, offline samples matrix demonstrating every role × securing

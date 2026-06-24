@@ -61,5 +61,8 @@
     <PackageVersion Include="FluentAssertions" Version="7.0.0" />
     <PackageVersion Include="NSubstitute" Version="5.3.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.3" />
+    <!-- Runtime-skippable xUnit facts: the conformance test skips (visibly) when the Node W3C suite
+         isn't prepared, rather than silently passing or hard-failing. -->
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
   </ItemGroup>
 </Project>

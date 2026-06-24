@@ -385,3 +385,24 @@ against `TreatWarningsAsErrors`. (3) RS0026/RS0027 ("don't add overloads/constru
 parameters") are **API-design opinions**, not correctness: disable them in `.editorconfig`
 (`dotnet_diagnostic.RS0026.severity = none`) when the overloads are intentional and unambiguous (e.g. a
 typed-object + wire-bytes verify pair), rather than redesigning a shipped API to satisfy an analyzer.
+
+## A conformance shim bridges your security model to the suite's conventions — and you report the real pass rate, not a fake green (2026-06-24)
+
+M8c ran the W3C VCDM 2.0 Node suite against an ASP.NET shim. Two lessons. **(1) The issuer-binding
+bridge.** The engine binds a credential's `issuer` to the proof's verification-method base DID (a
+security property), but the suite POSTs credentials whose `issuer` it sets from the *configured*
+implementation id. Reading `mock.data.createRequestBody` showed the suite injects `config.issuer.id` as
+`credential.issuer` — so configuring the suite with the shim's **own `did:key`** makes every issued
+credential's issuer equal the signer's DID, satisfying issuer-binding with **zero field rewriting** (an
+unconditional override would have broken the negative `issuer` tests). The general rule: when a
+conformance harness lets you configure an identifier the suite injects, align it with your engine's
+invariants instead of mutating the documents. **(2) Honest baselines beat fake greens.** The engine
+passes 36/59 — the structural/issue/verify core — and genuinely cannot pass the rest yet (no JSON-LD
+term mapping in an STJ-only engine; no `relatedResource` integrity; a VP authentication-proof interop
+gap). The plan said "zero mandatory-group failures," but the empirical reality is different. The right
+move is **not** to relax the assertion to make it pass, nor to claim conformance we don't have: assert a
+**regression-guarding baseline** (`passing >= 36`), document every not-yet-passing group with its reason,
+and make the gate `SkippableFact` so a host without Node/the suite skips *visibly*. A gate that lies
+about conformance is worse than no gate. The most useful diagnostic step was logging the verifier's
+per-check codes from the shim (`holder_binding_missing`, `presentation_no_credentials`) — those named the
+exact gap instead of an opaque "VP rejected."
