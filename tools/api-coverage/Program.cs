@@ -25,7 +25,7 @@ internal static class Program
         var covered = new List<string>();
         var uncovered = new List<string>();
         var exempted = new List<string>();
-        var notGateable = 0;
+        var notGateable = new List<string>();
 
         using var mlc = CreateLoadContext(libPaths);
         foreach (var libPath in libPaths)
@@ -37,17 +37,25 @@ internal static class Program
 
                 if (exclusions.Contains(name)) { exempted.Add(name); continue; }
 
-                // A type with no executable code (interface, enum, delegate, abstract-only) never appears
-                // in cobertura — it isn't gateable for *code* coverage.
-                if (!coveredRate.TryGetValue(name, out var rate)) { notGateable++; continue; }
+                // Gateability is decided from REFLECTION, not from absence in cobertura: a type with no
+                // executable members (interface, enum, delegate, a const-only static class) has nothing to
+                // cover and is legitimately skipped. A gateable type (one with executable members) that is
+                // absent from cobertura is treated as UNCOVERED — coverlet should have emitted it, so its
+                // absence is a real gap, not a silent pass.
+                if (!IsGateable(type)) { notGateable.Add(name); continue; }
 
+                coveredRate.TryGetValue(name, out var rate); // absent => 0 => uncovered
                 if (rate > 0) covered.Add(name); else uncovered.Add(name);
             }
         }
 
-        Console.WriteLine($"api-coverage: {covered.Count} covered, {uncovered.Count} uncovered, {exempted.Count} exempted, {notGateable} not-gateable (interface/enum/no-IL).");
+        Console.WriteLine($"api-coverage: {covered.Count} covered, {uncovered.Count} uncovered, {exempted.Count} exempted, {notGateable.Count} not-gateable (interface/enum/delegate/no-IL).");
         if (exempted.Count > 0)
             Console.WriteLine("  exempted (see exclusions file): " + string.Join(", ", exempted.OrderBy(x => x)));
+        // Print the not-gateable set so it is auditable — an upward drift (a new no-IL public type) is
+        // visible in the log rather than silently swallowed.
+        if (notGateable.Count > 0)
+            Console.WriteLine("  not-gateable (no executable IL to cover): " + string.Join(", ", notGateable.OrderBy(x => x)));
 
         if (uncovered.Count > 0)
         {
@@ -108,8 +116,24 @@ internal static class Program
         return set;
     }
 
-    private static bool IsCompilerGenerated(string name) =>
-        name.Contains('<') || name.Contains(">d__") || name.Contains("__") && name.Contains("DisplayClass");
+    // Async state machines and lambda closures both contain '<' in their type names.
+    private static bool IsCompilerGenerated(string name) => name.Contains('<');
+
+    // A type is gateable for code coverage iff it actually carries executable members. Interfaces,
+    // enums, delegates, and const-only static classes have no instrumentable IL, so they are not
+    // gateable (and need no exclusion); everything else (concrete/abstract/static classes, structs,
+    // records) is, and must therefore be exercised by a sample or explicitly exempted.
+    private static bool IsGateable(Type type)
+    {
+        if (type.IsInterface || type.IsEnum) return false;
+        if (type.BaseType?.FullName is "System.MulticastDelegate" or "System.Delegate") return false;
+
+        const BindingFlags flags =
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        // Constructors (incl. a static cctor) and any non-abstract method have a body to cover.
+        return type.GetConstructors(flags).Length > 0
+            || type.GetMethods(flags).Any(m => !m.IsAbstract);
+    }
 
     private static MetadataLoadContext CreateLoadContext(string[] libPaths)
     {

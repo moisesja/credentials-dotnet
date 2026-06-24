@@ -19,7 +19,10 @@ dotnet test "$ROOT/tests/Credentials.SampleSmokeTests/Credentials.SampleSmokeTes
 
 COB="$(find "$RESULTS" -name '*.cobertura.xml' | head -1)"
 if [[ -z "$COB" ]]; then echo "no cobertura report produced" >&2; exit 2; fi
-BIN="$ROOT/tests/Credentials.SampleSmokeTests/bin/Debug/net10.0"
+# Derive the output dir from the built assembly rather than hardcoding the TFM, so a framework bump
+# can't silently break the gate (it would report a coverage gap, not crash on a missing path).
+BIN="$(dirname "$(find "$ROOT/tests/Credentials.SampleSmokeTests/bin/Debug" -name 'Credentials.Core.dll' | head -1)")"
+if [[ -z "$BIN" ]]; then echo "could not locate the built Credentials.Core.dll" >&2; exit 2; fi
 
 echo ">> Diffing the public surface against sample coverage"
 dotnet run --project "$ROOT/tools/api-coverage/Credentials.Tools.ApiCoverage.csproj" -c Debug --no-build -- \
