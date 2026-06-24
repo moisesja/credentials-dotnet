@@ -15,11 +15,15 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
   proof reported as `NoProof`" diagnosis was incorrect; the real causes were two over-strict checks:
   - `BindHolder` failed when `holder` was absent. Now a signed presentation with no holder passes the binding
     check on **possession alone** (the binding proof verified and the challenge/domain matched; there is no
-    holder identity to bind). This is not abusable: `holder` is inside the proof's signed scope, so stripping
-    a victim's `holder` invalidates the proof before the check runs — guarded by a new regression test.
-  - The empty-presentation rule (`presentation_no_credentials`) is correctly gated on the existing
-    `RequireAtLeastOneCredential` option; the conformance shim sets it `false` (a VP may legitimately carry no
-    credentials).
+    holder identity to bind). This is an **engine-default behaviour change** — it applies to all callers under
+    default options (still replay-safe: `RequireHolderBinding` defaults `true`, forcing a challenge), and is the
+    intended interop fix. It is not abusable: `holder` is inside the proof's signed scope, so stripping a
+    victim's `holder` invalidates the proof before the check runs (guarded by a new regression test). The scope
+    of holder binding (possession + freshness, **not** that the presenter is the credential subject) is now
+    documented on `PresentationVerificationOptions.RequireHolderBinding` and covered by a test.
+  - The empty-presentation rule (`presentation_no_credentials`) is, by contrast, gated on the existing
+    `RequireAtLeastOneCredential` option, which is **unchanged at its `true` default**; only the conformance
+    shim sets it `false` (a VP may legitimately carry no credentials).
   This raises the W3C VCDM 2.0 conformance baseline **36 → 43 / 59** (the `4.13-verifiable-presentations`
   group now passes). See [docs/conformance.md](docs/conformance.md).
 

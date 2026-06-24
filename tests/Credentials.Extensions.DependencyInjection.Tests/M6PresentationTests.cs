@@ -160,6 +160,55 @@ public sealed class M6PresentationTests
     }
 
     [Fact]
+    [FrTag("FR-041")]
+    public async Task Holder_binding_proves_possession_not_that_the_presenter_is_the_subject()
+    {
+        // Documents the holder-binding scope (see PresentationVerificationOptions.RequireHolderBinding): a
+        // passing binding proves possession + freshness, NOT that the presenter is the credential subject.
+        // A party who holds a credential can present it in a VP signed with their OWN key and it Accepts;
+        // binding the presenter to credentialSubject.id is the verifying application's policy, not the engine's.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        // A credential whose subject is someone OTHER than the presenter.
+        var issuerKey = TestKeys.New(KeyType.Ed25519);
+        const string subjectDid = "did:example:the-actual-subject";
+        var credential = Credential.Build()
+            .WithIssuer(issuerKey.Did)
+            .AddSubject(new JsonObject { ["id"] = subjectDid, ["alumniOf"] = "Example University" })
+            .Seal();
+        var issued = await issuer.IssueAsync(credential, new DataIntegrityIssuanceRequest
+        {
+            Cryptosuite = "eddsa-jcs-2022",
+            Signer = issuerKey.Signer,
+            VerificationMethod = issuerKey.VerificationMethod,
+        });
+
+        // A DIFFERENT party (the presenter) wraps it in a presentation signed with THEIR key.
+        var presenterKey = TestKeys.New(KeyType.Ed25519);
+        presenterKey.Did.Should().NotBe(subjectDid);
+        var bound = await holder.BindWithDataIntegrityAsync(
+            BuildVp(holder, holder.Ingest(issued.Credential.ToBytes()), presenterKey.Did),
+            new VpBindingRequest
+            {
+                HolderSigner = presenterKey.Signer,
+                VerificationMethod = presenterKey.VerificationMethod,
+                Challenge = Challenge,
+                Domain = Domain,
+            });
+
+        var result = await verifier.VerifyPresentationAsync(
+            bound, new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
+
+        // Possession + freshness verify even though presenter != subject; the engine does not link them.
+        result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
+        result.Check(CheckKinds.HolderBinding)!.Status.Should().Be(CheckStatus.Passed);
+        result.Credentials[0].Decision.Should().Be(VerificationDecision.Accepted);
+    }
+
+    [Fact]
     [FrTag("FR-033")]
     public async Task Jose_vp_jwt_bound_presentation_round_trips()
     {
