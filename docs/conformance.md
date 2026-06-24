@@ -10,10 +10,10 @@ interoperability suite) is run against a thin ASP.NET shim (`tests/Credentials.C
 exposes `POST /credentials/issue`, `/credentials/verify`, and `/presentations/verify` over the engine's
 `IIssuer`/`IVerifier`. The shim issues with `eddsa-rdfc-2022`; the suite injects the shim's own `did:key`
 as the credential issuer, so issuance satisfies the engine's issuer-binding. `Credentials.Conformance.Tests`
-boots the shim on loopback, runs the suite, and asserts a passing **baseline of 36** so the conformance
+boots the shim on loopback, runs the suite, and asserts a passing **baseline of 43** so the conformance
 level cannot regress; the full run is `conformance.yml` (PR + nightly).
 
-**Current result: 36 / 59 passing.** The 23 not-yet-passing tests are not silent — they are known
+**Current result: 43 / 59 passing.** The 16 not-yet-passing tests are not silent — they are known
 limitations, grouped:
 
 | Group | Why it does not pass | Status |
@@ -22,7 +22,6 @@ limitations, grouped:
 | `relatedResource` integrity (wrong/missing/duplicate digest, non-object form) | `relatedResource` digest verification is not implemented. | Future feature. |
 | `name` / `description` language-value-object validation (extra properties) | The engine does not validate the §11.1 language/direction object shape of `name`/`description`. | Future hardening. |
 | A few issuer/credentialSchema/credentialStatus identifier-URL negatives | The structural validator does not yet reject every non-URL identifier the suite checks. | Incremental validator hardening. |
-| Verifiable Presentation verification (the suite's `eddsa-rdfc-2022` authentication proof) | The engine's VP holder-binding verification reports the suite's VP authentication proof as not-found (`NoProof`); a VP-proof interop gap distinct from the (passing) credential path. | Tracked: [#11](https://github.com/moisesja/credentials-dotnet/issues/11). |
 
 This is reported as a tracked baseline rather than a "fully conformant" claim: the engine passes the
 structural / issue / verify core of the suite, and the gaps above are explicit and individually

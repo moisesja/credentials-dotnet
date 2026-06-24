@@ -19,7 +19,7 @@ public sealed partial class W3cVcdm2SuiteTests
 {
     // The number of suite tests the engine currently passes. Raising this when the engine improves is
     // expected; a drop below it is a regression and fails the gate.
-    private const int PassingBaseline = 36;
+    private const int PassingBaseline = 43;
 
     [SkippableFact]
     [Trait("Category", "Conformance")]

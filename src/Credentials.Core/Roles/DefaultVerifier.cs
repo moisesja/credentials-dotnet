@@ -270,8 +270,13 @@ internal sealed class DefaultVerifier : IVerifier
         var holderId = vp.Holder;
         if (string.IsNullOrEmpty(holderId))
         {
-            return CheckResult.Failed(CheckKinds.HolderBinding, "holder_binding_missing",
-                "The presentation has no holder to bind the binding proof to.", "/holder");
+            // VCDM 2.0: `holder` is OPTIONAL. A signed presentation with no holder still proves possession
+            // of the binding key and freshness (the binding proof verified and the challenge/domain
+            // matched); there is simply no holder identity to bind it to. This cannot be abused to strip a
+            // victim's `holder`: `holder` is inside the proof's signed scope, so removing it invalidates the
+            // proof before this check runs (the mechanism returns Invalid, not Verified). So a holder-less
+            // signed presentation is bound on possession alone.
+            return CheckResult.Passed(CheckKinds.HolderBinding);
         }
 
         if (result.VerificationMethods.Count == 0

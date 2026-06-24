@@ -91,6 +91,75 @@ public sealed class M6PresentationTests
     }
 
     [Fact]
+    [FrTag("FR-041")]
+    public async Task Holder_less_signed_presentation_verifies_on_possession_alone()
+    {
+        // VCDM 2.0: `holder` is OPTIONAL. A presentation signed with no holder still proves possession of
+        // the binding key and freshness, so its binding check passes (W3C conformance; issue #11).
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        // Drop the holder before signing, then bind — the proof now covers a holder-less presentation.
+        var noHolder = JsonNode.Parse(BuildVp(holder, held, holderKey.Did).ToBytes())!.AsObject();
+        noHolder.Remove("holder");
+        var bound = await holder.BindWithDataIntegrityAsync(
+            VerifiablePresentation.Parse(noHolder.ToJsonString()),
+            new VpBindingRequest
+            {
+                HolderSigner = holderKey.Signer,
+                VerificationMethod = holderKey.VerificationMethod,
+                Challenge = Challenge,
+                Domain = Domain,
+            });
+
+        var result = await verifier.VerifyPresentationAsync(
+            bound, new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
+
+        result.Check(CheckKinds.HolderBinding)!.Status.Should().Be(CheckStatus.Passed, result.ToString());
+        result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
+    }
+
+    [Fact]
+    [FrTag("FR-041")]
+    public async Task Stripping_the_holder_from_a_bound_presentation_breaks_the_proof()
+    {
+        // The holder-less Passed path must be unreachable by tampering: `holder` is in the proof's signed
+        // scope, so removing a victim's holder from a holder-BOUND presentation invalidates the proof — the
+        // binding fails as a proof failure, NOT the holder-less shortcut.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        var bound = await holder.BindWithDataIntegrityAsync(
+            BuildVp(holder, held, holderKey.Did),
+            new VpBindingRequest
+            {
+                HolderSigner = holderKey.Signer,
+                VerificationMethod = holderKey.VerificationMethod,
+                Challenge = Challenge,
+                Domain = Domain,
+            });
+
+        var stripped = JsonNode.Parse(bound.ToBytes())!.AsObject();
+        stripped.Remove("holder");
+
+        var result = await verifier.VerifyPresentationAsync(
+            VerifiablePresentation.Parse(stripped.ToJsonString()),
+            new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
+
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        var binding = result.Check(CheckKinds.HolderBinding)!;
+        binding.Status.Should().Be(CheckStatus.Failed);
+        binding.Diagnostics.Should().NotContain(d => d.Code == "holder_binding_missing",
+            "the failure must be the broken proof, not the holder-less shortcut");
+    }
+
+    [Fact]
     [FrTag("FR-033")]
     public async Task Jose_vp_jwt_bound_presentation_round_trips()
     {

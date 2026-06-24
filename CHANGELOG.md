@@ -6,6 +6,23 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Fixed
+
+- **Verifiable Presentation verification for holder-less and credential-less presentations (#11).** VCDM 2.0
+  makes both `holder` and `verifiableCredential` **optional**, but the verifier rejected a presentation that
+  omitted either — so a standard Data-Integrity-signed VP from another implementation (e.g. the W3C suite's
+  `eddsa-rdfc-2022` presentations, which carry no `holder`) failed to verify. The earlier "VP authentication
+  proof reported as `NoProof`" diagnosis was incorrect; the real causes were two over-strict checks:
+  - `BindHolder` failed when `holder` was absent. Now a signed presentation with no holder passes the binding
+    check on **possession alone** (the binding proof verified and the challenge/domain matched; there is no
+    holder identity to bind). This is not abusable: `holder` is inside the proof's signed scope, so stripping
+    a victim's `holder` invalidates the proof before the check runs — guarded by a new regression test.
+  - The empty-presentation rule (`presentation_no_credentials`) is correctly gated on the existing
+    `RequireAtLeastOneCredential` option; the conformance shim sets it `false` (a VP may legitimately carry no
+    credentials).
+  This raises the W3C VCDM 2.0 conformance baseline **36 → 43 / 59** (the `4.13-verifiable-presentations`
+  group now passes). See [docs/conformance.md](docs/conformance.md).
+
 ### Added — Milestone M8c (Conformance + interop) — the M8 finale
 
 The last of three M8 PRs: empirical W3C VCDM 2.0 conformance + cross-implementation interop, closing
