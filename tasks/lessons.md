@@ -2,6 +2,20 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## In a gated PR workflow, a PR is not "done" when it's opened — wait for review and address comments before starting the next PR (2026-06-23)
+
+After opening PR #8 (M8a), I immediately branched and started PR-B (M8a → M8b stacked) and began
+scaffolding samples. The user stopped me: the PR had reviewer comments to address first. The
+established workflow for this repo is **open PR → human review → address comments → merge → next PR**
+(that is what "the gated workflow" means; every milestone M1–M7 went through it). Opening a PR is the
+*start* of its review cycle, not the end — and stacking the next PR on an unreviewed one means review
+feedback on the base can invalidate work already built on top. **Rule:** after opening a PR, the next
+action is to **check for and address review feedback** (`gh pr view <n> --json reviews` +
+`gh api .../pulls/<n>/comments`), not to start the next unit of work. Only branch the next PR once the
+current one is approved/merged (or the user explicitly says to proceed in parallel). When work *is*
+already started on the next branch, set it aside cleanly (`git stash -u` / a wip branch) and return to
+the open PR. Treat "I opened the PR" as "the review clock just started," and poll it.
+
 ## A contract enforced only by an upstream construction convention is NOT enforced — guard it at the role boundary (2026-06-22)
 
 M7's "issuance is VCDM 2.0 only" (D8) was *assumed* true because `CredentialBuilder.Seal()` always pins
