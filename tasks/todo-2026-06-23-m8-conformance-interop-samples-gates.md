@@ -184,3 +184,33 @@ embeds a genuine `did:key`-issued secured-1.1 fixture (generated via the interna
 issuance is 2.0-only) so it verifies fully offline.
 
 **Next:** PR-C (conformance shim + interop vectors).
+
+### PR-C — Conformance + interop (complete, 2026-06-24) — the M8 finale
+
+**Status: complete + verified.** Branch `feature/m8c-conformance-interop` off the merged-M8b main. Build
+0-warning; **357 tests green** (+5 interop) plus the conformance harness (passes against the prepared
+suite, skips otherwise).
+
+**Delivered:** `Credentials.Conformance.VcApi` (ASP.NET shim), `Credentials.Conformance.Tests` (boots the
+shim + runs the W3C suite + asserts baseline 36, `Category=Conformance`), `Credentials.InteropTests`
+(SD-JWT digest spec cross-check + negatives + bbs-2023 wire-format, NFR-007-tagged), `conformance.yml`,
+`docs/conformance.md`. FrCoverage NFR-007 deferral removed.
+
+**Honest outcome (key deviation from the plan's "zero mandatory-group failures"):** empirically the
+engine passes **36/59** W3C suite tests — the structural/issue/verify core. The 23 not-yet-passing are
+**documented known limitations**, not hidden: full JSON-LD term mapping (the engine is STJ-only, no
+JSON-LD expansion — NFR-002), `relatedResource` integrity, `name`/`description` language-value-object
+validation, and a VP authentication-proof interop gap (the DI mechanism reports the suite's
+`eddsa-rdfc-2022` VP proof as `NoProof`). The harness asserts a regression-guarding baseline rather than
+faking a clean run; raising it as the engine improves is expected. This is the M8 honesty principle:
+report the real conformance level + categorized gaps, never a false green.
+
+**Decisions:** (1) The suite injects the config issuer id as `credential.issuer`, so the shim configures
+the suite with its own `did:key` — issuance satisfies issuer-binding without rewriting any field. (2) The
+shim validates structure before signing (recovered 14 negative tests). (3) Interop uses an independent
+spec-algorithm cross-check (recompute SD-JWT digests, match `_sd`) rather than foreign-key vector
+verification — proves digest-algorithm interop without the key-resolution integration. (4) bbs-2023 +
+the conformance run are `IsAvailable`/`SkippableFact`-gated so a host without the native lib / Node suite
+skips visibly.
+
+**M8 complete:** all three PRs (A quality+release gates, B samples+coverage, C conformance+interop) landed.

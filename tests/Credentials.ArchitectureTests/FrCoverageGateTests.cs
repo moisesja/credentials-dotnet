@@ -18,10 +18,7 @@ public sealed partial class FrCoverageGateTests
     /// (not silently skipped) and removed from this map when its PR lands, so the gate never reports a
     /// requirement as covered that has no test yet.
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, string> DeferredToLaterPr = new Dictionary<string, string>
-    {
-        ["NFR-007"] = "conformance shim + interop vectors land in PR-C (M8c); tagged there.",
-    };
+    private static readonly IReadOnlyDictionary<string, string> DeferredToLaterPr = new Dictionary<string, string>();
 
     [Fact]
     [FrTag("NFR-009")] // this gate is itself part of the verification-completeness story
