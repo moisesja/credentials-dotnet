@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Roles;
 using Credentials.Verification;
+using Microsoft.Extensions.Logging;
 using NetCrypto;
 
 // Minimal ASP.NET VC-API shim over IIssuer/IVerifier for the W3C VCDM 2.0 test suite (loopback).
@@ -14,7 +15,11 @@ using NetCrypto;
 // did:key makes issuance satisfy the engine's issuer-binding without any field rewriting.
 
 var builder = WebApplication.CreateBuilder(args);
+// Drop ASP.NET's per-request info logging (it would interleave with the harness's view of the process),
+// but keep warnings/errors on the console so a crash-after-startup is still diagnosable in CI logs.
 builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Services.AddCredentials(b => b.UseNetDid().UseRdfcSuites());
 
 var app = builder.Build();

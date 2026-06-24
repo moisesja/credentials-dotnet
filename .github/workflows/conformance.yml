@@ -6,6 +6,12 @@ name: Conformance
 on:
   pull_request:
     branches: [main]
+    # Only when the engine / its tests / this workflow change — a docs-only PR shouldn't clone the
+    # Node suite and run the ~8-minute conformance suite.
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/conformance.yml'
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
@@ -27,6 +33,9 @@ jobs:
         with:
           node-version: '20'
 
+      # Cloned unpinned from HEAD (pinning a SHA would need manual bumps). A breaking upstream change
+      # could surface as a nightly failure that looks like a regression — check the suite's recent
+      # history before treating a sudden nightly drop as an engine regression.
       - name: Prepare the W3C VCDM 2.0 test suite
         run: |
           git clone --depth 1 https://github.com/w3c/vc-data-model-2.0-test-suite "$RUNNER_TEMP/vcdm2-suite"

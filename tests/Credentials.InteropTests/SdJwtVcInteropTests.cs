@@ -24,11 +24,8 @@ public sealed class SdJwtVcInteropTests
 {
     private const string Vct = "https://credentials.example/identity_credential";
 
-    private static (IIssuer Issuer, IVerifier Verifier) Roles()
-    {
-        var provider = new ServiceCollection().AddCredentials(b => b.UseNetDid()).BuildServiceProvider();
-        return (provider.GetRequiredService<IIssuer>(), provider.GetRequiredService<IVerifier>());
-    }
+    private static ServiceProvider Provider() =>
+        new ServiceCollection().AddCredentials(b => b.UseNetDid()).BuildServiceProvider();
 
     private static (ISigner Signer, string Did, string Vm) Key()
     {
@@ -59,8 +56,8 @@ public sealed class SdJwtVcInteropTests
     [FrTag("NFR-007")]
     public async Task SdJwt_disclosure_digests_equal_independent_sha256_base64url()
     {
-        var (issuer, _) = Roles();
-        var compact = await IssueDisclosableAsync(issuer);
+        using var provider = Provider();
+        var compact = await IssueDisclosableAsync(provider.GetRequiredService<IIssuer>());
 
         var parts = compact.Split('~');
         var issuerJwt = parts[0];
@@ -84,8 +81,9 @@ public sealed class SdJwtVcInteropTests
     [FrTag("NFR-007")]
     public async Task SdJwt_tampered_disclosure_is_rejected()
     {
-        var (issuer, verifier) = Roles();
-        var compact = await IssueDisclosableAsync(issuer);
+        using var provider = Provider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var compact = await IssueDisclosableAsync(provider.GetRequiredService<IIssuer>());
 
         var parts = compact.Split('~');
         // Re-encode the first disclosure with a changed value: still a well-formed disclosure, but its
@@ -103,8 +101,9 @@ public sealed class SdJwtVcInteropTests
     [FrTag("NFR-007")]
     public async Task SdJwt_unmatched_disclosure_is_rejected()
     {
-        var (issuer, verifier) = Roles();
-        var compact = await IssueDisclosableAsync(issuer);
+        using var provider = Provider();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var compact = await IssueDisclosableAsync(provider.GetRequiredService<IIssuer>());
 
         // Append a well-formed but never-issued disclosure (its digest is in no _sd array) — RFC 9901
         // requires the verifier to reject an unmatched disclosure.

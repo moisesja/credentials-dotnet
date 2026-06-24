@@ -22,7 +22,7 @@ limitations, grouped:
 | `relatedResource` integrity (wrong/missing/duplicate digest, non-object form) | `relatedResource` digest verification is not implemented. | Future feature. |
 | `name` / `description` language-value-object validation (extra properties) | The engine does not validate the §11.1 language/direction object shape of `name`/`description`. | Future hardening. |
 | A few issuer/credentialSchema/credentialStatus identifier-URL negatives | The structural validator does not yet reject every non-URL identifier the suite checks. | Incremental validator hardening. |
-| Verifiable Presentation verification (the suite's `eddsa-rdfc-2022` authentication proof) | The engine's VP holder-binding verification reports the suite's VP authentication proof as not-found (`NoProof`); a VP-proof interop gap distinct from the (passing) credential path. | Tracked engine bug. |
+| Verifiable Presentation verification (the suite's `eddsa-rdfc-2022` authentication proof) | The engine's VP holder-binding verification reports the suite's VP authentication proof as not-found (`NoProof`); a VP-proof interop gap distinct from the (passing) credential path. | Tracked: [#11](https://github.com/moisesja/credentials-dotnet/issues/11). |
 
 This is reported as a tracked baseline rather than a "fully conformant" claim: the engine passes the
 structural / issue / verify core of the suite, and the gaps above are explicit and individually

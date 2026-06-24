@@ -38,10 +38,10 @@ public sealed partial class W3cVcdm2SuiteTests
             var issuerDid = await WaitForShimAsync(baseUrl, TimeSpan.FromSeconds(60));
             WriteLocalConfig(suiteDir!, baseUrl, issuerDid);
 
-            var (output, _) = await RunSuiteAsync(suiteDir!, baseUrl, issuerDid, TimeSpan.FromMinutes(8));
+            var (output, exitCode) = await RunSuiteAsync(suiteDir!, baseUrl, issuerDid, TimeSpan.FromMinutes(8));
             var passing = ParseCount(output, "passing");
             var failing = ParseCount(output, "failing");
-            Console.WriteLine($"W3C VCDM 2.0 suite: {passing} passing, {failing} failing (baseline {PassingBaseline}).");
+            Console.WriteLine($"W3C VCDM 2.0 suite: {passing} passing, {failing} failing (mocha exit {exitCode}, baseline {PassingBaseline}).");
 
             passing.Should().BeGreaterThanOrEqualTo(PassingBaseline,
                 $"the engine must not regress below {PassingBaseline} passing W3C suite tests. Output:\n{output}");
@@ -142,8 +142,11 @@ public sealed partial class W3cVcdm2SuiteTests
         var config = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent?.Name ?? "Debug";
         foreach (var c in new[] { config, "Debug", "Release" })
         {
-            var dll = Path.Combine(root, "tests", "Credentials.Conformance.VcApi", "bin", c, "net10.0", "Credentials.Conformance.VcApi.dll");
-            if (File.Exists(dll)) return dll;
+            // Glob the TFM directory rather than hardcoding it, so a framework bump can't silently break this.
+            var binDir = Path.Combine(root, "tests", "Credentials.Conformance.VcApi", "bin", c);
+            if (!Directory.Exists(binDir)) continue;
+            var found = Directory.GetFiles(binDir, "Credentials.Conformance.VcApi.dll", SearchOption.AllDirectories);
+            if (found.Length > 0) return found[0];
         }
         throw new FileNotFoundException("Credentials.Conformance.VcApi.dll not found — build the shim first.");
     }
