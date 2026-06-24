@@ -161,3 +161,26 @@ ConsumerProbe as the authority; FrCoverage hardened to ignore commented-out tags
 defeated.
 
 **Next:** PR-B (samples + api-coverage gate), then PR-C (conformance + interop).
+
+### PR-B — Samples matrix + API-coverage gate (complete, 2026-06-24)
+
+**Status: complete + verified.** Branch `feature/m8b-samples-coverage`, rebased onto `main` after M8a
+merged (PR #8). Build 0-warning; **352 tests green** (338 + 14 sample smoke tests); all 14 samples run
+to their expected outcome; the api-coverage gate passes (53 covered / 0 uncovered / 4 exempted).
+
+**Delivered:** `Credentials.Samples.Shared` (keys/narrator/allowlist policy); 14 offline `samples/*`
+console projects (role × form + status + schema + trust + 1.1); `Credentials.SampleSmokeTests` (the
+in-process runner + coverage driver); `tools/api-coverage` + `run-api-coverage.sh` + `coverage.runsettings`
++ `api-coverage-exclusions.txt`; the `api-coverage` CI job.
+
+**Decisions:** (1) The api-coverage gate is **type-level** (every gateable public type is exercised by a
+sample), calibrated to the real coverage (only 5 public types were initially uncovered). This is the
+achievable, honest bar; member-level 100% over ~700 members is not realistic and would be exclusion-heavy.
+(2) Exemptions are a **documented text file** (not a `[ExcludeFromApiCoverage]` attribute) to avoid
+coupling production code to the test gate — 4 entries (3 error-path types + the options object), each
+with a reason; the tool also fails on a *stale* exclusion. (3) `SecuringSelector` was covered by adding a
+real capabilities query to the DataIntegrity sample rather than exempting it. (4) The Vcdm11 sample
+embeds a genuine `did:key`-issued secured-1.1 fixture (generated via the internal mechanism, since public
+issuance is 2.0-only) so it verifies fully offline.
+
+**Next:** PR-C (conformance shim + interop vectors).
