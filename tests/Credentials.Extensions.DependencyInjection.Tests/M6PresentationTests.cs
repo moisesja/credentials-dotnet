@@ -91,6 +91,124 @@ public sealed class M6PresentationTests
     }
 
     [Fact]
+    [FrTag("FR-041")]
+    public async Task Holder_less_signed_presentation_verifies_on_possession_alone()
+    {
+        // VCDM 2.0: `holder` is OPTIONAL. A presentation signed with no holder still proves possession of
+        // the binding key and freshness, so its binding check passes (W3C conformance; issue #11).
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        // Drop the holder before signing, then bind — the proof now covers a holder-less presentation.
+        var noHolder = JsonNode.Parse(BuildVp(holder, held, holderKey.Did).ToBytes())!.AsObject();
+        noHolder.Remove("holder");
+        var bound = await holder.BindWithDataIntegrityAsync(
+            VerifiablePresentation.Parse(noHolder.ToJsonString()),
+            new VpBindingRequest
+            {
+                HolderSigner = holderKey.Signer,
+                VerificationMethod = holderKey.VerificationMethod,
+                Challenge = Challenge,
+                Domain = Domain,
+            });
+
+        var result = await verifier.VerifyPresentationAsync(
+            bound, new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
+
+        result.Check(CheckKinds.HolderBinding)!.Status.Should().Be(CheckStatus.Passed, result.ToString());
+        result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
+    }
+
+    [Fact]
+    [FrTag("FR-041")]
+    public async Task Stripping_the_holder_from_a_bound_presentation_breaks_the_proof()
+    {
+        // The holder-less Passed path must be unreachable by tampering: `holder` is in the proof's signed
+        // scope, so removing a victim's holder from a holder-BOUND presentation invalidates the proof — the
+        // binding fails as a proof failure, NOT the holder-less shortcut.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        var (held, holderKey) = await HoldACredentialAsync(issuer, holder);
+        var bound = await holder.BindWithDataIntegrityAsync(
+            BuildVp(holder, held, holderKey.Did),
+            new VpBindingRequest
+            {
+                HolderSigner = holderKey.Signer,
+                VerificationMethod = holderKey.VerificationMethod,
+                Challenge = Challenge,
+                Domain = Domain,
+            });
+
+        var stripped = JsonNode.Parse(bound.ToBytes())!.AsObject();
+        stripped.Remove("holder");
+
+        var result = await verifier.VerifyPresentationAsync(
+            VerifiablePresentation.Parse(stripped.ToJsonString()),
+            new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
+
+        result.Decision.Should().Be(VerificationDecision.Rejected);
+        var binding = result.Check(CheckKinds.HolderBinding)!;
+        binding.Status.Should().Be(CheckStatus.Failed);
+        binding.Diagnostics.Should().NotContain(d => d.Code == "holder_binding_missing",
+            "the failure must be the broken proof, not the holder-less shortcut");
+    }
+
+    [Fact]
+    [FrTag("FR-041")]
+    public async Task Holder_binding_proves_possession_not_that_the_presenter_is_the_subject()
+    {
+        // Documents the holder-binding scope (see PresentationVerificationOptions.RequireHolderBinding): a
+        // passing binding proves possession + freshness, NOT that the presenter is the credential subject.
+        // A party who holds a credential can present it in a VP signed with their OWN key and it Accepts;
+        // binding the presenter to credentialSubject.id is the verifying application's policy, not the engine's.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var holder = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        // A credential whose subject is someone OTHER than the presenter.
+        var issuerKey = TestKeys.New(KeyType.Ed25519);
+        const string subjectDid = "did:example:the-actual-subject";
+        var credential = Credential.Build()
+            .WithIssuer(issuerKey.Did)
+            .AddSubject(new JsonObject { ["id"] = subjectDid, ["alumniOf"] = "Example University" })
+            .Seal();
+        var issued = await issuer.IssueAsync(credential, new DataIntegrityIssuanceRequest
+        {
+            Cryptosuite = "eddsa-jcs-2022",
+            Signer = issuerKey.Signer,
+            VerificationMethod = issuerKey.VerificationMethod,
+        });
+
+        // A DIFFERENT party (the presenter) wraps it in a presentation signed with THEIR key.
+        var presenterKey = TestKeys.New(KeyType.Ed25519);
+        presenterKey.Did.Should().NotBe(subjectDid);
+        var bound = await holder.BindWithDataIntegrityAsync(
+            BuildVp(holder, holder.Ingest(issued.Credential.ToBytes()), presenterKey.Did),
+            new VpBindingRequest
+            {
+                HolderSigner = presenterKey.Signer,
+                VerificationMethod = presenterKey.VerificationMethod,
+                Challenge = Challenge,
+                Domain = Domain,
+            });
+
+        var result = await verifier.VerifyPresentationAsync(
+            bound, new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain });
+
+        // Possession + freshness verify even though presenter != subject; the engine does not link them.
+        result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
+        result.Check(CheckKinds.HolderBinding)!.Status.Should().Be(CheckStatus.Passed);
+        result.Credentials[0].Decision.Should().Be(VerificationDecision.Accepted);
+    }
+
+    [Fact]
     [FrTag("FR-033")]
     public async Task Jose_vp_jwt_bound_presentation_round_trips()
     {

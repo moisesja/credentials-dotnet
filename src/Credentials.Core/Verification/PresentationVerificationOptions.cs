@@ -27,6 +27,17 @@ public sealed record PresentationVerificationOptions
     /// not carry. Per-contained-credential holder binding is additionally enabled whenever
     /// <see cref="ExpectedAudience"/> is supplied (see the verifier's contained-options derivation), so a
     /// verifier that names itself still enforces each child's KB-JWT without changing the credential-level default.
+    /// <para>
+    /// SCOPE OF HOLDER BINDING. A passing holder-binding check proves only <em>possession of the binding key</em>
+    /// and <em>freshness</em> (the presentation's authentication proof verified and its challenge/domain matched
+    /// the verifier's). It deliberately does <strong>not</strong> prove that the presenter is the
+    /// <c>credentialSubject</c> of the contained credentials — the engine performs no holder↔subject linkage.
+    /// A party who obtains a credential can present it in a presentation signed with their <em>own</em> key and
+    /// the presentation composes to <see cref="VerificationDecision.Accepted"/>. Binding the presenter to the
+    /// credential subject (and any holder-identity policy) is the verifying application's responsibility; do not
+    /// read <see cref="VerificationDecision.Accepted"/> as "presented by the subject". (Per VCDM 2.0, <c>holder</c>
+    /// itself is optional: a signed presentation with no <c>holder</c> still passes binding on possession alone.)
+    /// </para>
     /// </remarks>
     public bool RequireHolderBinding { get; init; } = true;
 

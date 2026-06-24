@@ -99,6 +99,9 @@ app.MapPost("/presentations/verify", async (JsonElement body, IVerifier verifier
         var result = await verifier.VerifyPresentationAsync(presentation, new PresentationVerificationOptions
         {
             RequireHolderBinding = false,
+            // VCDM 2.0 makes `verifiableCredential` optional, and the suite submits credential-less VPs —
+            // so don't treat an empty presentation as a structure failure here.
+            RequireAtLeastOneCredential = false,
             ExpectedChallenge = challenge,
             ExpectedDomain = domain,
         });
