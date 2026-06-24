@@ -23,7 +23,7 @@ internal static class LibrarySurface
     // ResolveLibraryArtifacts() reads Configuration + RepoRoot, so those must initialize first.
 
     /// <summary>The build configuration (<c>Debug</c>/<c>Release</c>) this test run was built under.</summary>
-    public static string Configuration { get; } = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent!.Name;
+    public static string Configuration { get; } = ResolveConfiguration();
 
     /// <summary>The repository root (the directory containing <c>Credentials.sln</c>).</summary>
     public static string RepoRoot { get; } = FindRepoRoot();
@@ -101,7 +101,7 @@ internal static class LibrarySurface
         foreach (var name in LibraryNames)
         {
             // Core + DI are copied next to the test binary; Rdfc (referenced build-order-only) is not,
-            // so fall back to its own build output directory.
+            // so fall back to its own build output directory under whichever configuration built it.
             var local = Path.Combine(AppContext.BaseDirectory, name + extension);
             if (File.Exists(local))
             {
@@ -109,12 +109,30 @@ internal static class LibrarySurface
                 continue;
             }
 
-            var srcOutput = Path.Combine(RepoRoot, "src", name, "bin", Configuration, "net10.0", name + extension);
-            if (!File.Exists(srcOutput))
-                throw new FileNotFoundException($"Could not locate built artifact '{name}{extension}'. Looked in '{local}' and '{srcOutput}'.");
-            paths.Add(srcOutput);
+            var tried = new List<string> { local };
+            string? found = null;
+            // Prefer the detected configuration, but also try the other — output layout can be
+            // non-standard (e.g. `dotnet test --output`) and the detected config can be off.
+            foreach (var config in new[] { Configuration, Configuration == "Release" ? "Debug" : "Release" })
+            {
+                var candidate = Path.Combine(RepoRoot, "src", name, "bin", config, "net10.0", name + extension);
+                tried.Add(candidate);
+                if (File.Exists(candidate)) { found = candidate; break; }
+            }
+
+            paths.Add(found ?? throw new FileNotFoundException(
+                $"Could not locate built artifact '{name}{extension}'. Looked in: {string.Join("; ", tried)}."));
         }
         return paths;
+    }
+
+    private static string ResolveConfiguration()
+    {
+        // Output layout is bin/<Config>/<tfm>/, so the configuration is the base dir's parent name —
+        // but guard the assumption (a non-standard output path could make Parent null) rather than
+        // surfacing a confusing NullReferenceException from a static initializer.
+        var parent = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)).Parent?.Name;
+        return string.IsNullOrEmpty(parent) ? "Debug" : parent;
     }
 
     private static string FindRepoRoot()

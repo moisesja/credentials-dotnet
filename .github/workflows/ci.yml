@@ -38,6 +38,8 @@ jobs:
   no-newtonsoft:
     name: no-Newtonsoft consumer closure
     runs-on: ubuntu-latest
+    # Gate on the build so a compile break surfaces as one root-cause job, not three red peers.
+    needs: build-test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -51,6 +53,7 @@ jobs:
   semver:
     name: API compatibility (semver)
     runs-on: ubuntu-latest
+    needs: build-test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

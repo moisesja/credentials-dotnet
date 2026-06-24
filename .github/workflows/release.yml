@@ -32,7 +32,7 @@ jobs:
 
       # Full gate before anything is published.
       - name: Build (warnings-as-errors)
-        run: dotnet build Credentials.sln -c Release --no-restore -p:CredentialsVersion=${{ steps.version.outputs.version }}
+        run: dotnet build Credentials.sln -c Release --no-restore -p:CredentialsVersion="${{ steps.version.outputs.version }}"
       - name: Test
         run: dotnet test Credentials.sln -c Release --no-build --filter "Category!=Conformance"
       - name: No-Newtonsoft closure
@@ -47,7 +47,7 @@ jobs:
             src/Credentials.Extensions.DependencyInjection/Credentials.Extensions.DependencyInjection.csproj \
             src/Credentials.Rdfc/Credentials.Rdfc.csproj ; do
             dotnet pack "$proj" -c Release --no-build \
-              -p:CredentialsVersion=${{ steps.version.outputs.version }} \
+              -p:CredentialsVersion="${{ steps.version.outputs.version }}" \
               -o ./artifacts/packages
           done
 
@@ -60,6 +60,9 @@ jobs:
       - name: Push to nuget.org
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        # Globbing *.nupkg is intentional: `dotnet nuget push` automatically pushes the matching
+        # symbol package (`<id>.<ver>.snupkg`) sitting alongside each `.nupkg` to nuget.org's symbol
+        # server, so symbols publish without a separate push (and without risking a double-push).
         run: |
           dotnet nuget push "./artifacts/packages/*.nupkg" \
             --api-key "$NUGET_API_KEY" \

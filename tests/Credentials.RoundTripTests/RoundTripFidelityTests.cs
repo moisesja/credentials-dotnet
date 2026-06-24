@@ -206,9 +206,13 @@ public sealed class RoundTripFidelityTests
         (await verifier.VerifyCredentialAsync(reparsed)).Decision.Should().Be(VerificationDecision.Accepted);
     }
 
+    // Counts proofs honestly: a single proof object is 1, an array of N proofs is N (a Data Integrity
+    // document may carry a `proof` array), absent is 0 — so the "exactly one proof" assertion catches an
+    // accidental multi-proof emission, not just presence.
     private static int ProofCount(byte[] securedJson)
     {
         var root = JsonNode.Parse(securedJson)!.AsObject();
-        return root.TryGetPropertyValue("proof", out _) ? 1 : 0;
+        if (!root.TryGetPropertyValue("proof", out var proof) || proof is null) return 0;
+        return proof is JsonArray array ? array.Count : 1;
     }
 }
