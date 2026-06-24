@@ -1,0 +1,12 @@
+# Public types of Credentials.Core / .Extensions.DependencyInjection that no sample exercises, each
+# exempted with a reason. The api-coverage gate fails if a NON-exempt public type is uncovered, and
+# also if an entry here becomes covered by a sample (a stale exclusion to remove). Internal types and
+# no-executable-code types (interfaces, enums) are auto-skipped and need no entry here.
+
+# Error-path types — only materialize on malformed input; the samples demonstrate success paths.
+Credentials.CredentialFormatException
+Credentials.Validation.CredentialStructureException
+Credentials.Validation.StructuralProblem
+
+# Engine-tuning options object — the samples rely on the defaults, so no sample calls Configure(...).
+Microsoft.Extensions.DependencyInjection.CredentialsOptions

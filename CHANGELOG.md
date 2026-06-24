@@ -6,6 +6,34 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Added — Milestone M8b (Samples matrix & API-coverage gate)
+
+The second of three M8 PRs. A first-class, offline samples matrix demonstrating every role × securing
+form plus status/schema/trust/1.1, and an api-coverage gate proving the samples exercise the public
+surface. Test count **338 → 352** (+14 sample smoke tests); build stays 0-warning.
+
+- **`Credentials.Samples.Shared`** — the keystone wiring (`SampleKeys` in-memory `did:key` minting,
+  `SampleNarrator` FR-banner output, and `AllowlistIssuerTrustPolicy` — the one shipped trust policy,
+  which per FR-082 lives in samples, not the library).
+- **14 `samples/*` console projects**, each exposing `Program.RunAsync(TextWriter, IServiceProvider?)`,
+  offline, narrating the FRs it demonstrates and throwing on any unexpected outcome:
+  DataIntegrity (eddsa-jcs-2022, + a capabilities query over `ISecuringCapabilities`/`SecuringSelector`),
+  DataIntegrityRdfc (eddsa-rdfc-2022), JoseEnvelope (vc+jwt), CoseEnvelope (vc+cose),
+  SdJwtVc (selective disclosure), SdJwtPresentation (KB-JWT holder binding), Bbs2023 (bbs-2023 derive,
+  `IsAvailable`-gated), PresentationDataIntegrity + PresentationJose (holder binding + presentation
+  verification), StatusList (Bitstring Status List revoke/verify), Schema (JSON Schema 2020-12),
+  IssuerTrust (allowlist trusted/untrusted), Vcdm11 (verify a foreign-issued 1.1 credential + the
+  `AcceptVcdm11=false` opt-out gate), and FullPipeline (status + schema + trust composed).
+- **`Credentials.SampleSmokeTests`** — runs every sample's `RunAsync` in-process (14 facts); doubles as
+  the api-coverage driver under coverlet (scoped to Core + DI).
+- **`tools/api-coverage`** (+ `tools/run-api-coverage.sh`, `tools/coverage.runsettings`) — a console
+  tool that diffs the public surface (via `MetadataLoadContext`) against the samples' coverage and fails
+  if any gateable public type is exercised by no sample. Type-level: **53 covered, 0 uncovered, 4
+  documented exemptions** (`api-coverage-exclusions.txt` — error-path exceptions + the tuning options
+  object; the tool also fails on a stale exclusion that has since become covered). Interfaces/enums and
+  internal types are auto-skipped.
+- **CI** — `ci.yml` gains an `api-coverage` job (`needs: build-test`).
+
 ### Added — Milestone M8a (Quality & release gates)
 
 The first of three M8 PRs (M8 = conformance + interop + samples + gates). M8a lands the pure-.NET
