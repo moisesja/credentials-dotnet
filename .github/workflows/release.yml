@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     # Publishes via NuGet trusted publishing (OIDC) — no stored API key. Requires a Trusted Publishing
     # policy on nuget.org for repo moisesja/credentials-dotnet, workflow file release.yml, environment
-    # nuget-release; and a repository variable NUGET_USER set to the nuget.org account username.
+    # nuget-release. The nuget.org account name is hardcoded in the login step (it is public).
     environment: nuget-release
     permissions:
       contents: read
@@ -66,7 +66,7 @@ jobs:
         uses: NuGet/login@v1
         id: nuget-login
         with:
-          user: ${{ vars.NUGET_USER }}
+          user: moisesja # nuget.org account/profile name (public package owner), not an email
 
       - name: Push to nuget.org
         # Globbing *.nupkg is intentional: `dotnet nuget push` automatically pushes the matching
