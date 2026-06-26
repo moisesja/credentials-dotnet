@@ -21,15 +21,11 @@ public sealed class HttpFetchRedirectTests
     [Fact]
     public async Task Named_client_does_not_follow_redirects()
     {
-        var port = GetFreePort();
-        var baseUrl = $"http://127.0.0.1:{port}/";
+        var (listener, baseUrl) = StartLoopbackListener();
         var redirectUrl = baseUrl + "a";
         var targetUrl = baseUrl + "b";
         var targetHits = 0;
 
-        using var listener = new HttpListener();
-        listener.Prefixes.Add(baseUrl);
-        listener.Start();
         using var cts = new CancellationTokenSource();
         var serving = ServeAsync(listener, targetUrl, () => Interlocked.Increment(ref targetHits), cts.Token);
 
@@ -54,7 +50,28 @@ public sealed class HttpFetchRedirectTests
         finally
         {
             cts.Cancel();
-            listener.Stop();
+            listener.Close();
+        }
+    }
+
+    // Bind an HttpListener to a free loopback port, retrying on the rare TOCTOU race between probing for a
+    // free port and HttpListener binding it (another process can grab the port in between).
+    private static (HttpListener Listener, string BaseUrl) StartLoopbackListener()
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var baseUrl = $"http://127.0.0.1:{GetFreePort()}/";
+            var listener = new HttpListener();
+            listener.Prefixes.Add(baseUrl);
+            try
+            {
+                listener.Start();
+                return (listener, baseUrl);
+            }
+            catch (HttpListenerException) when (attempt < 5)
+            {
+                listener.Close();
+            }
         }
     }
 

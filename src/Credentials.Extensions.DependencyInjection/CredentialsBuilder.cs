@@ -103,9 +103,21 @@ public sealed class CredentialsBuilder
     /// the redirected request never fires. A caller who genuinely needs redirects (and accepts that SSRF
     /// posture) can reconfigure the named client's primary handler.
     /// </summary>
-    private void ConfigureFetchHttpClient() =>
+    private bool _fetchHttpClientConfigured;
+
+    private void ConfigureFetchHttpClient()
+    {
+        // Idempotent: chaining UseHttpStatusListFetcher().UseHttpSchemaResolver() must not grow the named
+        // client's handler-builder action list with duplicate (identical) registrations.
+        if (_fetchHttpClientConfigured)
+        {
+            return;
+        }
+
+        _fetchHttpClientConfigured = true;
         Services.AddHttpClient(HttpFetch.ClientName)
             .ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler { AllowAutoRedirect = false });
+    }
 
     // ── Status (FR-022/FR-081): the status-list fetch hook. Unset ⇒ the status check is Skipped. ──
 

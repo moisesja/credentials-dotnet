@@ -311,6 +311,43 @@ public sealed class M1IssueVerifyTests
     }
 
     [Fact]
+    [FrTag("FR-040")]
+    public async Task DataIntegrity_multi_proof_with_one_method_not_found_is_failed_not_indeterminate()
+    {
+        // Fail-closed ACROSS multiple proofs: a credential carrying a VALID proof AND a second proof whose
+        // verificationMethod fragment is absent from a resolvable DID (MethodNotFound) must be Rejected /
+        // Failed — a good proof must not rescue a credential that also carries a definitive method-not-found
+        // proof, and the bad proof must not be downgraded to Indeterminate by its valid sibling.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        var issued = await issuer.IssueAsync(
+            UnsecuredCredential(key.Did),
+            new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+
+        // Build a two-proof document: the issued (valid) proof, plus a clone whose verificationMethod
+        // fragment is mangled (distinct VM URL ⇒ not deduplicated; its signature is irrelevant because
+        // resolution fails first). The valid proof is listed first to prove it cannot rescue the bad one.
+        var node = JsonNode.Parse(issued.Credential.ToBytes().AsSpan())!.AsObject();
+        var proofJson = node["proof"]!.ToJsonString();
+        var mangledProof = JsonNode.Parse(proofJson)!.AsObject();
+        mangledProof["verificationMethod"] = key.Did + "#zMangledBogusFragment";
+        node["proof"] = new JsonArray(JsonNode.Parse(proofJson), mangledProof);
+        var multi = Credential.Parse(JsonSerializer.SerializeToUtf8Bytes(node));
+
+        var strict = await verifier.VerifyCredentialAsync(multi);
+        strict.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+        strict.Check(CheckKinds.Proof)!.Diagnostics.Should().Contain(d => d.Code == "verification_method_not_found");
+
+        var nonStrict = await verifier.VerifyCredentialAsync(
+            multi,
+            new CredentialVerificationOptions { Policy = new VerificationPolicy { TreatIndeterminateAsFailure = false } });
+        nonStrict.Decision.Should().Be(VerificationDecision.Rejected);
+    }
+
+    [Fact]
     public async Task Issuing_an_already_secured_credential_throws()
     {
         using var provider = BuildProvider();
