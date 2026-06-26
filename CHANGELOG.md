@@ -4,36 +4,36 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## v1.0.0 - 6/26/2026
 
 ### Changed
 
 - **VCDM 2.0 compliance hardening — W3C conformance baseline raised 43 → 57 / 59.** The structural validator
   now enforces several VCDM 2.0 rules it previously accepted. This is intentionally landed in the 1.0.0
-  major (not a later 1.0.x) because it makes validation *stricter* — newly rejecting inputs the engine used
+  major (not a later 1.0.x) because it makes validation _stricter_ — newly rejecting inputs the engine used
   to accept would otherwise be a semver-breaking change:
-  - **Identifier members must be URLs** — an absolute URI with a scheme; DIDs/URNs/URLs pass, while
-    scheme-less / whitespace / `null` / multi-valued identifiers are rejected: `id`, `issuer` (bare string
-    and object `.id`), `credentialStatus.id`, `credentialSchema.id`, `credentialSubject.id`,
-    `refreshService.id`, `relatedResource.id` (VCDM §4.4 / §4.7 / §4.9 / §4.11).
-  - **`refreshService`** entries must carry a `type`.
-  - **`relatedResource`** must be one or more objects, each with a unique URL `id` and at least one of
-    `digestSRI` / `digestMultibase` (§5.3, structural; digest *hash*-verification is a deferred follow-up).
-  - **`name` / `description`** language value objects (top-level and on the `issuer` object) are closed —
-    only `@value`, `@language`, `@direction` are permitted (§11.1).
-  - **Issuance rejects a Data Integrity proof whose `proofPurpose` is not `assertionMethod`** at the role
-    boundary (VC Data Integrity 1.0 §3.2), rather than merely defaulting it.
+    - **Identifier members must be URLs** — an absolute URI with a scheme; DIDs/URNs/URLs pass, while
+      scheme-less / whitespace / `null` / multi-valued identifiers are rejected: `id`, `issuer` (bare string
+      and object `.id`), `credentialStatus.id`, `credentialSchema.id`, `credentialSubject.id`,
+      `refreshService.id`, `relatedResource.id` (VCDM §4.4 / §4.7 / §4.9 / §4.11).
+    - **`refreshService`** entries must carry a `type`.
+    - **`relatedResource`** must be one or more objects, each with a unique URL `id` and at least one of
+      `digestSRI` / `digestMultibase` (§5.3, structural; digest _hash_-verification is a deferred follow-up).
+    - **`name` / `description`** language value objects (top-level and on the `issuer` object) are closed —
+      only `@value`, `@language`, `@direction` are permitted (§11.1).
+    - **Issuance rejects a Data Integrity proof whose `proofPurpose` is not `assertionMethod`** at the role
+      boundary (VC Data Integrity 1.0 §3.2), rather than merely defaulting it.
 
-  The W3C VCDM 2.0 suite now passes **57 / 59**; the 2 remaining are documented in
-  [docs/conformance.md](docs/conformance.md) — detecting an unmapped-via-`@context` `type` (a JSON-LD
-  term-resolution check, an STJ-only non-goal) and `relatedResource` digest hash-verification (deferred to
-  a focused follow-up). The conformance gate baseline is raised to **57**.
+    The W3C VCDM 2.0 suite now passes **57 / 59**; the 2 remaining are documented in
+    [docs/conformance.md](docs/conformance.md) — detecting an unmapped-via-`@context` `type` (a JSON-LD
+    term-resolution check, an STJ-only non-goal) and `relatedResource` digest hash-verification (deferred to
+    a focused follow-up). The conformance gate baseline is raised to **57**.
 
 ### Security
 
 - **Data Integrity verification now distinguishes "DID unresolvable" from "verification method absent" (F7).**
   The embedded Data Integrity path resolved a proof's `verificationMethod` through a 2-state (nullable)
-  resolver, so a DID that *resolved* but did not publish the referenced method collapsed to the same
+  resolver, so a DID that _resolved_ but did not publish the referenced method collapsed to the same
   `Indeterminate` outcome as a genuine resolution failure. An attacker could mangle a tampered/forged
   credential's `verificationMethod` **fragment** (over a still-resolvable base DID) to downgrade a
   definitive bad-signature **Failed** to **Indeterminate**, which a non-strict policy
@@ -62,19 +62,19 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
   omitted either — so a standard Data-Integrity-signed VP from another implementation (e.g. the W3C suite's
   `eddsa-rdfc-2022` presentations, which carry no `holder`) failed to verify. The earlier "VP authentication
   proof reported as `NoProof`" diagnosis was incorrect; the real causes were two over-strict checks:
-  - `BindHolder` failed when `holder` was absent. Now a signed presentation with no holder passes the binding
-    check on **possession alone** (the binding proof verified and the challenge/domain matched; there is no
-    holder identity to bind). This is an **engine-default behaviour change** — it applies to all callers under
-    default options (still replay-safe: `RequireHolderBinding` defaults `true`, forcing a challenge), and is the
-    intended interop fix. It is not abusable: `holder` is inside the proof's signed scope, so stripping a
-    victim's `holder` invalidates the proof before the check runs (guarded by a new regression test). The scope
-    of holder binding (possession + freshness, **not** that the presenter is the credential subject) is now
-    documented on `PresentationVerificationOptions.RequireHolderBinding` and covered by a test.
-  - The empty-presentation rule (`presentation_no_credentials`) is, by contrast, gated on the existing
-    `RequireAtLeastOneCredential` option, which is **unchanged at its `true` default**; only the conformance
-    shim sets it `false` (a VP may legitimately carry no credentials).
-  This raises the W3C VCDM 2.0 conformance baseline **36 → 43 / 59** (the `4.13-verifiable-presentations`
-  group now passes). See [docs/conformance.md](docs/conformance.md).
+    - `BindHolder` failed when `holder` was absent. Now a signed presentation with no holder passes the binding
+      check on **possession alone** (the binding proof verified and the challenge/domain matched; there is no
+      holder identity to bind). This is an **engine-default behaviour change** — it applies to all callers under
+      default options (still replay-safe: `RequireHolderBinding` defaults `true`, forcing a challenge), and is the
+      intended interop fix. It is not abusable: `holder` is inside the proof's signed scope, so stripping a
+      victim's `holder` invalidates the proof before the check runs (guarded by a new regression test). The scope
+      of holder binding (possession + freshness, **not** that the presenter is the credential subject) is now
+      documented on `PresentationVerificationOptions.RequireHolderBinding` and covered by a test.
+    - The empty-presentation rule (`presentation_no_credentials`) is, by contrast, gated on the existing
+      `RequireAtLeastOneCredential` option, which is **unchanged at its `true` default**; only the conformance
+      shim sets it `false` (a VP may legitimately carry no credentials).
+      This raises the W3C VCDM 2.0 conformance baseline **36 → 43 / 59** (the `4.13-verifiable-presentations`
+      group now passes). See [docs/conformance.md](docs/conformance.md).
 
 ### Added — Milestone M8c (Conformance + interop) — the M8 finale
 
@@ -144,17 +144,17 @@ NFR-005, NFR-009 empirically and wiring CI/CD. Test count **318 → 338**; build
 - **`Credentials.ArchitectureTests`** — invariant gates inspected by metadata only
   (`System.Reflection.MetadataLoadContext`, so the opt-in Credentials.Rdfc is examined without loading
   its Newtonsoft into the test host):
-  - `PublicSurface_ExposesNoDataProofsType` (FR-051 / NFR-005, F3) — no `DataProofsDotnet` type may
-    appear in any public/protected signature of the three libraries (return/parameter/field/property/
-    generic-argument/base/interface vectors all covered).
-  - `DefaultLibrary_ReferenceClosure_HasNoNewtonsoft` (NFR-002, static half) — the compile-time
-    reference closure of Core + DI is Newtonsoft-free. Documented scope: catches a *used* Newtonsoft
-    type; the authoritative package-level guarantee is the ConsumerProbe (below).
-  - `PublicSurface_EveryDocumentedMember_HasNonEmptySummary` (NFR-009) — complements CS1591-as-error
-    (missing docs) by catching *empty* `<summary>` on public-surface members.
-  - `RoleMethods_NamedAsync_ReturnTaskOrValueTask` (NFR-004) and `Library_TargetsNet10` (NFR-001).
-  - `EveryRequirement_HasAtLeastOneTaggedTest` (the **FrCoverage gate**) — every PRD §8 requirement has
-    ≥1 `[FrTag]`-tagged test (deferring NFR-007 to M8c with a logged reason); a typo'd/unknown id fails.
+    - `PublicSurface_ExposesNoDataProofsType` (FR-051 / NFR-005, F3) — no `DataProofsDotnet` type may
+      appear in any public/protected signature of the three libraries (return/parameter/field/property/
+      generic-argument/base/interface vectors all covered).
+    - `DefaultLibrary_ReferenceClosure_HasNoNewtonsoft` (NFR-002, static half) — the compile-time
+      reference closure of Core + DI is Newtonsoft-free. Documented scope: catches a _used_ Newtonsoft
+      type; the authoritative package-level guarantee is the ConsumerProbe (below).
+    - `PublicSurface_EveryDocumentedMember_HasNonEmptySummary` (NFR-009) — complements CS1591-as-error
+      (missing docs) by catching _empty_ `<summary>` on public-surface members.
+    - `RoleMethods_NamedAsync_ReturnTaskOrValueTask` (NFR-004) and `Library_TargetsNet10` (NFR-001).
+    - `EveryRequirement_HasAtLeastOneTaggedTest` (the **FrCoverage gate**) — every PRD §8 requirement has
+      ≥1 `[FrTag]`-tagged test (deferring NFR-007 to M8c with a logged reason); a typo'd/unknown id fails.
 - **`Credentials.RoundTripTests`** (FR-003) — byte-fidelity DoD per securing family this engine issues
   end-to-end (unsecured received-bytes verbatim; embedded DI in JCS+RDFC byte-stable with exactly one
   `proof`; JOSE/SD-JWT verbatim compact + signed-payload == source bytes; COSE verbatim wire bytes;
@@ -184,14 +184,14 @@ An adversarial pass attacked each gate to confirm it has teeth (not hollow). The
 correctly when defeat was attempted. Two real findings were fixed:
 
 - **ConsumerProbe was hollow (stale-cache false-pass).** Re-packing the fixed version `0.1.0` with new
-  dependencies served *stale* package metadata from nuget's id+version-keyed cache, so a Newtonsoft
+  dependencies served _stale_ package metadata from nuget's id+version-keyed cache, so a Newtonsoft
   dependency added to Core was invisible to the closure check — it always reported the first run's
   result. Fixed by packing under a unique per-run version delivered as an environment-variable MSBuild
   property (consistent across restore/build/`dotnet list`, which does not accept `-p:`). Verified: the
   fixed gate now reports the violation when Newtonsoft is present and clean otherwise.
 - **The static reference-closure check has an inherent blind spot** — the C# compiler only records
-  references to *used* assemblies, so an unused-yet-declared `PackageReference` carrying Newtonsoft is
-  invisible to it. Documented honestly; recursion broadened to every non-BCL assembly (so a *used*
+  references to _used_ assemblies, so an unused-yet-declared `PackageReference` carrying Newtonsoft is
+  invisible to it. Documented honestly; recursion broadened to every non-BCL assembly (so a _used_
   Newtonsoft edge hidden behind an intermediate is still caught); the package-level ConsumerProbe is the
   authoritative NFR-002 gate. The FrCoverage scan was also hardened to ignore commented-out `[FrTag]`s.
 
@@ -208,16 +208,16 @@ correctly when defeat was attempted. Two real findings were fixed:
   Most of the version-aware machinery already existed (positive `@context[0]` detection in `VersionProjection`;
   the structural validator's 1.1 branch requiring `issuanceDate` and forbidding `validFrom`/`validUntil`; the
   validity window projected per version in `ValidityProjection`); M7 closes the two remaining gaps:
-  - **Presentation-path gate (G1):** `CheckPresentationStructure` now rejects a **1.1 presentation envelope**
-    with `vcdm11_not_accepted` when 1.1 is disallowed — previously only contained credentials were gated, so a
-    1.1 VP itself slipped through. There is **no** new presentation-level flag: the single
-    `CredentialOptions.AcceptVcdm11` governs both the VP envelope and its children (one source of truth).
-  - **Version-correct validity diagnostics (G2):** a not-yet-valid / expired **1.1** credential now reports the
-    member that actually exists in the document — `/issuanceDate` ÷ `/expirationDate` — instead of the 2.0
-    `/validFrom` ÷ `/validUntil`. The computed window was already correct; only the diagnostic pointer/message
-    were 2.0-only. The stable codes `not_yet_valid` / `expired` are unchanged.
-  - Contained-credential `AcceptVcdm11` inheritance through `BuildContainedCredentialOptions` is now documented
-    (the `with` copy preserves it), so a 1.1 child in a 2.0 VP is gated by the same flag.
+    - **Presentation-path gate (G1):** `CheckPresentationStructure` now rejects a **1.1 presentation envelope**
+      with `vcdm11_not_accepted` when 1.1 is disallowed — previously only contained credentials were gated, so a
+      1.1 VP itself slipped through. There is **no** new presentation-level flag: the single
+      `CredentialOptions.AcceptVcdm11` governs both the VP envelope and its children (one source of truth).
+    - **Version-correct validity diagnostics (G2):** a not-yet-valid / expired **1.1** credential now reports the
+      member that actually exists in the document — `/issuanceDate` ÷ `/expirationDate` — instead of the 2.0
+      `/validFrom` ÷ `/validUntil`. The computed window was already correct; only the diagnostic pointer/message
+      were 2.0-only. The stable codes `not_yet_valid` / `expired` are unchanged.
+    - Contained-credential `AcceptVcdm11` inheritance through `BuildContainedCredentialOptions` is now documented
+      (the `with` copy preserves it), so a 1.1 child in a 2.0 VP is gated by the same flag.
 - **Tests (+19):** 8 Core unit (`ValidityProjection` 1.1 **and** 2.0 branches each ignoring the other version's
   members — no cross-version read; 1.1 inverted window; 1.1 credential + presentation no-upgrade round-trip) and
   11 integration (DI-secured 1.1 credential and holder-bound 1.1 VP → Accepted; G1 1.1-VP rejection; G2
@@ -247,7 +247,7 @@ correctly when defeat was attempted. Two real findings were fixed:
 #### Post-review (PR #7)
 
 - **Blocking — issuance 2.0-only contract was not enforced (fixed):** the PR review found that, although the
-  docs say issuance is 2.0-only, `IIssuer.IssueAsync` only rejected *already-secured* credentials — a caller
+  docs say issuance is 2.0-only, `IIssuer.IssueAsync` only rejected _already-secured_ credentials — a caller
   could `Credential.Parse` a 1.1 document and mint it through the public issuer (the M7 test helper itself did
   exactly this). Added a `credential.Version != V2_0` guard at the role boundary (before the form switch, so it
   covers DI/JOSE/COSE/SD-JWT), a negative test, and re-pointed the secured-1.1 test fixture at the engine's
@@ -303,7 +303,7 @@ correctly when defeat was attempted. Two real findings were fixed:
   `verifiableCredential` a structure failure (`presentation_no_credentials`) — an `Accepted` decision now
   implies a credential was actually presented, not merely holder-key possession.
 - **Withheld-disclosure residual (F5, documented):** M6 confirmed the verifier cannot precisely detect a
-  holder who *withholds* a disclosure for a validity/status member — the leftover top-level `_sd` digest is
+  holder who _withholds_ a disclosure for a validity/status member — the leftover top-level `_sd` digest is
   indistinguishable from a legitimately-disclosed non-validity claim (RFC 9901 §4.2.7), so any verifier-side
   guard over-rejects compliant credentials. The posture stays issuer-side (this engine's own SD-JWT VCs keep
   validity/status non-disclosable, so they are immune) plus documentation; a precise fix needs Type-Metadata
@@ -312,7 +312,7 @@ correctly when defeat was attempted. Two real findings were fixed:
 
 #### Post-review hardening (M6 PR review)
 
-- **Contained-credential fault isolation:** `VerifyContainedAsync` now isolates *any* fault from a child
+- **Contained-credential fault isolation:** `VerifyContainedAsync` now isolates _any_ fault from a child
   (not only `CredentialFormatException`) — an operational fault becomes an `Indeterminate` child
   (`operation_error`) instead of escaping `VerifyPresentationAsync`; cancellation and null-argument
   programming errors still propagate. Regression tests feed JOSE-shaped and SD-JWT-shaped malformed enveloped
@@ -450,9 +450,9 @@ NFR-005 surface and NFR-002 closure were re-confirmed clean.
   these VCDM members were not in the non-disclosable set (only the SD-JWT `exp`/`nbf` were). Marking
   `validUntil` selectively disclosable hid it, so an **expired credential verified as valid**; a disclosable
   `credentialStatus` made the **revocation check Skipped**. Fix: those members are now rejected at issuance,
-  and a verify-side guard rejects any of them that is *revealed* via a disclosure but absent from the
+  and a verify-side guard rejects any of them that is _revealed_ via a disclosure but absent from the
   cleartext the stages validate (`sdjwt_hidden_member` ⇒ Failed) — covering credentials crafted outside this
-  engine. **Known residual (inherent to SD-JWT):** a holder who simply *withholds* a disclosure that a
+  engine. **Known residual (inherent to SD-JWT):** a holder who simply _withholds_ a disclosure that a
   non-conformant third-party issuer made disclosable cannot be detected — the leftover digest is dropped as
   an indistinguishable decoy (RFC 9901 §4.2.7), the same limitation the SD-JWT VC profile carries for
   `iss`/`nbf`/`exp`/`status`. The defence is issuer-side and **this library's own issuer keeps these claims
@@ -489,7 +489,7 @@ NFR-005 surface and NFR-002 closure were re-confirmed clean.
 - **Issuer binding for enveloping forms:** the credential `issuer` is bound to the **base DID of the
   signing key's `kid`** (the JWS protected-header `kid`, or the COSE key id), reusing the M1 binding — to
   claim `issuer=victim` an attacker needs the victim's key. A missing `kid` fails closed; the unprotected
-  COSE `kid` is used only to *look up* a key, never trusted for authorization.
+  COSE `kid` is used only to _look up_ a key, never trusted for authorization.
 - **F7 / report-don't-throw:** the verification key is resolved asynchronously **before** the synchronous
   substrate verify, so a DID/IO resolution failure is `Indeterminate` while a bad signature (or a
   wrong/absent `typ`/`cty`) is `Failed` — never conflated, never thrown (FR-045). JOSE's throw-based
@@ -537,7 +537,7 @@ PR review follow-ups (also fixed, with tests):
   `NetCid` with an explicit decode bound (NetCid's 4096-char default is too small for a real list), a
   decompression-bomb cap, and the 131,072-bit minimum-length floor.
 - **Status verification (FR-022):** an injected `IStatusListFetcher` resolves the list; the verifier
-  verifies the fetched list credential's *own* proof recursively (with the validity window enabled, so a
+  verifies the fetched list credential's _own_ proof recursively (with the validity window enabled, so a
   stale or unsigned list is not trusted), asserts the list/subject types and that the entry's purpose is
   one the list declares, then decodes and reads the status bit. A set revocation/suspension bit is
   `Failed`; an unreachable / unverifiable / stale / malformed / out-of-range list is `Indeterminate`;
