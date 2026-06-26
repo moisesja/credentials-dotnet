@@ -39,8 +39,15 @@ public static class StructuralValidator
             ValidateValidity(root, version, problems);
             ValidateTypedEntries(root, "credentialStatus", requireId: false, problems);
             ValidateTypedEntries(root, "credentialSchema", requireId: true, problems);
+            ValidateTypedEntries(root, "refreshService", requireId: false, problems);
             ValidateTypedEntries(root, "termsOfUse", requireId: false, problems);
             ValidateTypedEntries(root, "evidence", requireId: false, problems);
+            ValidateRelatedResource(root, problems);
+            ValidateNameAndDescription(root, string.Empty, problems);
+            if (root["issuer"] is JsonObject issuerObject)
+            {
+                ValidateNameAndDescription(issuerObject, "/issuer", problems);
+            }
         }
         else
         {
@@ -138,13 +145,23 @@ public static class StructuralValidator
         }
     }
 
-    // H2: id, where present, is a single non-blank string (URL).
+    // H2: id, where present, is a single non-blank string that is a URL (an absolute URI). A present-but-null
+    // value or a multi-valued (array) id is rejected too — the suite tests `id: null` and multi-valued ids.
     private static void ValidateId(JsonObject root, List<StructuralProblem> problems)
     {
+        if (!root.ContainsKey("id"))
+        {
+            return;
+        }
+
         var id = root["id"];
-        if (id is not null && !JsonShape.IsNonBlankString(id))
+        if (!JsonShape.IsNonBlankString(id))
         {
             problems.Add(new StructuralProblem("id.invalid", "/id", "id must be a single non-empty string URL."));
+        }
+        else if (!JsonShape.IsAbsoluteUri(id))
+        {
+            problems.Add(new StructuralProblem("id.not_url", "/id", "id must be a URL (an absolute URI with a scheme)."));
         }
     }
 
@@ -161,6 +178,10 @@ public static class StructuralValidator
                 problems.Add(new StructuralProblem("issuer.object_missing_id", "/issuer/id",
                     "An object-form issuer must have a non-empty string id."));
                 break;
+            case JsonObject obj when !JsonShape.IsAbsoluteUri(obj["id"]):
+                problems.Add(new StructuralProblem("issuer.id_not_url", "/issuer/id",
+                    "An object-form issuer's id must be a URL (an absolute URI with a scheme)."));
+                break;
             case JsonObject:
                 break;
             default:
@@ -168,6 +189,11 @@ public static class StructuralValidator
                 {
                     problems.Add(new StructuralProblem("issuer.invalid_shape", "/issuer",
                         "issuer must be a non-empty string or an object with an id."));
+                }
+                else if (!JsonShape.IsAbsoluteUri(issuer))
+                {
+                    problems.Add(new StructuralProblem("issuer.not_url", "/issuer",
+                        "issuer must be a URL (an absolute URI with a scheme)."));
                 }
 
                 break;
@@ -188,7 +214,8 @@ public static class StructuralValidator
                 problems.Add(new StructuralProblem("subject.empty", "/credentialSubject",
                     "credentialSubject must not be empty."));
                 break;
-            case JsonObject:
+            case JsonObject obj:
+                ValidateSubjectId(obj, "/credentialSubject", problems);
                 break;
             case JsonArray array when array.Count == 0:
                 problems.Add(new StructuralProblem("subject.empty", "/credentialSubject",
@@ -203,7 +230,8 @@ public static class StructuralValidator
                             problems.Add(new StructuralProblem("subject.empty", $"/credentialSubject/{i}",
                                 "Each credentialSubject entry must not be empty."));
                             break;
-                        case JsonObject:
+                        case JsonObject entry:
+                            ValidateSubjectId(entry, $"/credentialSubject/{i}", problems);
                             break;
                         default:
                             problems.Add(new StructuralProblem("subject.invalid_shape", $"/credentialSubject/{i}",
@@ -341,6 +369,147 @@ public static class StructuralValidator
         {
             problems.Add(new StructuralProblem($"{member}.missing_id", $"{pointer}/id",
                 $"Each {member} entry requires a non-empty string id."));
+        }
+        else if (entry.ContainsKey("id") && !JsonShape.IsAbsoluteUri(entry["id"]))
+        {
+            // A present id (whether or not the member requires one) must be a single URL — this also rejects
+            // a null id, an array of ids, and a non-URI string.
+            problems.Add(new StructuralProblem($"{member}.id_not_url", $"{pointer}/id",
+                $"A {member} id must be a single URL (an absolute URI with a scheme)."));
+        }
+    }
+
+    // A credentialSubject id, where present, is a single URL (absolute URI) — rejects null / array / non-URI.
+    private static void ValidateSubjectId(JsonObject subject, string pointer, List<StructuralProblem> problems)
+    {
+        if (subject.ContainsKey("id") && !JsonShape.IsAbsoluteUri(subject["id"]))
+        {
+            problems.Add(new StructuralProblem("subject.id_not_url", $"{pointer}/id",
+                "A credentialSubject id must be a single URL (an absolute URI with a scheme)."));
+        }
+    }
+
+    // §5.3: relatedResource is one or more objects; each requires a URL id, a unique id across the list,
+    // and at least one of digestSRI / digestMultibase. (Verifying the digest against the fetched bytes is a
+    // separate, verifier-side concern, deferred from this structural pass.)
+    private static void ValidateRelatedResource(JsonObject root, List<StructuralProblem> problems)
+    {
+        if (!root.ContainsKey("relatedResource"))
+        {
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        switch (root["relatedResource"])
+        {
+            case JsonObject obj:
+                ValidateRelatedResourceEntry(obj, "/relatedResource", seen, problems);
+                break;
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    if (array[i] is JsonObject entry)
+                    {
+                        ValidateRelatedResourceEntry(entry, $"/relatedResource/{i}", seen, problems);
+                    }
+                    else
+                    {
+                        problems.Add(new StructuralProblem("relatedResource.not_object", $"/relatedResource/{i}",
+                            "Each relatedResource entry must be an object."));
+                    }
+                }
+
+                break;
+            default:
+                problems.Add(new StructuralProblem("relatedResource.not_object", "/relatedResource",
+                    "relatedResource must be an object or an array of objects."));
+                break;
+        }
+    }
+
+    private static void ValidateRelatedResourceEntry(JsonObject entry, string pointer, HashSet<string> seen, List<StructuralProblem> problems)
+    {
+        if (!JsonShape.IsNonBlankString(entry["id"]))
+        {
+            problems.Add(new StructuralProblem("relatedResource.missing_id", $"{pointer}/id",
+                "Each relatedResource entry requires a non-empty string id."));
+        }
+        else if (!JsonShape.IsAbsoluteUri(entry["id"]))
+        {
+            problems.Add(new StructuralProblem("relatedResource.id_not_url", $"{pointer}/id",
+                "A relatedResource id must be a URL (an absolute URI with a scheme)."));
+        }
+        else if (!seen.Add(JsonShape.AsString(entry["id"])!))
+        {
+            problems.Add(new StructuralProblem("relatedResource.duplicate_id", $"{pointer}/id",
+                "Each relatedResource id must be unique across the list."));
+        }
+
+        if (!JsonShape.IsNonBlankString(entry["digestSRI"]) && !JsonShape.IsNonBlankString(entry["digestMultibase"]))
+        {
+            problems.Add(new StructuralProblem("relatedResource.missing_digest", pointer,
+                "Each relatedResource entry must have a digestSRI or digestMultibase."));
+        }
+    }
+
+    // §11.1: name / description, where present, is a string or a language value object (or an array of
+    // them). A language value object is closed — only @value, @language and @direction are permitted.
+    private static void ValidateNameAndDescription(JsonObject container, string basePointer, List<StructuralProblem> problems)
+    {
+        ValidateLanguageValue(container, "name", basePointer, problems);
+        ValidateLanguageValue(container, "description", basePointer, problems);
+    }
+
+    private static void ValidateLanguageValue(JsonObject container, string member, string basePointer, List<StructuralProblem> problems)
+    {
+        var node = container[member];
+        if (node is null || JsonShape.IsString(node))
+        {
+            return; // absent, or a plain string — always valid
+        }
+
+        switch (node)
+        {
+            case JsonObject obj:
+                ValidateLanguageObject(obj, member, $"{basePointer}/{member}", problems);
+                break;
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    if (array[i] is JsonObject entry)
+                    {
+                        ValidateLanguageObject(entry, member, $"{basePointer}/{member}/{i}", problems);
+                    }
+                    else if (!JsonShape.IsString(array[i]))
+                    {
+                        problems.Add(new StructuralProblem($"{member}.invalid_language_object", $"{basePointer}/{member}/{i}",
+                            $"Each {member} entry must be a string or a language value object."));
+                    }
+                }
+
+                break;
+            default:
+                problems.Add(new StructuralProblem($"{member}.invalid_language_object", $"{basePointer}/{member}",
+                    $"{member} must be a string, a language value object, or an array of them."));
+                break;
+        }
+    }
+
+    private static void ValidateLanguageObject(JsonObject obj, string member, string pointer, List<StructuralProblem> problems)
+    {
+        if (!JsonShape.IsNonBlankString(obj["@value"]))
+        {
+            problems.Add(new StructuralProblem($"{member}.invalid_language_object", $"{pointer}/@value",
+                $"A {member} language value object requires a non-empty string @value."));
+        }
+
+        foreach (var property in obj)
+        {
+            if (property.Key is not ("@value" or "@language" or "@direction"))
+            {
+                problems.Add(new StructuralProblem($"{member}.invalid_language_object", $"{pointer}/{property.Key}",
+                    $"A {member} language value object may only contain @value, @language and @direction."));
+            }
         }
     }
 

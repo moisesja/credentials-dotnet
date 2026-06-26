@@ -32,6 +32,31 @@ internal static class JsonShape
     /// <summary>True if <paramref name="node"/> is a JSON string that is neither empty nor whitespace-only.</summary>
     public static bool IsNonBlankString(JsonNode? node) => !string.IsNullOrWhiteSpace(AsString(node));
 
+    /// <summary>
+    /// True if <paramref name="node"/> is a single JSON string that is an absolute URI with a scheme
+    /// (VCDM 2.0 identifier semantics — a URL). DIDs (<c>did:…</c>), URNs (<c>urn:…</c>) and HTTP(S) URLs
+    /// pass; a scheme-less string, an embedded space, an integer, <see langword="null"/>, or an array of
+    /// identifiers do not. It is intentionally not HTTP-only and does not require dereferenceability.
+    /// </summary>
+    public static bool IsAbsoluteUri(JsonNode? node)
+    {
+        var value = AsString(node);
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        foreach (var c in value)
+        {
+            if (char.IsWhiteSpace(c))
+            {
+                return false;
+            }
+        }
+
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Scheme);
+    }
+
     /// <summary>True if <paramref name="node"/> is a non-empty JSON array whose every member is a non-blank string.</summary>
     public static bool IsNonBlankStringArray(JsonNode? node)
     {

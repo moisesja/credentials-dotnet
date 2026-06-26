@@ -40,6 +40,15 @@ internal sealed class DefaultIssuer : IIssuer
         {
             case DataIntegrityIssuanceRequest dataIntegrity:
             {
+                // VC Data Integrity 1.0 §3.2: a credential proof asserts claims, so its proofPurpose MUST be
+                // 'assertionMethod'. Guard it at the role boundary (not just the default) so the contract holds
+                // for any caller-supplied value (the M7/D8 boundary-guard pattern).
+                if (!string.Equals(dataIntegrity.ProofPurpose, ProofPurpose.AssertionMethod, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "A Data Integrity credential proof must use proofPurpose 'assertionMethod' (VC Data Integrity 1.0 §3.2).");
+                }
+
                 var mechanism = _registry.ResolveForIssue(SecuringForm.DataIntegrity, dataIntegrity.Cryptosuite);
                 var secureRequest = new SecureRequest
                 {

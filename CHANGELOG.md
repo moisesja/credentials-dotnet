@@ -6,6 +6,29 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Changed
+
+- **VCDM 2.0 compliance hardening — W3C conformance baseline raised 43 → 57 / 59.** The structural validator
+  now enforces several VCDM 2.0 rules it previously accepted. This is intentionally landed in the 1.0.0
+  major (not a later 1.0.x) because it makes validation *stricter* — newly rejecting inputs the engine used
+  to accept would otherwise be a semver-breaking change:
+  - **Identifier members must be URLs** — an absolute URI with a scheme; DIDs/URNs/URLs pass, while
+    scheme-less / whitespace / `null` / multi-valued identifiers are rejected: `id`, `issuer` (bare string
+    and object `.id`), `credentialStatus.id`, `credentialSchema.id`, `credentialSubject.id`,
+    `refreshService.id`, `relatedResource.id` (VCDM §4.4 / §4.7 / §4.9 / §4.11).
+  - **`refreshService`** entries must carry a `type`.
+  - **`relatedResource`** must be one or more objects, each with a unique URL `id` and at least one of
+    `digestSRI` / `digestMultibase` (§5.3, structural; digest *hash*-verification is a deferred follow-up).
+  - **`name` / `description`** language value objects (top-level and on the `issuer` object) are closed —
+    only `@value`, `@language`, `@direction` are permitted (§11.1).
+  - **Issuance rejects a Data Integrity proof whose `proofPurpose` is not `assertionMethod`** at the role
+    boundary (VC Data Integrity 1.0 §3.2), rather than merely defaulting it.
+
+  The W3C VCDM 2.0 suite now passes **57 / 59**; the 2 remaining are documented in
+  [docs/conformance.md](docs/conformance.md) — detecting an unmapped-via-`@context` `type` (a JSON-LD
+  term-resolution check, an STJ-only non-goal) and `relatedResource` digest hash-verification (deferred to
+  a focused follow-up). The conformance gate baseline is raised to **57**.
+
 ### Security
 
 - **Data Integrity verification now distinguishes "DID unresolvable" from "verification method absent" (F7).**

@@ -362,6 +362,28 @@ public sealed class M1IssueVerifyTests
     }
 
     [Fact]
+    public async Task Issuing_with_non_assertionMethod_proofPurpose_throws()
+    {
+        // VC Data Integrity 1.0 §3.2: a credential proof must be proofPurpose=assertionMethod. The contract
+        // is guarded at the issuer boundary, not merely defaulted (the M7/D8 pattern).
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        var act = () => issuer.IssueAsync(
+            UnsecuredCredential(key.Did),
+            new DataIntegrityIssuanceRequest
+            {
+                Cryptosuite = "eddsa-jcs-2022",
+                Signer = key.Signer,
+                VerificationMethod = key.VerificationMethod,
+                ProofPurpose = ProofPurpose.Authentication,
+            });
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*assertionMethod*");
+    }
+
+    [Fact]
     public async Task Issuing_with_an_unregistered_suite_throws()
     {
         using var provider = BuildProvider();
