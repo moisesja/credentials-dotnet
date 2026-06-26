@@ -61,7 +61,7 @@ public static class Program
             // Derive: reveal the mandatory group + the selected gpa, withholding alumniOf + favoriteColor.
             var derived = await deriver.DeriveAsync(
                 baseCredential, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/gpa"] });
-            var subject = derived.AsElement().GetProperty("credentialSubject");
+            var subject = derived.ToElement().GetProperty("credentialSubject");
             narrator.Step(
                 $"derived a minimal proof: securing={derived.Securing}, " +
                 $"id={subject.TryGetProperty("id", out _)} (mandatory), gpa={subject.TryGetProperty("gpa", out _)} (selected), " +
@@ -118,7 +118,7 @@ public static class Program
 
         var suite = new Bbs2023Cryptosuite();
         var baseProof = await suite.CreateBaseProofAsync(
-            credential.AsElement(), baseOptions, bls.PrivateKey, hmacKey, mandatoryPointers);
+            credential.ToElement(), baseOptions, bls.PrivateKey, hmacKey, mandatoryPointers);
 
         var node = JsonNode.Parse(credential.ToBytes())!.AsObject();
         node["proof"] = JsonSerializer.SerializeToNode(baseProof, DataProofsJsonOptions.Default);

@@ -52,7 +52,7 @@ internal sealed class DefaultIssuer : IIssuer
                 var mechanism = _registry.ResolveForIssue(SecuringForm.DataIntegrity, dataIntegrity.Cryptosuite);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
+                    Document = credential.ToElement(),
                     Cryptosuite = dataIntegrity.Cryptosuite,
                     Signer = dataIntegrity.Signer,
                     VerificationMethod = dataIntegrity.VerificationMethod,
@@ -71,8 +71,8 @@ internal sealed class DefaultIssuer : IIssuer
                 var mechanism = _registry.ResolveForIssue(SecuringForm.Jose, cryptosuite: null);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
-                    Payload = credential.AsUtf8(),
+                    Document = credential.ToElement(),
+                    Payload = credential.ToUtf8(),
                     Signer = jose.Signer,
                     VerificationMethod = jose.VerificationMethod,
                 };
@@ -88,8 +88,8 @@ internal sealed class DefaultIssuer : IIssuer
                 var mechanism = _registry.ResolveForIssue(SecuringForm.Cose, cryptosuite: null);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
-                    Payload = credential.AsUtf8(),
+                    Document = credential.ToElement(),
+                    Payload = credential.ToUtf8(),
                     Signer = cose.Signer,
                     VerificationMethod = cose.VerificationMethod,
                 };
@@ -105,8 +105,8 @@ internal sealed class DefaultIssuer : IIssuer
                 var mechanism = _registry.ResolveForIssue(SecuringForm.SdJwtVc, cryptosuite: null);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
-                    Claims = credential.AsClaimsObject(),
+                    Document = credential.ToElement(),
+                    Claims = credential.ToClaimsObject(),
                     Vct = sdJwt.Vct,
                     Disclosable = sdJwt.Disclosable,
                     HolderBinding = sdJwt.HolderBinding,

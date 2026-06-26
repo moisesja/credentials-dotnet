@@ -187,9 +187,9 @@ internal sealed class DefaultVerifier : IVerifier
                 // signed nonce/aud); the freshness comparison against the verifier's expectations is here.
                 var joseResult = await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.Jose, new VerifyRequest
                 {
-                    Document = vp.AsElement(),
+                    Document = vp.ToElement(),
                     Envelope = envelope,
-                    ExpectedPayload = vp.AsUtf8(),
+                    ExpectedPayload = vp.ToUtf8(),
                     Kind = SecuringDocumentKind.Presentation,
                     VerificationTime = options.VerificationTime,
                 }, ct).ConfigureAwait(false);
@@ -199,7 +199,7 @@ internal sealed class DefaultVerifier : IVerifier
             // Data Integrity authentication proof — the substrate enforces the challenge/domain match.
             return await CheckHolderBindingViaMechanismAsync(vp, SecuringForm.DataIntegrity, new VerifyRequest
             {
-                Document = vp.AsElement(),
+                Document = vp.ToElement(),
                 ExpectedProofPurpose = ProofPurpose.Authentication,
                 ExpectedChallenge = options.ExpectedChallenge,
                 ExpectedDomain = options.ExpectedDomain,
@@ -440,7 +440,7 @@ internal sealed class DefaultVerifier : IVerifier
         var request = form == SecuringForm.DataIntegrity
             ? new VerifyRequest
             {
-                Document = credential.AsElement(),
+                Document = credential.ToElement(),
                 ExpectedProofPurpose = options.ExpectedProofPurpose ?? ProofPurpose.AssertionMethod,
                 VerificationTime = options.VerificationTime,
             }
@@ -448,9 +448,9 @@ internal sealed class DefaultVerifier : IVerifier
             {
                 // The enveloping forms verify the verbatim wire bytes; the inner element is unused there.
                 // ExpectedPayload binds the verified payload to the inner document the stages validate.
-                Document = credential.AsElement(),
+                Document = credential.ToElement(),
                 Envelope = credential.EnvelopeBytes,
-                ExpectedPayload = credential.AsUtf8(),
+                ExpectedPayload = credential.ToUtf8(),
                 VerificationTime = options.VerificationTime,
                 // Holder binding (SD-JWT VC KB-JWT); ignored by the JOSE/COSE mechanisms.
                 RequireHolderBinding = options.RequireHolderBinding,

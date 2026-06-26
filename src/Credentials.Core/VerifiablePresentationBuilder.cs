@@ -62,7 +62,7 @@ public sealed class VerifiablePresentationBuilder
     {
         ArgumentNullException.ThrowIfNull(credential);
         EnsureMutable();
-        Append(credential.AsClaimsObject());
+        Append(credential.ToClaimsObject());
         return this;
     }
 

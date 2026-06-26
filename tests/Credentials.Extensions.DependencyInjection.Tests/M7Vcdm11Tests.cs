@@ -61,7 +61,7 @@ public sealed class M7Vcdm11Tests
             .ResolveForIssue(SecuringForm.DataIntegrity, "eddsa-jcs-2022");
         var outcome = await mechanism.SecureAsync(new SecureRequest
         {
-            Document = unsecured.AsElement(),
+            Document = unsecured.ToElement(),
             Cryptosuite = "eddsa-jcs-2022",
             Signer = issuerKey.Signer,
             VerificationMethod = issuerKey.VerificationMethod,

@@ -29,9 +29,9 @@ Credentials.ContainedCredential.AsEmbedded.get -> Credentials.Credential?
 Credentials.ContainedCredential.AsEnvelopedCompact.get -> string?
 Credentials.ContainedCredential.IsEmbedded.get -> bool
 Credentials.Credential
-Credentials.Credential.AsClaimsObject() -> System.Text.Json.Nodes.JsonObject!
-Credentials.Credential.AsElement() -> System.Text.Json.JsonElement
-Credentials.Credential.AsUtf8() -> System.ReadOnlyMemory<byte>
+Credentials.Credential.ToClaimsObject() -> System.Text.Json.Nodes.JsonObject!
+Credentials.Credential.ToElement() -> System.Text.Json.JsonElement
+Credentials.Credential.ToUtf8() -> System.ReadOnlyMemory<byte>
 Credentials.Credential.CompactEnvelope.get -> string?
 Credentials.Credential.Context.get -> System.Collections.Generic.IReadOnlyList<string!>!
 Credentials.Credential.CredentialSchema.get -> System.Collections.Generic.IReadOnlyList<Credentials.CredentialSchemaRef!>!
@@ -172,7 +172,7 @@ Credentials.Roles.IssuedCredential.CompactJws.get -> string?
 Credentials.Roles.IssuedCredential.CompactSdJwt.get -> string?
 Credentials.Roles.IssuedCredential.CoseBytes.get -> System.ReadOnlyMemory<byte>?
 Credentials.Roles.IssuedCredential.Credential.get -> Credentials.Credential!
-Credentials.Roles.IssuedCredential.Form.get -> Credentials.SecuringState
+Credentials.Roles.IssuedCredential.Form.get -> Credentials.SecuringForm
 Credentials.Roles.IssuedCredential.MediaType.get -> string!
 Credentials.Roles.IVerifier
 Credentials.Roles.IVerifier.VerifyCredentialAsync(Credentials.Credential! credential, Credentials.Verification.CredentialVerificationOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Credentials.Verification.CredentialVerificationResult!>
@@ -446,8 +446,8 @@ Credentials.VcdmVersion.Unknown = 0 -> Credentials.VcdmVersion
 Credentials.VcdmVersion.V1_1 = 1 -> Credentials.VcdmVersion
 Credentials.VcdmVersion.V2_0 = 2 -> Credentials.VcdmVersion
 Credentials.VerifiablePresentation
-Credentials.VerifiablePresentation.AsElement() -> System.Text.Json.JsonElement
-Credentials.VerifiablePresentation.AsUtf8() -> System.ReadOnlyMemory<byte>
+Credentials.VerifiablePresentation.ToElement() -> System.Text.Json.JsonElement
+Credentials.VerifiablePresentation.ToUtf8() -> System.ReadOnlyMemory<byte>
 Credentials.VerifiablePresentation.Context.get -> System.Collections.Generic.IReadOnlyList<string!>!
 Credentials.VerifiablePresentation.Document.get -> Credentials.CredentialDocument!
 Credentials.VerifiablePresentation.GetMember(string! name) -> System.Text.Json.Nodes.JsonNode?

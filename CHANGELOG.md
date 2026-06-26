@@ -30,6 +30,13 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
     term-resolution check, an STJ-only non-goal) and `relatedResource` digest hash-verification (deferred to
     a focused follow-up). The conformance gate baseline is raised to **57**.
 
+- **Public API ergonomics (pre-1.0 finalization).** The document-conversion methods on `Credential` /
+  `VerifiablePresentation` are unified to `ToElement()` / `ToUtf8()` / `ToClaimsObject()` / `ToBytes()`
+  (matching `CredentialDocument`; all return fresh copies, so the `To*` "materialize a copy" idiom is
+  consistent), and `IssuedCredential.Form` is now typed `SecuringForm` — an issued credential is always one
+  of the secured forms (never `Unsecured`) — removing the `Form` name/type collision with
+  `SecuringSelector.Form`.
+
 ### Security
 
 - **Data Integrity verification now distinguishes "DID unresolvable" from "verification method absent" (F7).**

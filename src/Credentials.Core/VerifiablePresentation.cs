@@ -91,10 +91,10 @@ public sealed class VerifiablePresentation
     public CredentialDocument Document => _document;
 
     /// <summary>The whole presentation as a self-contained <see cref="JsonElement"/>.</summary>
-    public JsonElement AsElement() => _document.ToElement();
+    public JsonElement ToElement() => _document.ToElement();
 
     /// <summary>The presentation's exact UTF-8 bytes.</summary>
-    public ReadOnlyMemory<byte> AsUtf8() => _document.ToUtf8();
+    public ReadOnlyMemory<byte> ToUtf8() => _document.ToUtf8();
 
     /// <summary>The presentation's exact UTF-8 bytes as a fresh array.</summary>
     public byte[] ToBytes() => _document.ToBytes();

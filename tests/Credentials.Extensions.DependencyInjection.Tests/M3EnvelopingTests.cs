@@ -51,7 +51,7 @@ public sealed class M3EnvelopingTests
             UnsecuredCredential(key.Did),
             new JoseEnvelopeIssuanceRequest { Signer = key.Signer, VerificationMethod = key.VerificationMethod });
 
-        issued.Form.Should().Be(SecuringState.Jose);
+        issued.Form.Should().Be(SecuringForm.Jose);
         issued.MediaType.Should().Be("application/vc+jwt");
         issued.CompactJws.Should().NotBeNullOrEmpty();
         issued.CompactJws!.Split('.').Should().HaveCount(3);
@@ -85,7 +85,7 @@ public sealed class M3EnvelopingTests
         // The JWS payload segment must be the credential's exact bytes (no re-serialization).
         var payloadSegment = issued.CompactJws!.Split('.')[1];
         var decoded = Base64Url.DecodeFromChars(payloadSegment);
-        decoded.Should().Equal(unsecured.AsUtf8().ToArray());
+        decoded.Should().Equal(unsecured.ToUtf8().ToArray());
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public sealed class M3EnvelopingTests
         // the issuer to, so it must be rejected (fail closed), not Indeterminate.
         var compact = FabricateJws(
             new JsonObject { ["alg"] = "EdDSA", ["typ"] = "vc+jwt", ["cty"] = "vc" },
-            UnsecuredCredential(key.Did).AsUtf8().ToArray());
+            UnsecuredCredential(key.Did).ToUtf8().ToArray());
 
         var result = await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(compact));
         result.Decision.Should().Be(VerificationDecision.Rejected);
@@ -218,7 +218,7 @@ public sealed class M3EnvelopingTests
                 ["cty"] = "vc",
                 ["kid"] = "did:key:zNotARealKey#zNotARealKey",
             },
-            UnsecuredCredential(key.Did).AsUtf8().ToArray());
+            UnsecuredCredential(key.Did).ToUtf8().ToArray());
 
         var result = await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(compact));
         result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Indeterminate);
@@ -235,7 +235,7 @@ public sealed class M3EnvelopingTests
         // typ != vc+jwt — the substrate's pinned-header assertion (G1) rejects it as malformed.
         var compact = FabricateJws(
             new JsonObject { ["alg"] = "EdDSA", ["typ"] = "JWT", ["cty"] = "vc", ["kid"] = key.VerificationMethod },
-            UnsecuredCredential(key.Did).AsUtf8().ToArray());
+            UnsecuredCredential(key.Did).ToUtf8().ToArray());
 
         var result = await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(compact));
         result.Decision.Should().Be(VerificationDecision.Rejected);
@@ -258,7 +258,7 @@ public sealed class M3EnvelopingTests
             UnsecuredCredential(key.Did),
             new CoseEnvelopeIssuanceRequest { Signer = key.Signer, VerificationMethod = key.VerificationMethod });
 
-        issued.Form.Should().Be(SecuringState.Cose);
+        issued.Form.Should().Be(SecuringForm.Cose);
         issued.MediaType.Should().Be("application/vc+cose");
         issued.CoseBytes.Should().NotBeNull();
         issued.CoseBytes!.Value.Length.Should().BeGreaterThan(0);
@@ -357,7 +357,7 @@ public sealed class M3EnvelopingTests
         // A validly-signed COSE_Sign1 with the correct pinned headers but NO kid — there is no signer
         // identity to bind the issuer to, so it must be rejected (fail closed), not Indeterminate.
         var envelope = await FabricateCose(
-            UnsecuredCredential(key.Did).AsUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
+            UnsecuredCredential(key.Did).ToUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
             keyId: null, contentType: VcCose.CredentialContentType, type: VcCose.EnvelopeType);
 
         var result = await verifier.VerifyCredentialAsync(envelope);
@@ -375,7 +375,7 @@ public sealed class M3EnvelopingTests
         // Correct content-type, valid signature, resolvable kid — but typ != application/vc+cose. The
         // substrate's pinned-header assertion (G1) rejects it as malformed before the signature matters.
         var envelope = await FabricateCose(
-            UnsecuredCredential(key.Did).AsUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
+            UnsecuredCredential(key.Did).ToUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
             keyId: Encoding.UTF8.GetBytes(key.VerificationMethod), contentType: VcCose.CredentialContentType,
             type: "application/example+cose");
 
@@ -393,7 +393,7 @@ public sealed class M3EnvelopingTests
 
         // Correct typ, valid signature, resolvable kid — but content-type != application/vc (G1).
         var envelope = await FabricateCose(
-            UnsecuredCredential(key.Did).AsUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
+            UnsecuredCredential(key.Did).ToUtf8().ToArray(), key.Signer, CoseAlgorithm.EdDsa,
             keyId: Encoding.UTF8.GetBytes(key.VerificationMethod), contentType: "application/example",
             type: VcCose.EnvelopeType);
 
@@ -421,7 +421,7 @@ public sealed class M3EnvelopingTests
         // the integrity guard must reject it even though the signature verifies (decoder-divergence defence).
         var request = new VerifyRequest
         {
-            Document = issued.Credential.AsElement(),
+            Document = issued.Credential.ToElement(),
             Envelope = Encoding.UTF8.GetBytes(issued.CompactJws!),
             ExpectedPayload = Encoding.UTF8.GetBytes(
                 "{\"@context\":[\"https://www.w3.org/ns/credentials/v2\"],\"type\":[\"VerifiableCredential\"]}"),
@@ -447,7 +447,7 @@ public sealed class M3EnvelopingTests
 
         var request = new VerifyRequest
         {
-            Document = issued.Credential.AsElement(),
+            Document = issued.Credential.ToElement(),
             Envelope = issued.CoseBytes!.Value,
             ExpectedPayload = Encoding.UTF8.GetBytes(
                 "{\"@context\":[\"https://www.w3.org/ns/credentials/v2\"],\"type\":[\"VerifiableCredential\"]}"),
