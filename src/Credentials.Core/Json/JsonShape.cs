@@ -54,7 +54,8 @@ internal static class JsonShape
             }
         }
 
-        return Uri.TryCreate(value, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Scheme);
+        // Uri.TryCreate with UriKind.Absolute already requires a scheme, so success alone is sufficient.
+        return Uri.TryCreate(value, UriKind.Absolute, out _);
     }
 
     /// <summary>True if <paramref name="node"/> is a non-empty JSON array whose every member is a non-blank string.</summary>

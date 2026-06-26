@@ -15,7 +15,8 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
     - **Identifier members must be URLs** — an absolute URI with a scheme; DIDs/URNs/URLs pass, while
       scheme-less / whitespace / `null` / multi-valued identifiers are rejected: `id`, `issuer` (bare string
       and object `.id`), `credentialStatus.id`, `credentialSchema.id`, `credentialSubject.id`,
-      `refreshService.id`, `relatedResource.id` (VCDM §4.4 / §4.7 / §4.9 / §4.11).
+      `refreshService.id`, `relatedResource.id`, and the `termsOfUse` / `evidence` entry ids — i.e. all
+      typed-entry ids (VCDM §4.4 / §4.7 / §4.9 / §4.11).
     - **`refreshService`** entries must carry a `type`.
     - **`relatedResource`** must be one or more objects, each with a unique URL `id` and at least one of
       `digestSRI` / `digestMultibase` (§5.3, structural; digest _hash_-verification is a deferred follow-up).
