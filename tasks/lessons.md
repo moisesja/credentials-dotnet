@@ -406,3 +406,39 @@ and make the gate `SkippableFact` so a host without Node/the suite skips *visibl
 about conformance is worse than no gate. The most useful diagnostic step was logging the verifier's
 per-check codes from the shim (`holder_binding_missing`, `presentation_no_credentials`) — those named the
 exact gap instead of an opaque "VP rejected."
+
+## A tri-state F7 fix must cover EVERY verification-method resolver — an asymmetric defense leaves the primary path exposed (2026-06-25)
+
+M4 hardened the *enveloping* key resolver (`NetDidEnvelopeKeyResolver`) to a tri-state (Resolved /
+DidUnresolvable / MethodNotFound) so that "DID resolved but the referenced method is absent" is a definitive
+`Failed`, not `Indeterminate` — closing the attack where mangling a credential's `kid`/VM **fragment** (over
+a still-resolvable base DID) downgrades a forgery to Indeterminate, which a non-strict policy soft-accepts.
+But the *embedded Data Integrity* resolver (`NetDidVerificationMethodResolver`) was left 2-state (nullable),
+and `DataIntegrityMechanism` mapped every null to `Unresolvable → Indeterminate`. So the **most common**
+securing form still had the exact hole the enveloping path had fixed — an asymmetric defense. The v1.0
+review (plus an independent source-trace) caught it; the fix mirrors the enveloping tri-state on the DI path
+(`MethodNotFound → Invalid("verification_method_not_found") → Failed`), fail-closed across multi-proof
+credentials. **Rule:** when you harden one instance of a security seam that has siblings — here, one of two
+"resolve an attacker-named identifier to a key" resolvers — enumerate ALL siblings and apply the fix to each;
+a defense that holds on the path you happened to test first but not its twin is no defense. The tell was a
+prior lessons entry that named the *enveloping* resolver specifically and a memory note flagging the DI
+resolver as an unaddressed follow-up: treat "fixed for X (analog Y still open)" notes as open
+vulnerabilities, not deferred polish. Confirm the third case stays honest both ways — the same change added a
+companion test proving a genuinely-unresolvable BASE DID still maps to Indeterminate (don't over-correct a
+real IO failure into Failed).
+
+## Validating only the initial request URL is insufficient when the HTTP client follows redirects (2026-06-25)
+
+The opt-in HTTP status/schema fetchers enforced "HTTPS by default" by checking `uri.Scheme` on the URL the
+credential named — but the named `HttpClient` had `AllowAutoRedirect = true` (the .NET default), so a 3xx
+response from a trusted HTTPS URL silently redirected the GET to an internal host (cloud metadata,
+`localhost`) or cleartext, bypassing the scheme check entirely (SSRF / downgrade). Checking only the initial
+URL is a TOCTOU-shaped half-measure: the security-relevant property (where the bytes actually come from) is
+the *final* URL, which redirects move. **Rule:** for a first-party fetch client that makes a security promise
+about the destination (scheme/host allowlist), disable auto-redirect (`AllowAutoRedirect = false`) so the
+redirected request **never fires** — re-validating the final URL *after* the redirect is too late (the
+request to the internal host has already gone out; a blind SSRF GET is itself the damage). Disabling
+redirects also keeps the guarantee simple: exactly one request, to the URL you validated. A status list /
+schema is a single canonical document, so this costs nothing; where redirects are genuinely needed, the
+caller opts in and owns the egress posture. (Prove it with a loopback test that fails the redirect target's
+hit counter, not just the fetch return value — assert the internal host was never contacted.)
