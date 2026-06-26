@@ -10,11 +10,13 @@ jobs:
   release:
     name: pack + publish
     runs-on: ubuntu-latest
-    # Protected environment: configure NUGET_API_KEY (and any required reviewers) under
-    # Settings → Environments → nuget-release.
+    # Publishes via NuGet trusted publishing (OIDC) — no stored API key. Requires a Trusted Publishing
+    # policy on nuget.org for repo moisesja/credentials-dotnet, workflow file release.yml, environment
+    # nuget-release; and a repository variable NUGET_USER set to the nuget.org account username.
     environment: nuget-release
     permissions:
       contents: read
+      id-token: write # OIDC token NuGet/login exchanges for a short-lived nuget.org API key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -57,14 +59,21 @@ jobs:
           name: packages
           path: ./artifacts/packages/*.*nupkg
 
+      # Trusted publishing: exchange this job's GitHub OIDC token for a short-lived (~1h) nuget.org API
+      # key — no long-lived secret is stored. Requires the id-token:write permission above and a matching
+      # Trusted Publishing policy on nuget.org. `user` is the nuget.org account username (NOT an email).
+      - name: NuGet login (OIDC → short-lived API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push to nuget.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         # Globbing *.nupkg is intentional: `dotnet nuget push` automatically pushes the matching
         # symbol package (`<id>.<ver>.snupkg`) sitting alongside each `.nupkg` to nuget.org's symbol
         # server, so symbols publish without a separate push (and without risking a double-push).
         run: |
           dotnet nuget push "./artifacts/packages/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
