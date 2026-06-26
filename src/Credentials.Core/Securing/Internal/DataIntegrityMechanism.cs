@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Credentials.Resolution;
 using Credentials.Validation;
 using DataProofsDotnet.DataIntegrity;
 
@@ -8,16 +9,18 @@ namespace Credentials.Securing;
 /// The embedded Data Integrity securing mechanism — the single bridge to
 /// <see cref="DataIntegrityProofPipeline"/>. It holds no proof or canonicalization logic of its own
 /// (FR-050); it builds proof options, delegates, and maps the substrate result to the neutral seam
-/// type. Verification pre-resolves each proof's verification method through the injected resolver so a
-/// resolution failure is reported as <see cref="SecuringVerificationStatus.Unresolvable"/>
-/// (→ Indeterminate) rather than being conflated with a cryptographic failure (→ Invalid/Failed).
+/// type. Verification pre-resolves each proof's verification method through the injected tri-state
+/// resolver so an unresolvable DID is <see cref="SecuringVerificationStatus.Unresolvable"/>
+/// (→ Indeterminate), while a method that is absent from a resolvable DID — an attacker-mangled fragment
+/// over a still-resolvable base DID — is a definitive <see cref="SecuringVerificationStatus.Invalid"/>
+/// (→ Failed), never conflated with a cryptographic failure or downgraded to Indeterminate (F7).
 /// </summary>
 internal sealed class DataIntegrityMechanism : ISecuringMechanism
 {
     private readonly DataIntegrityProofPipeline _pipeline;
-    private readonly IVerificationMethodResolver _resolver;
+    private readonly IVerificationMethodTriResolver _resolver;
 
-    public DataIntegrityMechanism(DataIntegrityProofPipeline pipeline, IVerificationMethodResolver resolver)
+    public DataIntegrityMechanism(DataIntegrityProofPipeline pipeline, IVerificationMethodTriResolver resolver)
     {
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
@@ -60,14 +63,18 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
             return SecuringVerificationResult.NoProof;
         }
 
-        // Pre-resolve so an unresolvable verification method is Indeterminate, not a crypto Failure.
+        // Pre-resolve so an unresolvable DID is Indeterminate, but a verification method that is absent
+        // from a resolvable DID (an attacker-mangled fragment over a still-resolvable base DID) is a
+        // definitive Failed — never downgraded to Indeterminate (F7). Fail closed across multiple proofs:
+        // any method-not-found rejects outright; otherwise any unresolvable DID is Indeterminate.
         var resolved = new List<ResolvedVerificationMethod>(verificationMethods.Count);
+        var anyUnresolvable = false;
         foreach (var vm in verificationMethods)
         {
-            ResolvedVerificationMethod? method;
+            VerificationMethodResolution resolution;
             try
             {
-                method = await _resolver.ResolveAsync(vm, cancellationToken).ConfigureAwait(false);
+                resolution = await _resolver.ResolveAsync(vm, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -75,15 +82,27 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
             }
             catch
             {
-                return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
+                anyUnresolvable = true;
+                continue;
             }
 
-            if (method is null)
+            switch (resolution.Status)
             {
-                return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
+                case VerificationMethodResolutionStatus.Resolved:
+                    resolved.Add(resolution.Method!);
+                    break;
+                case VerificationMethodResolutionStatus.MethodNotFound:
+                    // Definitive negative: the issuer's published key set does not authorize this method.
+                    return SecuringVerificationResult.Invalid("verification_method_not_found");
+                default: // DidUnresolvable — IO/network/unknown method, so validity is unknown.
+                    anyUnresolvable = true;
+                    break;
             }
+        }
 
-            resolved.Add(method);
+        if (anyUnresolvable)
+        {
+            return SecuringVerificationResult.Unresolvable("verification_method_unresolvable");
         }
 
         var staticResolver = new StaticVerificationMethodResolver(resolved);

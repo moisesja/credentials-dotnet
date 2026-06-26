@@ -9,10 +9,15 @@ namespace Credentials.Resolution;
 /// Bridges NetDid resolution to the Data Integrity pipeline (FR-080): given a proof's
 /// <c>verificationMethod</c> DID URL, it resolves the DID through NetDid, dereferences the
 /// verification method, extracts its public key, and reports which verification relationships it
-/// participates in. Returns <see langword="null"/> when the method cannot be resolved (which the
-/// caller maps to an Indeterminate result, never a cryptographic failure).
+/// participates in. Returns a tri-state (<see cref="IVerificationMethodTriResolver"/>) so the caller can
+/// honour F7: a DID that cannot be resolved at all is
+/// <see cref="VerificationMethodResolutionStatus.DidUnresolvable"/> (→ Indeterminate), while a DID that
+/// resolves but does not publish the referenced verification method (or whose key is unusable) is
+/// <see cref="VerificationMethodResolutionStatus.MethodNotFound"/> (→ Failed) — the two must not be
+/// conflated, or an attacker could mangle a tampered credential's fragment to downgrade a definitive
+/// failure to Indeterminate. Mirrors <see cref="NetDidEnvelopeKeyResolver"/> for the enveloping forms.
 /// </summary>
-internal sealed class NetDidVerificationMethodResolver : IVerificationMethodResolver
+internal sealed class NetDidVerificationMethodResolver : IVerificationMethodTriResolver
 {
     private static readonly (Func<DidDocument, IReadOnlyList<VerificationRelationshipEntry>?> Selector, string Purpose)[] Relationships =
     [
@@ -28,13 +33,14 @@ internal sealed class NetDidVerificationMethodResolver : IVerificationMethodReso
     public NetDidVerificationMethodResolver(IDidResolver didResolver) =>
         _didResolver = didResolver ?? throw new ArgumentNullException(nameof(didResolver));
 
-    public async Task<ResolvedVerificationMethod?> ResolveAsync(
+    public async Task<VerificationMethodResolution> ResolveAsync(
         string verificationMethodUrl,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(verificationMethodUrl))
         {
-            return null;
+            // An attacker-chosen empty/absent verification method authorizes no key — a definitive failure.
+            return VerificationMethodResolution.MethodNotFound;
         }
 
         var hashIndex = verificationMethodUrl.IndexOf('#');
@@ -57,14 +63,17 @@ internal sealed class NetDidVerificationMethodResolver : IVerificationMethodReso
         var resolution = await _didResolver.ResolveAsync(baseDid, options: null, cancellationToken).ConfigureAwait(false);
         if (resolution.DidDocument is null || resolution.ResolutionMetadata.Error is not null)
         {
-            return null;
+            // The DID itself could not be resolved (IO/network/unknown method) — unknown validity.
+            return VerificationMethodResolution.DidUnresolvable;
         }
 
+        // From here the DID resolved: a missing verification method / unusable key is a definitive failure
+        // (the published key set does not authorize this verificationMethod), NOT an Indeterminate outcome.
         var document = resolution.DidDocument;
         var methods = document.VerificationMethod;
         if (methods is null || methods.Count == 0)
         {
-            return null;
+            return VerificationMethodResolution.MethodNotFound;
         }
 
         var method = hashIndex < 0
@@ -72,7 +81,7 @@ internal sealed class NetDidVerificationMethodResolver : IVerificationMethodReso
             : methods.FirstOrDefault(m => string.Equals(m.Id, verificationMethodUrl, StringComparison.Ordinal));
         if (method is null)
         {
-            return null;
+            return VerificationMethodResolution.MethodNotFound;
         }
 
         PublicKeyMaterial publicKey;
@@ -87,19 +96,21 @@ internal sealed class NetDidVerificationMethodResolver : IVerificationMethodReso
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return null;
+            // The resolved VM's key material is malformed/unusable — a property of the published document,
+            // so a definitive failure rather than an unknown-resolution outcome.
+            return VerificationMethodResolution.MethodNotFound;
         }
 
         var controller = string.IsNullOrEmpty(method.Controller.Value) ? baseDid : method.Controller.Value;
 
-        return new ResolvedVerificationMethod
+        return VerificationMethodResolution.Resolved(new ResolvedVerificationMethod
         {
             Id = method.Id,
             Controller = controller,
             PublicKey = publicKey,
             Relationships = CollectRelationships(document, method.Id),
             ControllerControlsMethod = true,
-        };
+        });
     }
 
     private static IReadOnlySet<string> CollectRelationships(DidDocument document, string methodId)

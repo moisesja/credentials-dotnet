@@ -6,6 +6,32 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ## [Unreleased]
 
+### Security
+
+- **Data Integrity verification now distinguishes "DID unresolvable" from "verification method absent" (F7).**
+  The embedded Data Integrity path resolved a proof's `verificationMethod` through a 2-state (nullable)
+  resolver, so a DID that *resolved* but did not publish the referenced method collapsed to the same
+  `Indeterminate` outcome as a genuine resolution failure. An attacker could mangle a tampered/forged
+  credential's `verificationMethod` **fragment** (over a still-resolvable base DID) to downgrade a
+  definitive bad-signature **Failed** to **Indeterminate**, which a non-strict policy
+  (`TreatIndeterminateAsFailure = false`) soft-accepts. The resolver is now **tri-state** (Resolved /
+  DidUnresolvable / MethodNotFound), matching the enveloping (JOSE/COSE/SD-JWT) path hardened in M4: a
+  method absent from a resolvable DID is a definitive `Failed` (`verification_method_not_found`), never
+  Indeterminate (fail-closed across multi-proof credentials). Default deployments
+  (`TreatIndeterminateAsFailure = true`, fail-closed) were not exploitable, but the diagnostic was
+  dishonest and a non-strict policy was. All changes are internal (no public API change); covered by a new
+  resolver unit test and an end-to-end mangled-fragment regression test (strict → Failed; non-strict →
+  Rejected), with a companion proving a genuinely-unresolvable base DID still maps to Indeterminate.
+- **Opt-in HTTP status/schema fetchers no longer follow redirects (SSRF / HTTPS-downgrade).**
+  `UseHttpStatusListFetcher` / `UseHttpSchemaResolver` validated only the **initial** URL's scheme, while
+  the named `"credentials-dotnet"` `HttpClient` followed 3xx redirects by default — so a hostile
+  credential's HTTPS `credentialStatus`/`credentialSchema` URL could redirect to an internal host
+  (`169.254.169.254`, `localhost`) or cleartext, silently breaking the documented "HTTPS by default"
+  promise. The named client now sets `AllowAutoRedirect = false`, so the redirected request never fires (a
+  status list / schema is a single canonical document with no legitimate redirect). A caller who needs
+  redirects can reconfigure the named client and owns that SSRF posture. Covered by a loopback regression
+  test asserting the redirect target is never reached. No public API change.
+
 ### Fixed
 
 - **Verifiable Presentation verification for holder-less and credential-less presentations (#11).** VCDM 2.0

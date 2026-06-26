@@ -60,8 +60,9 @@ public static class CredentialsServiceCollectionExtensions
         });
         services.TryAddSingleton(sp => new DataIntegrityProofPipeline(sp.GetRequiredService<CryptosuiteRegistry>()));
 
-        // NetDid -> proofs verification-method resolver (FR-080).
-        services.TryAddSingleton<IVerificationMethodResolver>(sp =>
+        // NetDid -> proofs verification-method resolver (FR-080), tri-state so the Data Integrity path can
+        // honour F7 (a method absent from a resolvable DID is Failed, not Indeterminate).
+        services.TryAddSingleton<IVerificationMethodTriResolver>(sp =>
             new NetDidVerificationMethodResolver(sp.GetRequiredService<IDidResolver>()));
 
         // NetDid -> enveloping key resolver (M3, FR-012/FR-080): resolves a JWS/COSE kid (a DID URL) to
@@ -74,7 +75,7 @@ public static class CredentialsServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ISecuringMechanism, DataIntegrityMechanism>(sp =>
             new DataIntegrityMechanism(
                 sp.GetRequiredService<DataIntegrityProofPipeline>(),
-                sp.GetRequiredService<IVerificationMethodResolver>())));
+                sp.GetRequiredService<IVerificationMethodTriResolver>())));
 
         // Enveloping VC-JOSE-COSE securing mechanisms (M3, FR-012). Registered unconditionally (always
         // available, like Data Integrity); the registry collects them by form. Each is the sole importer

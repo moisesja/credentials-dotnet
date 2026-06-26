@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Credentials.Cryptography;
 using Credentials.Extensions.DependencyInjection.Http;
 using Credentials.Schema;
@@ -94,6 +95,18 @@ public sealed class CredentialsBuilder
     /// <summary>Default cap on a fetched schema document body (bytes), for the HTTP resolver.</summary>
     private const long DefaultSchemaMaxBytes = 1L * 1024 * 1024;
 
+    /// <summary>
+    /// Registers the shared <c>"credentials-dotnet"</c> named <see cref="HttpClient"/> the opt-in fetchers
+    /// resolve, with HTTP redirect following disabled. A status list / schema is a single canonical
+    /// document, so there is no legitimate redirect to follow; disabling it means an attacker cannot use a
+    /// 3xx redirect from a trusted HTTPS URL to reach an internal / cleartext location (SSRF / downgrade) —
+    /// the redirected request never fires. A caller who genuinely needs redirects (and accepts that SSRF
+    /// posture) can reconfigure the named client's primary handler.
+    /// </summary>
+    private void ConfigureFetchHttpClient() =>
+        Services.AddHttpClient(HttpFetch.ClientName)
+            .ConfigurePrimaryHttpMessageHandler(static () => new HttpClientHandler { AllowAutoRedirect = false });
+
     // ── Status (FR-022/FR-081): the status-list fetch hook. Unset ⇒ the status check is Skipped. ──
 
     /// <summary>Registers a caller-supplied <see cref="IStatusListFetcher"/> (FR-081).</summary>
@@ -114,13 +127,15 @@ public sealed class CredentialsBuilder
     /// <summary>
     /// Registers an opt-in HTTP(S) <see cref="IStatusListFetcher"/> with a bounded response size. HTTPS is
     /// required by default (pass <paramref name="allowHttp"/> to permit cleartext, which a network attacker
-    /// can MitM to substitute a cleared status list). Egress is otherwise the caller's responsibility
-    /// (SSRF): front the <c>"credentials-dotnet"</c> named <c>HttpClient</c> with an allowlisting handler /
-    /// proxy where required.
+    /// can MitM to substitute a cleared status list). By default the named client does <strong>not</strong>
+    /// follow HTTP redirects, so an attacker-named HTTPS URL cannot reach a cleartext / internal location via
+    /// a 3xx redirect. Egress is otherwise the caller's responsibility (SSRF): front the
+    /// <c>"credentials-dotnet"</c> named <c>HttpClient</c> with an allowlisting handler / proxy where required
+    /// (a caller that replaces its primary handler owns the redirect posture).
     /// </summary>
     public CredentialsBuilder UseHttpStatusListFetcher(long maxResponseBytes = DefaultStatusListMaxBytes, bool allowHttp = false)
     {
-        Services.AddHttpClient(HttpFetch.ClientName);
+        ConfigureFetchHttpClient();
         Services.AddSingleton<IStatusListFetcher>(sp =>
             new HttpStatusListFetcher(sp.GetRequiredService<IHttpClientFactory>(), maxResponseBytes, allowHttp));
         return this;
@@ -146,13 +161,15 @@ public sealed class CredentialsBuilder
     /// <summary>
     /// Registers an opt-in HTTP(S) <see cref="ICredentialSchemaResolver"/> with a bounded response size.
     /// HTTPS is required by default (pass <paramref name="allowHttp"/> to permit cleartext, which a network
-    /// attacker can MitM to substitute a permissive schema). Egress is otherwise the caller's responsibility
-    /// (SSRF), as for the status fetcher; the engine still enforces any declared <c>digestSRI</c> over the
-    /// fetched bytes.
+    /// attacker can MitM to substitute a permissive schema). By default the named client does
+    /// <strong>not</strong> follow HTTP redirects, so an attacker-named HTTPS URL cannot reach a cleartext /
+    /// internal location via a 3xx redirect. Egress is otherwise the caller's responsibility (SSRF), as for
+    /// the status fetcher (a caller that replaces its primary handler owns the redirect posture); the engine
+    /// still enforces any declared <c>digestSRI</c> over the fetched bytes.
     /// </summary>
     public CredentialsBuilder UseHttpSchemaResolver(long maxResponseBytes = DefaultSchemaMaxBytes, bool allowHttp = false)
     {
-        Services.AddHttpClient(HttpFetch.ClientName);
+        ConfigureFetchHttpClient();
         Services.AddSingleton<ICredentialSchemaResolver>(sp =>
             new HttpSchemaResolver(sp.GetRequiredService<IHttpClientFactory>(), maxResponseBytes, allowHttp));
         return this;
