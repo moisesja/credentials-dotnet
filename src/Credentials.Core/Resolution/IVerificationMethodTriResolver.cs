@@ -18,13 +18,16 @@ internal interface IVerificationMethodTriResolver
     Task<VerificationMethodResolution> ResolveAsync(string verificationMethodUrl, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The outcome class of an <see cref="IVerificationMethodTriResolver"/> resolution.</summary>
+/// <summary>
+/// The outcome class of an <see cref="IVerificationMethodTriResolver"/> resolution. The zero value is
+/// deliberately a non-success (<see cref="DidUnresolvable"/>) so a <c>default</c>-constructed or otherwise
+/// zero-initialized <see cref="VerificationMethodResolution"/> fails closed rather than masquerading as
+/// <see cref="Resolved"/> with a null <see cref="VerificationMethodResolution.Method"/> a consumer would
+/// dereference. Real outcomes are only ever produced via the factory members.
+/// </summary>
 internal enum VerificationMethodResolutionStatus
 {
-    /// <summary>The verification method was found and its public key extracted.</summary>
-    Resolved,
-
-    /// <summary>The DID could not be resolved at all (IO/network/unknown method) — unknown validity (→ Indeterminate).</summary>
+    /// <summary>The DID could not be resolved at all (IO/network/unknown method) — unknown validity (→ Indeterminate). The fail-closed zero value.</summary>
     DidUnresolvable,
 
     /// <summary>
@@ -32,6 +35,9 @@ internal enum VerificationMethodResolutionStatus
     /// is unusable) — a definitive negative (→ Failed): the published key set does not authorize this method.
     /// </summary>
     MethodNotFound,
+
+    /// <summary>The verification method was found and its public key extracted.</summary>
+    Resolved,
 }
 
 /// <summary>

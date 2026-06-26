@@ -17,13 +17,16 @@ internal interface IEnvelopeKeyResolver
     Task<EnvelopeKeyResolution> ResolveAsync(string kid, CancellationToken cancellationToken = default);
 }
 
-/// <summary>The outcome class of an <see cref="IEnvelopeKeyResolver"/> resolution.</summary>
+/// <summary>
+/// The outcome class of an <see cref="IEnvelopeKeyResolver"/> resolution. The zero value is deliberately a
+/// non-success (<see cref="DidUnresolvable"/>) so a <c>default</c>-constructed or otherwise zero-initialized
+/// <see cref="EnvelopeKeyResolution"/> fails closed rather than masquerading as <see cref="Resolved"/> with
+/// an empty <see cref="EnvelopeKeyResolution.Key"/> a consumer would use. Real outcomes are only ever
+/// produced via the factory members.
+/// </summary>
 internal enum EnvelopeKeyResolutionStatus
 {
-    /// <summary>The verification method was found and its public key extracted.</summary>
-    Resolved,
-
-    /// <summary>The DID could not be resolved at all (IO/network/unknown method) — unknown validity (→ Indeterminate).</summary>
+    /// <summary>The DID could not be resolved at all (IO/network/unknown method) — unknown validity (→ Indeterminate). The fail-closed zero value.</summary>
     DidUnresolvable,
 
     /// <summary>
@@ -31,6 +34,9 @@ internal enum EnvelopeKeyResolutionStatus
     /// is unusable) — a definitive negative (→ Failed): the published key set does not authorize this kid.
     /// </summary>
     MethodNotFound,
+
+    /// <summary>The verification method was found and its public key extracted.</summary>
+    Resolved,
 }
 
 /// <summary>
