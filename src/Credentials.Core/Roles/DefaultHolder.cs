@@ -91,7 +91,7 @@ internal sealed class DefaultHolder : IHolder
         var outcome = await mechanism.SecureAsync(
             new SecureRequest
             {
-                Document = presentation.AsElement(),
+                Document = presentation.ToElement(),
                 Cryptosuite = request.Cryptosuite,
                 Signer = request.HolderSigner,
                 VerificationMethod = request.VerificationMethod,
@@ -140,8 +140,8 @@ internal sealed class DefaultHolder : IHolder
         var outcome = await mechanism.SecureAsync(
             new SecureRequest
             {
-                Document = presentation.AsElement(),
-                Payload = injected ?? presentation.AsUtf8(),
+                Document = presentation.ToElement(),
+                Payload = injected ?? presentation.ToUtf8(),
                 Signer = request.HolderSigner,
                 VerificationMethod = request.VerificationMethod,
                 Kind = SecuringDocumentKind.Presentation,

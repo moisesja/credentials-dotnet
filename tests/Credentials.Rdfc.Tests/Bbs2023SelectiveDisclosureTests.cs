@@ -60,7 +60,7 @@ public sealed class Bbs2023SelectiveDisclosureTests
 
         // The reveal carries the mandatory group (issuer, subject id) + the selected gpa, and omits the
         // unselected claims (alumniOf, favoriteColor).
-        var subject = derived.AsElement().GetProperty("credentialSubject");
+        var subject = derived.ToElement().GetProperty("credentialSubject");
         subject.TryGetProperty("id", out _).Should().BeTrue();          // mandatory
         subject.TryGetProperty("gpa", out _).Should().BeTrue();         // selected
         subject.TryGetProperty("favoriteColor", out _).Should().BeFalse(); // withheld
@@ -85,8 +85,8 @@ public sealed class Bbs2023SelectiveDisclosureTests
         var derived = await deriver.DeriveAsync(baseCredential, new BbsDisclosureRequest());
 
         derived.Issuer.Should().NotBeNull();
-        derived.AsElement().GetProperty("credentialSubject").TryGetProperty("id", out _).Should().BeTrue();
-        derived.AsElement().GetProperty("credentialSubject").TryGetProperty("gpa", out _).Should().BeFalse();
+        derived.ToElement().GetProperty("credentialSubject").TryGetProperty("id", out _).Should().BeTrue();
+        derived.ToElement().GetProperty("credentialSubject").TryGetProperty("gpa", out _).Should().BeFalse();
     }
 
     [Fact]
@@ -374,7 +374,7 @@ public sealed class Bbs2023SelectiveDisclosureTests
 
         var suite = new Bbs2023Cryptosuite();
         var baseProof = await suite.CreateBaseProofAsync(
-            credential.AsElement(), baseOptions, bls.PrivateKey, hmacKey, mandatoryPointers);
+            credential.ToElement(), baseOptions, bls.PrivateKey, hmacKey, mandatoryPointers);
 
         var node = JsonNode.Parse(credential.ToBytes())!.AsObject();
         node["proof"] = JsonSerializer.SerializeToNode(baseProof, DataProofsJsonOptions.Default);
@@ -382,5 +382,5 @@ public sealed class Bbs2023SelectiveDisclosureTests
     }
 
     private static string ProofValueOf(Credential credential) =>
-        credential.AsElement().GetProperty("proof").GetProperty("proofValue").GetString()!;
+        credential.ToElement().GetProperty("proof").GetProperty("proofValue").GetString()!;
 }

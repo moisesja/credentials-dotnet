@@ -442,3 +442,30 @@ redirects also keeps the guarantee simple: exactly one request, to the URL you v
 schema is a single canonical document, so this costs nothing; where redirects are genuinely needed, the
 caller opts in and owns the egress posture. (Prove it with a loopback test that fails the redirect target's
 hit counter, not just the fetch return value — assert the internal host was never contacted.)
+
+## A subagent's "this is blocked by known bug #X" must be verified against the live tracker + reproduced before it shapes a decision (2026-06-26)
+
+Scoping PR-B's relatedResource work, an investigation subagent reported the W3C suite's digest fixtures were
+"stale (issue #166)", and I propagated that into a recommendation to DEFER the digest hash-check as "it
+won't pass the suite anyway." The user pushed back — "the bug reads as closed." On checking: issue #166 was
+**closed/fixed**, and the suite's active fixture digest was **byte-identical to the live resource** (verified
+by fetching `https://www.w3.org/ns/credentials/v2` and SHA-384-hashing it). The premise was wrong, so the
+decision's framing was wrong — the hash check WOULD pass the suite. The subagent had read a real code comment
+but neither checked the issue's state nor reproduced the digest. **Rule:** a claim of the form "X is blocked /
+pointless because of known bug #N" — *especially* one used to argue AGAINST doing work — is a claim to
+verify, not a fact. Check the tracker's current state (`gh api repos/<o>/<r>/issues/N`) and reproduce the
+underlying condition (here: fetch the resource, recompute the digest, compare) before letting it shape scope.
+A stale comment in a dependency reflects a *past* state, not the present (same shape as the recalled-memory
+and "reviewers misread too" lessons). The user should not be the one to catch this.
+
+## Validation that gets STRICTER belongs in the major release, not a later minor (2026-06-26)
+
+PR-B tightens the structural validator to reject non-URL identifiers, typeless `refreshService`, malformed
+`relatedResource`, and bad `name`/`description` language objects — credentials the engine previously
+*accepted*. Shipping that in 1.0.0 vs a later 1.0.x/1.1 is not a neutral timing choice: a validator that
+newly rejects inputs it used to accept is a **behavioral breaking change**, so deferring it past the 1.0
+API/behavior lock would force it into a semver-breaking minor. **Rule:** when planning a release, sort
+pending changes by direction — *loosening* (newly accepting) is backward-compatible and safe to defer;
+*tightening* (newly rejecting) and signature changes are breaking and belong before the major's lock.
+Surface this to the release owner explicitly — it changed the release-scope decision here (the user chose
+"PR-B + PR-C, then 1.0.0" rather than shipping security-only).

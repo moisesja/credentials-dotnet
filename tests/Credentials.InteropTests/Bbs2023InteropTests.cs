@@ -44,7 +44,7 @@ public sealed class Bbs2023InteropTests
             RevealPointers = ["/credentialSubject/gpa"],
         });
 
-        var proof = derived.AsElement().GetProperty("proof");
+        var proof = derived.ToElement().GetProperty("proof");
         proof.GetProperty("cryptosuite").GetString().Should().Be("bbs-2023", "the cryptosuite name is a drift sentinel");
         proof.GetProperty("proofValue").GetString().Should().StartWith("u",
             "a derived bbs-2023 proofValue is multibase-base64url (drift sentinel)");
@@ -111,7 +111,7 @@ public sealed class Bbs2023InteropTests
         for (var i = 0; i < hmacKey.Length; i++) hmacKey[i] = (byte)(i + 1);
 
         var baseProof = await new Bbs2023Cryptosuite().CreateBaseProofAsync(
-            credential.AsElement(), baseOptions, bls.PrivateKey, hmacKey, mandatoryPointers);
+            credential.ToElement(), baseOptions, bls.PrivateKey, hmacKey, mandatoryPointers);
 
         var node = JsonNode.Parse(credential.ToBytes())!.AsObject();
         node["proof"] = JsonSerializer.SerializeToNode(baseProof, DataProofsJsonOptions.Default);

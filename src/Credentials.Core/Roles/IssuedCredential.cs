@@ -14,7 +14,7 @@ public sealed class IssuedCredential
     private readonly string? _compactSdJwt;
 
     private IssuedCredential(
-        SecuringState form,
+        SecuringForm form,
         Credential credential,
         string mediaType,
         string? compactJws,
@@ -30,7 +30,7 @@ public sealed class IssuedCredential
     }
 
     /// <summary>The securing form of the issued credential.</summary>
-    public SecuringState Form { get; }
+    public SecuringForm Form { get; }
 
     /// <summary>The secured credential (with its embedded proof, or carrying its enveloped serialization).</summary>
     public Credential Credential { get; }
@@ -42,7 +42,7 @@ public sealed class IssuedCredential
     public string? CompactJws => _compactJws;
 
     /// <summary>The COSE_Sign1 bytes for a COSE-enveloped credential, or <see langword="null"/> otherwise.</summary>
-    public ReadOnlyMemory<byte>? CoseBytes => Form == SecuringState.Cose ? _coseBytes : null;
+    public ReadOnlyMemory<byte>? CoseBytes => Form == SecuringForm.Cose ? _coseBytes : null;
 
     /// <summary>The compact SD-JWT VC serialization for an SD-JWT VC, or <see langword="null"/> otherwise.</summary>
     public string? CompactSdJwt => _compactSdJwt;
@@ -51,7 +51,7 @@ public sealed class IssuedCredential
     public static IssuedCredential DataIntegrity(Credential credential)
     {
         ArgumentNullException.ThrowIfNull(credential);
-        return new IssuedCredential(SecuringState.DataIntegrity, credential, "application/vc+ld+json", null, default);
+        return new IssuedCredential(SecuringForm.DataIntegrity, credential, "application/vc+ld+json", null, default);
     }
 
     /// <summary>Creates an enveloping VC-JOSE issued-credential result (media type <c>application/vc+jwt</c>).</summary>
@@ -59,7 +59,7 @@ public sealed class IssuedCredential
     {
         ArgumentNullException.ThrowIfNull(enveloped);
         ArgumentException.ThrowIfNullOrEmpty(compactJws);
-        return new IssuedCredential(SecuringState.Jose, enveloped, "application/vc+jwt", compactJws, default);
+        return new IssuedCredential(SecuringForm.Jose, enveloped, "application/vc+jwt", compactJws, default);
     }
 
     /// <summary>Creates an enveloping VC-COSE issued-credential result (media type <c>application/vc+cose</c>).</summary>
@@ -71,7 +71,7 @@ public sealed class IssuedCredential
             throw new ArgumentException("COSE bytes must not be empty.", nameof(coseBytes));
         }
 
-        return new IssuedCredential(SecuringState.Cose, enveloped, "application/vc+cose", null, coseBytes);
+        return new IssuedCredential(SecuringForm.Cose, enveloped, "application/vc+cose", null, coseBytes);
     }
 
     /// <summary>Creates an SD-JWT VC issued-credential result (media type <c>application/dc+sd-jwt</c>).</summary>
@@ -79,6 +79,6 @@ public sealed class IssuedCredential
     {
         ArgumentNullException.ThrowIfNull(enveloped);
         ArgumentException.ThrowIfNullOrEmpty(compactSdJwt);
-        return new IssuedCredential(SecuringState.SdJwtVc, enveloped, "application/dc+sd-jwt", null, default, compactSdJwt);
+        return new IssuedCredential(SecuringForm.SdJwtVc, enveloped, "application/dc+sd-jwt", null, default, compactSdJwt);
     }
 }

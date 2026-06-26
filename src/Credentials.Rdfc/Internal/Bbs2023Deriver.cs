@@ -58,7 +58,7 @@ internal sealed class Bbs2023Deriver : IBbsDeriver
         JsonElement reveal;
         try
         {
-            reveal = _suite.DeriveProof(baseCredential.AsElement(), request.RevealPointers, presentationHeader);
+            reveal = _suite.DeriveProof(baseCredential.ToElement(), request.RevealPointers, presentationHeader);
         }
         catch (BbsUnavailableException ex)
         {

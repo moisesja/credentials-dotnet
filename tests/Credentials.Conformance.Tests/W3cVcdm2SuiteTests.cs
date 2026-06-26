@@ -10,16 +10,18 @@ namespace Credentials.Conformance.Tests;
 /// <summary>
 /// Runs the W3C VCDM 2.0 interoperability test suite (the Node suite) against the ASP.NET shim on
 /// loopback and asserts a conformance baseline. The engine passes the structural/issue/verify core of
-/// the suite; a known set of tests fail because they exercise capabilities this engine does not
-/// implement (full JSON-LD term-mapping, <c>relatedResource</c> integrity, <c>name</c>/<c>description</c>
-/// language-value-object validation) or a VP authentication-proof interop gap — see the README. The
-/// baseline guards against regressions below the established pass count without claiming full conformance.
+/// the suite. The two not-yet-passing tests exercise capabilities deferred from this engine: full JSON-LD
+/// term mapping (detecting a well-formed-but-unmapped <c>type</c>, which an STJ-only engine cannot resolve
+/// without context expansion) and <c>relatedResource</c> digest hash-verification (a verifier-side
+/// fetch+hash deferred to a follow-up). See <c>docs/conformance.md</c>. The baseline guards against
+/// regressions below the established pass count without claiming full conformance.
 /// </summary>
 public sealed partial class W3cVcdm2SuiteTests
 {
-    // The number of suite tests the engine currently passes. Raising this when the engine improves is
-    // expected; a drop below it is a regression and fails the gate.
-    private const int PassingBaseline = 43;
+    // The number of suite tests the engine currently passes (57 of 59; the 2 remaining are documented in
+    // docs/conformance.md). Raising this when the engine improves is expected; a drop below it is a
+    // regression and fails the gate.
+    private const int PassingBaseline = 57;
 
     [SkippableFact]
     [Trait("Category", "Conformance")]

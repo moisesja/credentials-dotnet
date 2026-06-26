@@ -11,8 +11,13 @@ to `NetCrypto`, proofs to `DataProofsDotnet`, and identifiers/keys to `NetDid`.
 
 ## Status
 
-Early development. Milestone **M0** (solution skeleton, document-centric core model, structural validation,
-dependency-injection surface) is the current build target. See the implementation plan below for the roadmap.
+Feature-complete and on the path to **v1.0.0** (currently `0.1.0`, pre-release). The engine implements all
+three roles — Issuer, Holder, Verifier — across every securing family: embedded **Data Integrity**
+(EdDSA / ECDSA, JCS + RDFC), **VC-JOSE-COSE**, and **SD-JWT VC**. It also covers selective disclosure
+(`bbs-2023` derived proofs and SD-JWT disclosures), **Bitstring Status List v1.0**, **JSON Schema 2020-12**
+validation, the issuer-trust / status / schema policy hooks, and **VCDM 1.1 verification** (issuance is
+2.0 only). It passes **57 / 59** of the W3C VCDM 2.0 test suite — the 2 remaining gaps are documented, not
+hidden, in [`docs/conformance.md`](docs/conformance.md).
 
 ## Documentation
 
@@ -21,8 +26,10 @@ This README is a thin router. The design context lives in [`docs/`](docs/) — r
 1. [`docs/architectural-path.md`](docs/architectural-path.md) — the whole `net-wallet-sdk` wallet ecosystem and the shared foundation.
 2. [`docs/credentials-dotnet-concept.md`](docs/credentials-dotnet-concept.md) — what this library is and the agreed decisions (D1–D12).
 3. [`docs/credentials-dotnet-prd.md`](docs/credentials-dotnet-prd.md) — the numbered functional/non-functional requirements.
+4. [`docs/conformance.md`](docs/conformance.md) — the honest W3C conformance + interop status.
 
-The phased implementation plan is in [`tasks/todo-2026-06-18-credentials-dotnet-implementation.md`](tasks/todo-2026-06-18-credentials-dotnet-implementation.md).
+Runnable examples for every role × form are in [`samples/`](samples/). The original phased implementation
+plan (now delivered) is in [`tasks/`](tasks/).
 
 ## License
 

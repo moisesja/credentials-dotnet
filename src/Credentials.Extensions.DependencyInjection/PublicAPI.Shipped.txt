@@ -1,0 +1,27 @@
+#nullable enable
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.Configure(System.Action<Microsoft.Extensions.DependencyInjection.CredentialsOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.Services.get -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseDigestService(Credentials.Cryptography.IDigestService! instance) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseDigestService<T>() -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseHttpSchemaResolver(long maxResponseBytes = 1048576, bool allowHttp = false) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseHttpStatusListFetcher(long maxResponseBytes = 4194304, bool allowHttp = false) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseIssuerTrustPolicy(Credentials.Trust.IIssuerTrustPolicy! instance) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseIssuerTrustPolicy<T>() -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseNetDid(System.Action<NetDid.Extensions.DependencyInjection.NetDidBuilder!>? configure = null) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseRandomSource(Credentials.Cryptography.IRandomSource! instance) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseRandomSource<T>() -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseSchemaResolver(Credentials.Schema.ICredentialSchemaResolver! instance) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseSchemaResolver<T>() -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseStatusListFetcher(Credentials.Status.IStatusListFetcher! instance) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseStatusListFetcher<T>() -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseTypeMetadataResolver(Credentials.Schema.ICredentialTypeMetadataResolver! instance) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsBuilder.UseTypeMetadataResolver<T>() -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+Microsoft.Extensions.DependencyInjection.CredentialsOptions
+Microsoft.Extensions.DependencyInjection.CredentialsOptions.AcceptVcdm11.get -> bool
+Microsoft.Extensions.DependencyInjection.CredentialsOptions.AcceptVcdm11.set -> void
+Microsoft.Extensions.DependencyInjection.CredentialsOptions.ClockSkew.get -> System.TimeSpan
+Microsoft.Extensions.DependencyInjection.CredentialsOptions.ClockSkew.set -> void
+Microsoft.Extensions.DependencyInjection.CredentialsOptions.CredentialsOptions() -> void
+Microsoft.Extensions.DependencyInjection.CredentialsServiceCollectionExtensions
+static Microsoft.Extensions.DependencyInjection.CredentialsServiceCollectionExtensions.AddCredentials(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Microsoft.Extensions.DependencyInjection.CredentialsBuilder!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

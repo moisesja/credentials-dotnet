@@ -65,7 +65,7 @@ public sealed class M4SdJwtVcTests
                 Disclosable = [DisclosureSelector.ObjectProperties("credentialSubject", "given_name")],
             });
 
-        issued.Form.Should().Be(SecuringState.SdJwtVc);
+        issued.Form.Should().Be(SecuringForm.SdJwtVc);
         issued.MediaType.Should().Be("application/dc+sd-jwt");
         issued.CompactSdJwt.Should().NotBeNullOrEmpty();
         issued.CompactSdJwt!.Should().EndWith("~"); // SD-JWT portion ends in '~' (no KB-JWT)

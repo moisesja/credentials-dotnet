@@ -64,7 +64,7 @@ internal sealed class SchemaStage
             return CheckResult.Skipped(CheckKinds.Schema, "No credential-schema resolver is configured.");
         }
 
-        var credentialElement = credential.AsElement();
+        var credentialElement = credential.ToElement();
         var credentialIssuerId = credential.Issuer?.Id;
         var diagnostics = new List<CheckDiagnostic>();
         var worst = CheckStatus.Passed;

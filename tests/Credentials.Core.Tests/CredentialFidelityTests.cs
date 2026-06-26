@@ -24,7 +24,7 @@ public sealed class CredentialFidelityTests
         var credential = Credential.Parse(bytes);
 
         credential.Origin.Should().Be(DocumentOrigin.ReceivedBytes);
-        credential.AsUtf8().ToArray().Should().Equal(bytes, "received documents must verify against their exact bytes");
+        credential.ToUtf8().ToArray().Should().Equal(bytes, "received documents must verify against their exact bytes");
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class CredentialFidelityTests
     public void AsClaimsObject_returns_an_independent_clone()
     {
         var credential = Credential.Parse(ReceivedJson);
-        var claims = credential.AsClaimsObject();
+        var claims = credential.ToClaimsObject();
         claims["injected"] = "value";
 
         credential.GetMember("injected").Should().BeNull();

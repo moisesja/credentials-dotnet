@@ -1,0 +1,17 @@
+#nullable enable
+Credentials.Rdfc.BbsDisclosureRequest
+Credentials.Rdfc.BbsDisclosureRequest.<Clone>$() -> Credentials.Rdfc.BbsDisclosureRequest!
+Credentials.Rdfc.BbsDisclosureRequest.BbsDisclosureRequest() -> void
+Credentials.Rdfc.BbsDisclosureRequest.Equals(Credentials.Rdfc.BbsDisclosureRequest? other) -> bool
+Credentials.Rdfc.BbsDisclosureRequest.RevealPointers.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Credentials.Rdfc.BbsDisclosureRequest.RevealPointers.init -> void
+Credentials.Rdfc.IBbsDeriver
+Credentials.Rdfc.IBbsDeriver.DeriveAsync(Credentials.Credential! baseCredential, Credentials.Rdfc.BbsDisclosureRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Credentials.Credential!>!
+Microsoft.Extensions.DependencyInjection.CredentialsRdfcBuilderExtensions
+override Credentials.Rdfc.BbsDisclosureRequest.Equals(object? obj) -> bool
+override Credentials.Rdfc.BbsDisclosureRequest.GetHashCode() -> int
+override Credentials.Rdfc.BbsDisclosureRequest.ToString() -> string!
+static Credentials.Rdfc.BbsDisclosureRequest.operator !=(Credentials.Rdfc.BbsDisclosureRequest? left, Credentials.Rdfc.BbsDisclosureRequest? right) -> bool
+static Credentials.Rdfc.BbsDisclosureRequest.operator ==(Credentials.Rdfc.BbsDisclosureRequest? left, Credentials.Rdfc.BbsDisclosureRequest? right) -> bool
+static Microsoft.Extensions.DependencyInjection.CredentialsRdfcBuilderExtensions.UseBbs2023(this Microsoft.Extensions.DependencyInjection.CredentialsBuilder! builder) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!
+static Microsoft.Extensions.DependencyInjection.CredentialsRdfcBuilderExtensions.UseRdfcSuites(this Microsoft.Extensions.DependencyInjection.CredentialsBuilder! builder) -> Microsoft.Extensions.DependencyInjection.CredentialsBuilder!

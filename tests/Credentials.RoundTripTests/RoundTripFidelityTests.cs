@@ -58,7 +58,7 @@ public sealed class RoundTripFidelityTests
         var credential = Credential.Parse(original);
 
         credential.ToBytes().Should().Equal(original, "received bytes must be retained verbatim (FR-003)");
-        credential.AsUtf8().ToArray().Should().Equal(original);
+        credential.ToUtf8().ToArray().Should().Equal(original);
         credential.GetMember("evidence").Should().NotBeNull("unknown members must round-trip (FR-001/003)");
 
         // Member order is preserved on re-serialization (parse → reparse is byte-stable).
@@ -88,9 +88,9 @@ public sealed class RoundTripFidelityTests
 
         // Stored bytes == wire bytes == re-serialized bytes: the secured artifact is re-ingested as the
         // source of truth, so serializing it again is byte-identical (no proof re-strip/re-add, no drift).
-        var stored = issued.Credential.AsUtf8().ToArray();
+        var stored = issued.Credential.ToUtf8().ToArray();
         var reparsed = Credential.Parse(stored);
-        reparsed.AsUtf8().ToArray().Should().Equal(stored);
+        reparsed.ToUtf8().ToArray().Should().Equal(stored);
         reparsed.ToBytes().Should().Equal(stored);
         reparsed.HasEmbeddedProof.Should().BeTrue();
 
@@ -122,7 +122,7 @@ public sealed class RoundTripFidelityTests
 
         // Golden bytes: the JWS payload segment is the credential's exact bytes (no re-serialization).
         var payload = Base64Url.DecodeFromChars(issued.CompactJws!.Split('.')[1]);
-        payload.Should().Equal(unsecured.AsUtf8().ToArray());
+        payload.Should().Equal(unsecured.ToUtf8().ToArray());
 
         // Re-ingesting the verbatim wire bytes preserves the token character-for-character and verifies.
         var holder = provider.GetRequiredService<IHolder>();
@@ -199,8 +199,8 @@ public sealed class RoundTripFidelityTests
         var issued = await issuer.IssueAsync(
             unsecured, new DataIntegrityIssuanceRequest { Cryptosuite = "eddsa-jcs-2022", Signer = key.Signer, VerificationMethod = key.Vm });
 
-        var reparsed = Credential.Parse(issued.Credential.AsUtf8());
-        var note = reparsed.AsElement().GetProperty("credentialSubject").GetProperty("note").GetString();
+        var reparsed = Credential.Parse(issued.Credential.ToUtf8());
+        var note = reparsed.ToElement().GetProperty("credentialSubject").GetProperty("note").GetString();
         note.Should().Be(tricky, "<>& and non-BMP characters must survive build → sign → parse byte-for-byte (H1)");
 
         (await verifier.VerifyCredentialAsync(reparsed)).Decision.Should().Be(VerificationDecision.Accepted);

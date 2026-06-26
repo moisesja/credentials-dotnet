@@ -66,7 +66,7 @@ public sealed class StatusListManager
         ArgumentNullException.ThrowIfNull(statusListCredential);
         ArgumentOutOfRangeException.ThrowIfNegative(entryIndex);
 
-        var (_, encoded) = ReadSubject(statusListCredential.AsClaimsObject());
+        var (_, encoded) = ReadSubject(statusListCredential.ToClaimsObject());
         var bitstring = StatusBitstring.Decode(encoded);
         return StatusBitstring.GetBit(bitstring, entryIndex);
     }
@@ -79,7 +79,7 @@ public sealed class StatusListManager
         ArgumentOutOfRangeException.ThrowIfNegative(entryIndex);
         ArgumentOutOfRangeException.ThrowIfLessThan(statusSize, 1);
 
-        var (_, encoded) = ReadSubject(statusListCredential.AsClaimsObject());
+        var (_, encoded) = ReadSubject(statusListCredential.ToClaimsObject());
         var bitstring = StatusBitstring.Decode(encoded);
         return StatusBitstring.GetValue(bitstring, checked(entryIndex * statusSize), statusSize);
     }
@@ -122,7 +122,7 @@ public sealed class StatusListManager
     {
         ArgumentNullException.ThrowIfNull(statusListCredential);
 
-        var root = statusListCredential.AsClaimsObject();
+        var root = statusListCredential.ToClaimsObject();
         root.Remove("proof");
 
         var (subject, encoded) = ReadSubject(root);

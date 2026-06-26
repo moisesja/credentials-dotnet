@@ -40,10 +40,19 @@ internal sealed class DefaultIssuer : IIssuer
         {
             case DataIntegrityIssuanceRequest dataIntegrity:
             {
+                // VC Data Integrity 1.0 §3.2: a credential proof asserts claims, so its proofPurpose MUST be
+                // 'assertionMethod'. Guard it at the role boundary (not just the default) so the contract holds
+                // for any caller-supplied value (the M7/D8 boundary-guard pattern).
+                if (!string.Equals(dataIntegrity.ProofPurpose, ProofPurpose.AssertionMethod, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        "A Data Integrity credential proof must use proofPurpose 'assertionMethod' (VC Data Integrity 1.0 §3.2).");
+                }
+
                 var mechanism = _registry.ResolveForIssue(SecuringForm.DataIntegrity, dataIntegrity.Cryptosuite);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
+                    Document = credential.ToElement(),
                     Cryptosuite = dataIntegrity.Cryptosuite,
                     Signer = dataIntegrity.Signer,
                     VerificationMethod = dataIntegrity.VerificationMethod,
@@ -62,8 +71,8 @@ internal sealed class DefaultIssuer : IIssuer
                 var mechanism = _registry.ResolveForIssue(SecuringForm.Jose, cryptosuite: null);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
-                    Payload = credential.AsUtf8(),
+                    Document = credential.ToElement(),
+                    Payload = credential.ToUtf8(),
                     Signer = jose.Signer,
                     VerificationMethod = jose.VerificationMethod,
                 };
@@ -79,8 +88,8 @@ internal sealed class DefaultIssuer : IIssuer
                 var mechanism = _registry.ResolveForIssue(SecuringForm.Cose, cryptosuite: null);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
-                    Payload = credential.AsUtf8(),
+                    Document = credential.ToElement(),
+                    Payload = credential.ToUtf8(),
                     Signer = cose.Signer,
                     VerificationMethod = cose.VerificationMethod,
                 };
@@ -96,8 +105,8 @@ internal sealed class DefaultIssuer : IIssuer
                 var mechanism = _registry.ResolveForIssue(SecuringForm.SdJwtVc, cryptosuite: null);
                 var secureRequest = new SecureRequest
                 {
-                    Document = credential.AsElement(),
-                    Claims = credential.AsClaimsObject(),
+                    Document = credential.ToElement(),
+                    Claims = credential.ToClaimsObject(),
                     Vct = sdJwt.Vct,
                     Disclosable = sdJwt.Disclosable,
                     HolderBinding = sdJwt.HolderBinding,

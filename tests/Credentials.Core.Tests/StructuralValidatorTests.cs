@@ -294,4 +294,216 @@ public sealed class StructuralValidatorTests
         p["@context"] = new JsonArray("https://www.w3.org/2018/credentials/v1");
         StructuralValidator.Validate(p, VcRole.Presentation, VcdmVersion.V1_1).IsValid.Should().BeTrue();
     }
+
+    // --- B1: identifier members must be URLs (absolute URIs); DIDs/URNs/URLs pass ---
+
+    [Theory]
+    [InlineData("not-a-url")]
+    [InlineData("42")]
+    [InlineData("https ://not-a-url/vcs/1")] // embedded space in the scheme
+    public void Non_url_id_is_rejected(string badId)
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["id"] = badId;
+        CredentialCodes(c).Should().Contain("id.not_url");
+    }
+
+    [Theory]
+    [InlineData("did:example:credential")]
+    [InlineData("urn:uuid:11111111-1111-1111-1111-111111111111")]
+    [InlineData("https://example.org/credentials/1")]
+    public void Did_urn_and_http_ids_are_valid(string goodId)
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["id"] = goodId;
+        StructuralValidator.Validate(c, VcRole.Credential, VcdmVersion.V2_0).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Null_id_is_rejected()
+    {
+        var c = (JsonObject)JsonNode.Parse(
+            """
+            { "@context":["https://www.w3.org/ns/credentials/v2"], "type":["VerifiableCredential"],
+              "issuer":"did:example:issuer", "credentialSubject":{"id":"did:example:subject"}, "id": null }
+            """)!;
+        CredentialCodes(c).Should().Contain("id.invalid");
+    }
+
+    [Fact]
+    public void Non_url_bare_issuer_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["issuer"] = "fake-issuer";
+        CredentialCodes(c).Should().Contain("issuer.not_url");
+    }
+
+    [Fact]
+    public void Non_url_issuer_object_id_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["issuer"] = new JsonObject { ["id"] = "fake-issuer" };
+        CredentialCodes(c).Should().Contain("issuer.id_not_url");
+    }
+
+    [Fact]
+    public void Non_url_credentialStatus_id_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["credentialStatus"] = new JsonObject { ["type"] = "BitstringStatusListEntry", ["id"] = "https ://not-a-url/status/4" };
+        CredentialCodes(c).Should().Contain("credentialStatus.id_not_url");
+    }
+
+    [Fact]
+    public void Multi_valued_credentialStatus_id_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["credentialStatus"] = new JsonObject
+        {
+            ["type"] = "BitstringStatusListEntry",
+            ["id"] = new JsonArray("https://example.org/status/1", "https://example.org/status/2"),
+        };
+        CredentialCodes(c).Should().Contain("credentialStatus.id_not_url");
+    }
+
+    [Fact]
+    public void Non_url_credentialSchema_id_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["credentialSchema"] = new JsonObject { ["type"] = "JsonSchema", ["id"] = "not-a-url" };
+        CredentialCodes(c).Should().Contain("credentialSchema.id_not_url");
+    }
+
+    [Theory]
+    [InlineData("not-a-url")]
+    public void Non_url_credentialSubject_id_is_rejected(string badId)
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["credentialSubject"] = new JsonObject { ["id"] = badId };
+        CredentialCodes(c).Should().Contain("subject.id_not_url");
+    }
+
+    [Fact]
+    public void Multi_valued_credentialSubject_id_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["credentialSubject"] = new JsonObject { ["id"] = new JsonArray("did:example:a", "did:example:b") };
+        CredentialCodes(c).Should().Contain("subject.id_not_url");
+    }
+
+    // --- B3: refreshService entries require a type ---
+
+    [Fact]
+    public void RefreshService_without_type_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["refreshService"] = new JsonObject { ["id"] = "did:example:refresh/1" };
+        CredentialCodes(c).Should().Contain("refreshService.missing_type");
+    }
+
+    [Fact]
+    public void RefreshService_single_and_array_with_type_pass()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["refreshService"] = new JsonObject { ["type"] = "ExampleRefreshService" };
+        StructuralValidator.Validate(c, VcRole.Credential, VcdmVersion.V2_0).IsValid.Should().BeTrue();
+
+        c["refreshService"] = new JsonArray(
+            new JsonObject { ["type"] = "ExampleRefreshService" },
+            new JsonObject { ["type"] = "ExampleRefreshService", ["id"] = "https://example.org/refresh/2" });
+        StructuralValidator.Validate(c, VcRole.Credential, VcdmVersion.V2_0).IsValid.Should().BeTrue();
+    }
+
+    // --- B4: relatedResource structural (§5.3) ---
+
+    [Fact]
+    public void RelatedResource_array_of_strings_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["relatedResource"] = new JsonArray("https://www.w3.org/ns/credentials/v2");
+        CredentialCodes(c).Should().Contain("relatedResource.not_object");
+    }
+
+    [Fact]
+    public void RelatedResource_missing_id_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["relatedResource"] = new JsonArray(new JsonObject { ["digestMultibase"] = "uWZVc7WaX1h4D8rJVb" });
+        CredentialCodes(c).Should().Contain("relatedResource.missing_id");
+    }
+
+    [Fact]
+    public void RelatedResource_duplicate_id_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["relatedResource"] = new JsonArray(
+            new JsonObject { ["id"] = "https://www.w3.org/ns/credentials/v2", ["digestSRI"] = "sha384-abc" },
+            new JsonObject { ["id"] = "https://www.w3.org/ns/credentials/v2", ["digestMultibase"] = "uWZVc7" });
+        CredentialCodes(c).Should().Contain("relatedResource.duplicate_id");
+    }
+
+    [Fact]
+    public void RelatedResource_missing_digest_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["relatedResource"] = new JsonArray(new JsonObject { ["id"] = "https://www.w3.org/ns/credentials/v2" });
+        CredentialCodes(c).Should().Contain("relatedResource.missing_digest");
+    }
+
+    [Fact]
+    public void RelatedResource_valid_forms_pass()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["relatedResource"] = new JsonObject { ["id"] = "https://www.w3.org/ns/credentials/v2", ["digestSRI"] = "sha384-abc" };
+        StructuralValidator.Validate(c, VcRole.Credential, VcdmVersion.V2_0).IsValid.Should().BeTrue();
+
+        c["relatedResource"] = new JsonArray(
+            new JsonObject { ["id"] = "https://example.org/a", ["mediaType"] = "application/ld+json", ["digestSRI"] = "sha384-a" },
+            new JsonObject { ["id"] = "https://example.org/b", ["digestMultibase"] = "uABC" });
+        StructuralValidator.Validate(c, VcRole.Credential, VcdmVersion.V2_0).IsValid.Should().BeTrue();
+    }
+
+    // --- B5: name / description language value objects (§11.1) ---
+
+    [Fact]
+    public void Name_language_object_with_extra_property_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["name"] = new JsonObject { ["@value"] = "Example Credential", ["@language"] = "en", ["url"] = "did:example:credential" };
+        CredentialCodes(c).Should().Contain("name.invalid_language_object");
+    }
+
+    [Fact]
+    public void Description_language_object_with_extra_property_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["description"] = new JsonObject { ["@value"] = "An example.", ["@language"] = "en", ["extra"] = "x" };
+        CredentialCodes(c).Should().Contain("description.invalid_language_object");
+    }
+
+    [Fact]
+    public void Issuer_object_name_language_object_with_extra_property_is_rejected()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["issuer"] = new JsonObject
+        {
+            ["id"] = "did:example:issuer",
+            ["name"] = new JsonObject { ["@value"] = "Example University", ["@language"] = "en", ["url"] = "did:example:x" },
+        };
+        CredentialCodes(c).Should().Contain("name.invalid_language_object");
+    }
+
+    [Fact]
+    public void Name_string_and_language_objects_pass()
+    {
+        var c = TestVectors.ValidV2Credential();
+        c["name"] = "Example Credential";
+        StructuralValidator.Validate(c, VcRole.Credential, VcdmVersion.V2_0).IsValid.Should().BeTrue();
+
+        c["name"] = new JsonObject { ["@value"] = "Example", ["@language"] = "en", ["@direction"] = "ltr" };
+        c["description"] = new JsonArray(
+            new JsonObject { ["@value"] = "Beispiel", ["@language"] = "de" },
+            new JsonObject { ["@value"] = "Example", ["@language"] = "en" });
+        StructuralValidator.Validate(c, VcRole.Credential, VcdmVersion.V2_0).IsValid.Should().BeTrue();
+    }
 }
