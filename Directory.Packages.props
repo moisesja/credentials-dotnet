@@ -5,7 +5,8 @@
   <ItemGroup>
     <!-- ============================================================================
          Stack libraries (the credentials-dotnet substrate). Versions verified against
-         the local NuGet cache on 2026-06-18. Not every entry is referenced yet: the
+         the local NuGet cache on 2026-07-13 (NetDid/NetCrypto bump, issue #16). Not
+         every entry is referenced yet: the
          later milestones (M1+) add NetDid resolution, the DataProofs JOSE/COSE/RDFC
          securing packages, and JSON Schema validation. Declared centrally so a
          milestone only adds a <PackageReference> with no version.
@@ -20,11 +21,16 @@
     <!-- Engine crypto operations the engine performs itself: hashing/digests (NetCrypto.Hash),
          ISigner abstraction, JWK conversion. NetCrypto exposes no RNG abstraction; the engine's
          RNG seam wraps the BCL RandomNumberGenerator (see Credentials.Cryptography). -->
-    <PackageVersion Include="NetCrypto" Version="1.1.0" />
-    <!-- DID resolution + key store (M1+). -->
-    <PackageVersion Include="NetDid.Core" Version="2.0.1" />
-    <PackageVersion Include="NetDid.Method.Key" Version="2.0.1" />
-    <PackageVersion Include="NetDid.Extensions.DependencyInjection" Version="2.0.1" />
+    <!-- Bumped 1.1.0 -> 1.2.0 (issue #16): NetDid.Core 2.3.0 requires NetCrypto 1.2.0, so this pin
+         is the convergence, not an option — 1.1.0 would be an NU1605 downgrade. -->
+    <PackageVersion Include="NetCrypto" Version="1.2.0" />
+    <!-- DID resolution + key store (M1+). Bumped 2.0.1 -> 2.3.0 (issue #16, net-wallet-sdk 0.2.0
+         downstream convergence). Additive for the surfaces Credentials uses (resolution, did:key);
+         the 2.1->2.3 line tightened the did:webvh update/deactivate driver, which this library does
+         not exercise. NetCrypto 1.2.0 / NetCid 1.6.0 required transitively. -->
+    <PackageVersion Include="NetDid.Core" Version="2.3.0" />
+    <PackageVersion Include="NetDid.Method.Key" Version="2.3.0" />
+    <PackageVersion Include="NetDid.Extensions.DependencyInjection" Version="2.3.0" />
     <!-- Multibase/multihash for the Bitstring Status List codec (M2). -->
     <PackageVersion Include="NetCid" Version="1.6.0" />
     <!-- JSON Schema 2020-12 validation (M2). STJ-native; no Newtonsoft. Latest published is 7.3.2

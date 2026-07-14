@@ -50,7 +50,9 @@ except Exception:
     "https://api.nuget.org/v3-flatcontainer/$idl/$latest/$idl.$latest.nupkg"
   newpkg="$(ls "$NEW/$id."*.nupkg | head -1)"
   echo ">> ApiCompat $id: $latest (baseline) vs freshly packed"
-  dotnet apicompat package --package "$newpkg" --baseline-package "$BASE/$id.$latest.nupkg" --run-api-compat
+  # The package-to-validate is a positional argument (the tool names it "--package" in --help, but it
+  # takes its value positionally; passing `--package <path>` is rejected as an unrecognized argument).
+  dotnet apicompat package "$newpkg" --baseline-package "$BASE/$id.$latest.nupkg" --run-api-compat
   checked+=("$id")
 done
 
