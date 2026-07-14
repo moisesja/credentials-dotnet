@@ -4,6 +4,32 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.1.0 - 7/14/2026
+
+### Changed
+
+- **Foundation dependency bump — `NetDid.*` 2.0.1 → 2.3.0, `NetCrypto` 1.1.0 → 1.2.0**
+  ([#16](https://github.com/moisesja/credentials-dotnet/issues/16)). Downstream convergence for
+  **net-wallet-sdk 0.2.0**: its identity document-update / key-rotation integrity contract (FR-ID-10)
+  depends on net-did's `DidUpdateResult` evidence, and a wallet consumer that also references
+  `Credentials.*` pulls this library's net-did pins into the transitive graph — the resolved graph
+  converges on net-did 2.3.0 / NetCrypto 1.2.0 only once every foundation library moves up. Bumping
+  `NetCrypto` to 1.2.0 is required by (not merely compatible with) the net-did bump: `NetDid.Core 2.3.0`
+  itself depends on `NetCrypto 1.2.0`, so leaving it at 1.1.0 would be an `NU1605` downgrade. `NetCid`
+  stays 1.6.0. This is a **dependency-only change with no public API delta** — the resolved graph is
+  Newtonsoft-free as before, and all three published packages pass ApiCompat against the 1.0.0 baseline
+  with no breaking changes. Credentials uses net-did only for DID resolution / `did:key`; the net-did
+  2.1→2.3 changes tightened the did:webvh update/deactivate driver, which this library does not exercise.
+  (The issue was filed against net-did 2.2.0; 2.3.0 supersedes it as the latest on the line.)
+
+### Fixed
+
+- **`tools/check-api-compat.sh` — corrected the ApiCompat CLI invocation.** The
+  `Microsoft.DotNet.ApiCompat.Tool` (10.0.301) takes the package-to-validate as a positional argument;
+  the script passed it as `--package <path>`, which the tool rejects. This path had never executed
+  (1.0.0 was the first release, so there was no baseline to compare and the check SKIP-ed); it now runs
+  for real against the published 1.0.0 baseline.
+
 ## v1.0.0 - 6/26/2026
 
 ### Changed
