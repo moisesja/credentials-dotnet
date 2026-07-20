@@ -36,6 +36,11 @@
     <!-- JSON Schema 2020-12 validation (M2). STJ-native; no Newtonsoft. Latest published is 7.3.2
          (the implementation plan's 9.2.2 was a recon error). -->
     <PackageVersion Include="JsonSchema.Net" Version="7.3.2" />
+    <!-- Security pin (issue #18, GHSA-pgww-w46g-26qg): force dotNetRDF's transitive AngleSharp up from
+         the vulnerable 1.4.0. Not a first-party dependency — referenced only in Credentials.Rdfc (the
+         sole owner of the dotNetRDF chain: Credentials.Rdfc -> DataProofsDotnet.Rdfc -> dotNetRdf.Core
+         -> AngleSharp) so the fix flows to every downstream project. 1.5.2 is >= dotNetRDF's floor. -->
+    <PackageVersion Include="AngleSharp" Version="1.5.2" />
 
     <!-- Microsoft.Extensions -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />

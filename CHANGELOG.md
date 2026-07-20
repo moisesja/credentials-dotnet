@@ -4,6 +4,25 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.1.1 - 7/20/2026
+
+### Security
+
+- **AngleSharp transitive dependency bumped `1.4.0` → `1.5.2`**
+  ([#18](https://github.com/moisesja/credentials-dotnet/issues/18)) to resolve the moderate-severity
+  advisory [GHSA-pgww-w46g-26qg](https://github.com/advisories/GHSA-pgww-w46g-26qg) (annotation-xml
+  elements). AngleSharp is not a first-party dependency — it arrives only through the opt-in RDFC
+  library's `dotNetRDF` chain (`Credentials.Rdfc` → `DataProofsDotnet.Rdfc` → `dotNetRdf.Core` →
+  `AngleSharp`), so with `TreatWarningsAsErrors` the `NU1902` audit warning failed the build for every
+  project downstream of `Credentials.Rdfc`. The fix is a single security-forcing pin: AngleSharp's
+  version is declared centrally (`Directory.Packages.props`) and a direct `PackageReference` is added
+  only in `Credentials.Rdfc` (the sole owner of the `dotNetRDF` chain), which promotes the resolved
+  version to `1.5.2` across all downstream projects. `1.5.2` satisfies `dotNetRdf.Core 3.5.1`'s
+  AngleSharp floor. This is a **dependency-only change with no public API delta** — all three published
+  packages pass ApiCompat against the 1.1.0 baseline with no breaking changes, and the default
+  (`Credentials.Core` / `Credentials.Extensions.DependencyInjection`) consumer closure is unaffected
+  (it does not reference `Credentials.Rdfc`).
+
 ## v1.1.0 - 7/14/2026
 
 ### Changed
