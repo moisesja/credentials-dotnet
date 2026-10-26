@@ -28,7 +28,8 @@ Maintenance rules:
 - If something goes sideways, STOP and re-plan immediately - don't keep pushing
 - Use plan mode for verification steps, not just building
 - Write detailed specs upfront to reduce ambiguity
-- After writing the plan to `tasks/todo{timestamp}.md`, stop and present the plan to the user before editing source, tests, or docs.
+- After writing the plan to `tasks/plan{timestamp}.md`, stop and present the plan to the user before editing source, tests, or docs.
+- As part of the plan document, ensure it contains the owner's intent, and any decisions taken.
 - A user instruction to "fix it", "implement it", or "update X to match Y" authorizes the task scope, not the specific implementation plan. Wait for explicit approval of the written plan before making source, test, or PRD edits.
 
 ### 2. Subagent Strategy
