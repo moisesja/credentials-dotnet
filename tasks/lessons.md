@@ -2,6 +2,18 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## For first-party stack dependencies, offer the latest version alongside the minimum floor (2026-10-26)
+
+For issue #20 I planned `NetCrypto` 1.2.0 → **1.4.0**, the lowest version `DataProofsDotnet.Core 1.3.0`
+accepts, reusing #16's "minimum convergence" reasoning. The user overrode it to **1.7.1**, the latest.
+NetCrypto, DataProofs, NetDid and DidComm are the user's own stack and move together, and consumers such
+as `DidComm.Core` 1.4.1 already require more than the minimum (NetCrypto ≥ 1.5.0). **Rule:** when a bump
+touches a first-party stack library (NetCrypto, NetCid, NetDid, DataProofs), put **both** options in the
+plan, minimum floor and latest, with the trade-off, instead of choosing the floor silently. Whichever
+version is taken, read every changelog entry between the old and new versions for verify-side behaviour
+changes, not only API breaks. NetCrypto 1.5.0 started accepting high-S ES256K signatures, which makes
+ECDSA signatures malleable; that is a security-relevant change with no API change.
+
 ## In a gated PR workflow, a PR is not "done" when it's opened — wait for review and address comments before starting the next PR (2026-06-23)
 
 After opening PR #8 (M8a), I immediately branched and started PR-B (M8a → M8b stacked) and began

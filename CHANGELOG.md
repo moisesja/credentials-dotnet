@@ -4,6 +4,62 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.2.0 - 10/26/2026
+
+### Fixed
+
+- **JOSE and SD-JWT signing no longer throw `MissingMethodException` when `DataProofsDotnet.Jose` 1.3.0
+  is resolved** ([#20](https://github.com/moisesja/credentials-dotnet/issues/20)). 1.1.1 was compiled
+  against Jose 1.1.0. Jose 1.3.0 replaced `JwsSigner..ctor(ISigner, string)` with
+  `JwsSigner..ctor(ISigner, string, JwsKidPlacement)`. The added optional parameter keeps source
+  compatibility but breaks binary compatibility. Any application whose graph resolved Jose 1.3.0 failed
+  at runtime on all four JOSE signing paths: `vc+jwt` issuance, SD-JWT VC issuance, the holder's SD-JWT
+  Key Binding JWT, and the holder's `vp+jwt` presentation. Every application that also references
+  **`DidComm.Core` 1.4.1** resolves Jose 1.3.0, since that package requires Jose ≥ 1.3.0. This release
+  is built against DataProofs 1.3.0, which fixes it with no source change. The signed bytes are
+  unchanged: Jose 1.3.0's default `JwsKidPlacement.Auto` keeps the `kid` in the integrity-protected
+  header for the JWT, SD-JWT and KB-JWT media types. DataProofs states that it does not guarantee
+  binary compatibility across minor versions, so each future move of the DataProofs floor needs a
+  Credentials rebuild and release.
+
+### Changed
+
+- **Dependency floors raised:**
+  - `DataProofsDotnet.Core` / `.Jose` / `.Cose` / `.Rdfc` / `.Extensions.DependencyInjection`:
+    1.1.0 → **1.3.0**
+  - `NetCrypto`: 1.2.0 → **1.7.1**. DataProofs.Core 1.3.0 requires ≥ 1.4.0, and the changes from 1.4.0
+    to 1.7.1 only add APIs. **Behaviour change:** from NetCrypto 1.5.0, ES256K verification accepts
+    high-S signatures. For an ES256K `vc+jwt`, `vc+cose`, SD-JWT VC, KB-JWT or `vp+jwt`, the same
+    token with its signature `S` replaced by `n − S` now verifies, where it used to fail. P-256 tokens
+    already behaved this way. A replaced signature never yields a result the original token couldn't:
+    Credentials keys freshness on signed content (`nonce` / `aud` / `sd_hash` / challenge), and nothing
+    in it keys on signature bytes. **Applications that key replay caches, deduplication or credential
+    identity on the token bytes, or on a hash of them, should key on signed content instead**
+    (`jti`, nonce, credential `id`).
+
+  **Applications still on `DataProofsDotnet.Jose` 1.2.x should stay on Credentials 1.1.1**, because
+  upgrading forces Jose ≥ 1.3.0. That is why this release is a minor version and not a patch.
+- **Verified with NetDid 3.x at runtime:** `DidComm.Core` 1.4.1 also requires `NetDid.Core` ≥ 3.1.0. An
+  application using both libraries runs Credentials, built against NetDid 2.3.0, on NetDid.Core 3.1.0.
+  A consumer app referencing both packages ran all 14 samples successfully on that graph, including DID
+  resolution, Data Integrity, JOSE, COSE, SD-JWT and presentations. The NetDid floor stays at 2.3.0.
+- **AngleSharp security pin removed.** The pin to 1.5.2 from #18 is no longer needed:
+  `DataProofsDotnet.Rdfc` 1.3.0 itself requires the patched `AngleSharp` ≥ 1.6.0. A local pin below an
+  upstream minimum version is an `NU1605` downgrade, so keeping it would have meant bumping it with
+  every DataProofs release. `Credentials.Rdfc` no longer declares an AngleSharp dependency.
+
+  This release makes **no public API change**: all three packages pass ApiCompat against the 1.1.1
+  baseline. The default (`Credentials.Core` / `Credentials.Extensions.DependencyInjection`) dependency
+  graph is still free of Newtonsoft.
+
+### Security
+
+- **`Microsoft.SourceLink.GitHub` bumped 10.0.300 → 10.0.403** to resolve
+  [GHSA-23fw-v26w-5fgq](https://github.com/advisories/GHSA-23fw-v26w-5fgq) in its
+  `Microsoft.Build.Tasks.Git` dependency. With `TreatWarningsAsErrors`, the `NU1902` audit warning
+  failed restore. Since 2026-09 that broke every CI run on `main`, push and scheduled alike. SourceLink is
+  used only at build time (`PrivateAssets=All`) and never ships to consumers.
+
 ## v1.1.1 - 7/20/2026
 
 ### Security
