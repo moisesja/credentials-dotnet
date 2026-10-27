@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -24,6 +26,7 @@ namespace Credentials.Extensions.DependencyInjection.Tests;
 /// These tests pin the properties that make those changes unreachable from Credentials: JSON-serialized JWS
 /// never reaches the JOSE path, only the <b>signed</b> <c>kid</c> is bound, every token Credentials emits
 /// carries its <c>kid</c> in the protected header, and hostile headers fail without escaping exceptions.
+/// It also pins NetCrypto ≥ 1.5.0's ES256K high-S acceptance and the freshness invariants that keep it harmless.
 /// Each DID publishes one key under an <c>authentication</c> VM and an <c>assertionMethod</c> VM (the
 /// shape DataProofs' 1.3.0 security note uses), and every fixture signs under the VM the role requires.
 /// </summary>
@@ -49,9 +52,9 @@ public sealed class JoseSubstrateRegressionTests
                 ? new DidResolutionResult { DidDocument = doc, ResolutionMetadata = new DidResolutionMetadata() }
                 : new DidResolutionResult { DidDocument = null, ResolutionMetadata = new DidResolutionMetadata { Error = "notFound" } });
 
-        public TestDid Add(string did)
+        public TestDid Add(string did, KeyType keyType = KeyType.Ed25519)
         {
-            var pair = KeyGen.Generate(KeyType.Ed25519);
+            var pair = KeyGen.Generate(keyType);
             var authVm = did + "#auth";
             var assertVm = did + "#assert";
             _docs[did] = new DidDocument
@@ -89,6 +92,23 @@ public sealed class JoseSubstrateRegressionTests
 
     private static JsonObject ProtectedHeader(string compactJws) =>
         JsonNode.Parse(Base64Url.DecodeFromChars(compactJws.Split('.')[0]))!.AsObject();
+
+    private static readonly BigInteger Secp256k1Order = BigInteger.Parse(
+        "0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
+
+    // The ECDSA signature twin: replace S with n − S in the R‖S signature segment of a compact JWS.
+    private static string MalleateEs256k(string compactJws)
+    {
+        var parts = compactJws.Split('.');
+        var signature = Base64Url.DecodeFromChars(parts[2]);
+        var half = signature.Length / 2;
+        var s = new BigInteger(signature.AsSpan(half), isUnsigned: true, isBigEndian: true);
+        var negated = (Secp256k1Order - s).ToByteArray(isUnsigned: true, isBigEndian: true);
+        Array.Clear(signature, half, half);
+        negated.CopyTo(signature, signature.Length - negated.Length);
+        parts[2] = Base64Url.EncodeToString(signature);
+        return string.Join('.', parts);
+    }
 
     private static async Task<string> SignCompactAsync(byte[] header, ReadOnlyMemory<byte> payload, ISigner signer)
     {
@@ -360,6 +380,76 @@ public sealed class JoseSubstrateRegressionTests
             result.Decision.Should().Be(VerificationDecision.Rejected);
             result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
         }
+    }
+
+    [Fact]
+    [FrTag("FR-040")]
+    [FrTag("FR-041")]
+    [FrTag("FR-042")]
+    public async Task Es256k_signature_twins_verify_but_never_defeat_freshness_or_disclosure_binding()
+    {
+        // NetCrypto >= 1.5.0 accepts high-S secp256k1 signatures, so (R, S) and (R, n − S) both verify for
+        // ES256K, as they always have for the NIST curves. A twin must never yield an outcome the original
+        // could not: freshness is keyed on signed content (nonce / aud / challenge), and sd_hash covers the
+        // issuer JWT including its signature.
+        var resolver = new MapDidResolver();
+        var issuer = resolver.Add("did:example:issuer", KeyType.Secp256k1);
+        var holder = resolver.Add("did:example:holder", KeyType.Secp256k1);
+        using var provider = BuildProvider(resolver);
+        var issuerRole = provider.GetRequiredService<IIssuer>();
+        var holderRole = provider.GetRequiredService<IHolder>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+
+        // Pinned behavior: a vc+jwt twin is a second valid encoding of the same credential.
+        var jose = await issuerRole.IssueAsync(Unsecured(issuer.Did),
+            new JoseEnvelopeIssuanceRequest { Signer = issuer.Signer, VerificationMethod = issuer.AssertVm });
+        var joseTwin = MalleateEs256k(jose.CompactJws!);
+        joseTwin.Should().NotBe(jose.CompactJws);
+        (await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(joseTwin)))
+            .Decision.Should().Be(VerificationDecision.Accepted);
+
+        // SD-JWT VC + KB-JWT: a twin of the issuer JWT breaks sd_hash; a twin of the KB-JWT is still bound to
+        // the nonce it signed.
+        var sdJwt = await issuerRole.IssueAsync(Unsecured(issuer.Did), new SdJwtVcIssuanceRequest
+        {
+            Vct = Vct,
+            Signer = issuer.Signer,
+            VerificationMethod = issuer.AssertVm,
+            Disclosable = [DisclosureSelector.ObjectProperties("credentialSubject", "given_name")],
+            HolderBinding = HolderBindingKey.FromMultikey(holder.Pair.MultibasePublicKey),
+        });
+        var presentation = await holderRole.PresentSdJwtAsync(
+            holderRole.Ingest(Encoding.UTF8.GetBytes(sdJwt.CompactSdJwt!)),
+            new SdJwtPresentationRequest
+            {
+                DiscloseClaims = ["given_name"],
+                HolderSigner = holder.Signer,
+                VerificationMethod = holder.AuthVm,
+                Audience = Domain,
+                Nonce = Challenge,
+            });
+        var kbOptions = new CredentialVerificationOptions { RequireHolderBinding = true, ExpectedAudience = Domain, ExpectedNonce = Challenge };
+        (await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(presentation), kbOptions))
+            .Decision.Should().Be(VerificationDecision.Accepted);
+
+        var parts = presentation.Split('~');
+        var issuerTwin = (string[])parts.Clone();
+        issuerTwin[0] = MalleateEs256k(parts[0]);
+        (await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(string.Join('~', issuerTwin)), kbOptions))
+            .Decision.Should().Be(VerificationDecision.Rejected, "sd_hash covers the issuer JWT, signature included");
+
+        var kbTwin = (string[])parts.Clone();
+        kbTwin[^1] = MalleateEs256k(parts[^1]);
+        (await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(string.Join('~', kbTwin)), kbOptions with { ExpectedNonce = "a-fresh-nonce" }))
+            .Decision.Should().Be(VerificationDecision.Rejected, "the KB-JWT twin still carries the old nonce");
+
+        // vp+jwt: a twin still carries the challenge it was bound to.
+        var vpJwt = await holderRole.BindWithJoseEnvelopeAsync(
+            holderRole.BuildPresentation(new VpAssemblyRequest { Holder = holder.Did, Credentials = [ContainedCredential.Enveloped(jose.CompactJws!)] }),
+            new VpBindingRequest { HolderSigner = holder.Signer, VerificationMethod = holder.AuthVm, Challenge = Challenge, Domain = Domain });
+        (await verifier.VerifyPresentationAsync(Encoding.UTF8.GetBytes(MalleateEs256k(vpJwt)),
+                new PresentationVerificationOptions { ExpectedChallenge = "a-fresh-challenge", ExpectedDomain = Domain }))
+            .Decision.Should().Be(VerificationDecision.Rejected, "the vp+jwt twin still carries the old challenge");
     }
 
     // A CredentialFormatException (refusing to parse) is an acceptable outcome; any other exception escaping
