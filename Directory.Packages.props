@@ -4,58 +4,64 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- ============================================================================
-         Stack libraries (the credentials-dotnet substrate). Versions verified against
-         the local NuGet cache on 2026-10-26 (DataProofs/NetCrypto bump, issue #20). Not
-         every entry is referenced yet: the
-         later milestones (M1+) add NetDid resolution, the DataProofs JOSE/COSE/RDFC
-         securing packages, and JSON Schema validation. Declared centrally so a
-         milestone only adds a <PackageReference> with no version.
+         Stack libraries (the credentials-dotnet substrate). Every pin in this file was moved to
+         the latest stable nuget.org release on 2026-10-29 (v1.2.0, issue #20). FluentAssertions is
+         the one deliberate hold-back; see its comment. Not every entry is referenced by every
+         project. They are declared centrally so a project only adds a versionless <PackageReference>.
          ============================================================================ -->
     <!-- Proofs + the faithful System.Text.Json serializer options (DataProofsJsonOptions.Default,
          which CredentialJson.Faithful derives from so signed-bytes == wire-bytes). -->
-    <!-- Bumped 1.1.0 -> 1.3.0 (issue #20). DataProofs does not promise binary compatibility across
-         minors: Jose 1.3.0 replaced JwsSigner..ctor(ISigner, string) with (ISigner, string, JwsKidPlacement),
-         so a build against 1.1.0 throws MissingMethodException on every JOSE signing path once a consumer
-         (e.g. DidComm.Core 1.4.1) resolves Jose 1.3.0. Any future floor move here requires a rebuild +
-         release, never just a consumer-side version float. -->
-    <PackageVersion Include="DataProofsDotnet.Core" Version="1.3.0" />
-    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="1.3.0" />          <!-- M5: bbs-2023 / RDFC -->
-    <PackageVersion Include="DataProofsDotnet.Jose" Version="1.3.0" />          <!-- M3/M4: JOSE + SD-JWT VC -->
-    <PackageVersion Include="DataProofsDotnet.Cose" Version="1.3.0" />          <!-- M3: COSE -->
-    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="1.3.0" />
+    <!-- 1.1.0 -> 1.5.0 (issue #20). DataProofs does not promise binary compatibility across minors:
+         Jose 1.3.0 replaced JwsSigner..ctor(ISigner, string) with (ISigner, string, JwsKidPlacement), so a
+         build against 1.1.0 threw MissingMethodException on every JOSE signing path once a consumer
+         (e.g. DidComm.Core 1.4.1+) resolved Jose >= 1.3.0. Any floor move here therefore requires a
+         rebuild + release, never just a consumer-side version float. 1.4.0 made malformed-input
+         failures definitive (Failed, not Indeterminate) and throws ProofGenerationException at proof
+         creation, which DataIntegrityMechanism wraps. 1.5.0 makes RDFC fail closed on JSON-LD data
+         loss: undefined terms, malformed or respelled IRIs (security fix, dataproofs #36). -->
+    <PackageVersion Include="DataProofsDotnet.Core" Version="1.5.0" />
+    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="1.5.0" />          <!-- M5: bbs-2023 / RDFC -->
+    <PackageVersion Include="DataProofsDotnet.Jose" Version="1.5.0" />          <!-- M3/M4: JOSE + SD-JWT VC -->
+    <PackageVersion Include="DataProofsDotnet.Cose" Version="1.5.0" />          <!-- M3: COSE -->
+    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="1.5.0" />
     <!-- Engine crypto operations the engine performs itself: hashing/digests (NetCrypto.Hash),
          ISigner abstraction, JWK conversion. NetCrypto exposes no RNG abstraction; the engine's
          RNG seam wraps the BCL RandomNumberGenerator (see Credentials.Cryptography). -->
-    <!-- Bumped 1.2.0 -> 1.7.1 (issue #20). DataProofsDotnet.Core 1.3.0 requires >= 1.4.0 (anything lower
-         is an NU1605 downgrade); 1.7.1 is the latest, and 1.4.0 -> 1.7.1 is additive (key-store
-         custody APIs + hardening). Note 1.5.0+ verifies high-S ES256K signatures (normalizes to low-S),
-         so ECDSA signature bytes are not unique: never key replay/dedup on signature bytes. -->
+    <!-- 1.2.0 -> 1.7.1 (issue #20). DataProofsDotnet.Core 1.5.0 and NetDid.Core 4.0.0 both floor 1.7.1.
+         1.4.0 -> 1.7.1 is additive (key-store custody APIs + hardening). Note 1.5.0+ verifies high-S ES256K
+         signatures (normalizes to low-S), so ECDSA signature bytes are not unique: never key replay or
+         dedup on signature bytes. -->
     <PackageVersion Include="NetCrypto" Version="1.7.1" />
-    <!-- DID resolution + key store (M1+). Bumped 2.0.1 -> 2.3.0 (issue #16, net-wallet-sdk 0.2.0
-         downstream convergence). Additive for the surfaces Credentials uses (resolution, did:key);
-         the 2.1->2.3 line tightened the did:webvh update/deactivate driver, which this library does
-         not exercise. NetCrypto 1.2.0 / NetCid 1.6.0 required transitively. -->
-    <PackageVersion Include="NetDid.Core" Version="2.3.0" />
-    <PackageVersion Include="NetDid.Method.Key" Version="2.3.0" />
-    <PackageVersion Include="NetDid.Extensions.DependencyInjection" Version="2.3.0" />
+    <!-- DID resolution + key store (M1+). 2.3.0 -> 4.0.0 (issue #20). No source change for the surfaces
+         Credentials uses (IDidResolver, DidDocument, VerificationRelationshipEntry, AddNetDid/AddDidKey).
+         NetDidBuilder, which appears in Credentials' public API via CredentialsBuilder.UseNetDid, changed
+         additively only. 3.x/4.0 tightened DID syntax and DID-document validation, required a VM
+         controller, and made relative VM ids legal; no did:key verdict changes. 4.0.0 floors
+         Microsoft.Extensions.* 10.0.14 and NetCrypto 1.7.1. -->
+    <PackageVersion Include="NetDid.Core" Version="4.0.0" />
+    <PackageVersion Include="NetDid.Method.Key" Version="4.0.0" />
+    <PackageVersion Include="NetDid.Extensions.DependencyInjection" Version="4.0.0" />
     <!-- Multibase/multihash for the Bitstring Status List codec (M2). -->
     <PackageVersion Include="NetCid" Version="1.6.0" />
-    <!-- JSON Schema 2020-12 validation (M2). STJ-native; no Newtonsoft. Latest published is 7.3.2
-         (the implementation plan's 9.2.2 was a recon error). -->
-    <PackageVersion Include="JsonSchema.Net" Version="7.3.2" />
+    <!-- JSON Schema 2020-12 validation (M2). STJ-native; no Newtonsoft. 7.3.2 -> 9.5.0 (issue #20). This
+         is an API break, ported in JsonSchema2020Validator. v9 registers built schemas in a process-wide
+         registry unless the build gets its own local SchemaRegistry, and it throws JsonSchemaException for
+         structurally invalid schemas. The validator isolates and catches both; SchemaValidatorTests pin it. -->
+    <PackageVersion Include="JsonSchema.Net" Version="9.5.0" />
     <!-- No AngleSharp pin: the issue #18 security pin (1.5.2) was removed in issue #20 because
-         DataProofsDotnet.Rdfc 1.3.0 itself floors the patched AngleSharp >= 1.6.0. Keeping a local pin
+         DataProofsDotnet.Rdfc (>= 1.3.0) itself floors the patched AngleSharp >= 1.6.0. Keeping a local pin
          below an upstream floor is an NU1605 downgrade, so it would have to chase every DataProofs bump. -->
 
-    <!-- Microsoft.Extensions -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.8" />
+    <!-- Microsoft.Extensions. 10.0.8 -> 10.0.14 (issue #20): required, not optional. NetDid 4.0.0 floors
+         10.0.14, so a direct reference below it is an NU1605 downgrade. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.14" />
 
-    <!-- Source Link. Bumped 10.0.300 -> 10.0.403 (issue #20): GHSA-23fw-v26w-5fgq covers the
+    <!-- Source Link. 10.0.300 -> 10.0.403 (issue #20): GHSA-23fw-v26w-5fgq covers the
          Microsoft.Build.Tasks.Git 10.0.300-10.0.301 it pulls in, and NU1902 fails restore under
          TreatWarningsAsErrors. Build-only (PrivateAssets=All), so it never reaches consumers. -->
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.403" />
@@ -63,24 +69,25 @@
     <!-- Public-API surface tracking (RS0016/RS0017): every public member must be declared in the
          committed PublicAPI.{Shipped,Unshipped}.txt, so an accidental surface change fails the build
          and an intentional one shows up as a reviewable text diff (NFR-005 semver guard). -->
-    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="4.14.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
 
     <!-- Architecture/surface tests: inspect built assemblies' public surface (incl. the opt-in
          Credentials.Rdfc) by metadata only, without runtime-loading them — so the no-Newtonsoft
          runtime-closure assertion stays valid in the same test host. -->
-    <PackageVersion Include="System.Reflection.MetadataLoadContext" Version="10.0.8" />
+    <PackageVersion Include="System.Reflection.MetadataLoadContext" Version="10.0.14" />
 
     <!-- Testing -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <!-- FluentAssertions pinned to 7.0.0: the last release under the free Apache-2.0 license
-         (v8+ requires a paid Xceed license). Matches didcomm-dotnet. -->
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <!-- FluentAssertions held at 7.0.0, the one deliberate hold-back from "everything latest" (owner
+         decision, 2026-10-29): 7.0.0 is the last release under the free Apache-2.0 license (v8+ requires a
+         paid Xceed license for commercial use). Matches didcomm-dotnet. -->
     <PackageVersion Include="FluentAssertions" Version="7.0.0" />
-    <PackageVersion Include="NSubstitute" Version="5.3.0" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.3" />
+    <PackageVersion Include="NSubstitute" Version="6.2.0" />
+    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
     <!-- Runtime-skippable xUnit facts: the conformance test skips (visibly) when the Node W3C suite
          isn't prepared, rather than silently passing or hard-failing. -->
-    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.85" />
   </ItemGroup>
 </Project>

@@ -12,6 +12,10 @@ public interface IIssuer
     /// <paramref name="request"/>, returning the secured credential.
     /// </summary>
     /// <exception cref="System.NotSupportedException">The requested form/cryptosuite is not available.</exception>
-    /// <exception cref="System.InvalidOperationException">The credential is already secured.</exception>
+    /// <exception cref="System.InvalidOperationException">
+    /// The credential is already secured, or it cannot be secured in the requested form. One example is an RDFC
+    /// Data Integrity cryptosuite over a term no <c>@context</c> defines: canonicalization would drop it, so it
+    /// would go unsigned.
+    /// </exception>
     Task<IssuedCredential> IssueAsync(Credential credential, IssuanceRequest request, CancellationToken cancellationToken = default);
 }

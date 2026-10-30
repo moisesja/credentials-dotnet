@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Credentials.Verification;
 using Json.Schema;
 
@@ -20,6 +19,12 @@ namespace Credentials.Schema;
 /// The caller's resolver controls all schema fetching, and a declared <c>digestSRI</c> pins the bytes.
 /// </para>
 /// <para>
+/// <strong>Registry isolation:</strong> each validation builds its schema into a fresh local
+/// <see cref="SchemaRegistry"/>. JsonSchema.Net 9 otherwise registers every built schema in the process-wide
+/// <see cref="SchemaRegistry.Global"/>. A schema supplied with one credential could then answer another
+/// credential's <c>$ref</c>, and reusing a <c>$id</c> would throw.
+/// </para>
+/// <para>
 /// <strong>ReDoS:</strong> a malicious <c>pattern</c>/<c>format</c> regex cannot hang the validator
 /// indefinitely — the BCL regex engine's match timeout fires and the evaluation is reported as
 /// <see cref="SchemaCheckOutcome.Indeterminate"/>. A pathological schema can still cost up to that timeout
@@ -34,7 +39,6 @@ internal sealed class JsonSchema2020Validator : ICredentialSchemaValidator
 
     private static readonly EvaluationOptions Options = new()
     {
-        EvaluateAs = SpecVersion.Draft202012,
         RequireFormatValidation = true,
         OutputFormat = OutputFormat.List,
     };
@@ -50,27 +54,22 @@ internal sealed class JsonSchema2020Validator : ICredentialSchemaValidator
         JsonSchema parsed;
         try
         {
-            parsed = JsonSchema.FromText(Encoding.UTF8.GetString(schema.Content.Span));
+            // The dialect is fixed at 2020-12 at build time, whatever $schema the document declares. The local
+            // registry keeps this schema's $id out of the process-wide registry (see the remarks).
+            parsed = JsonSchema.FromText(
+                Encoding.UTF8.GetString(schema.Content.Span),
+                new BuildOptions { Dialect = global::Json.Schema.Dialect.Draft202012, SchemaRegistry = new SchemaRegistry() });
         }
-        catch (Exception ex) when (ex is JsonException or ArgumentException)
+        catch (Exception ex) when (ex is JsonException or JsonSchemaException or ArgumentException)
         {
+            // JsonSchemaException: a structurally invalid schema ({"type":5}, {"$ref":1}, an unknown $schema).
             return SchemaCheckResult.Indeterminate("schema.unparseable", "The schema document is not valid JSON Schema.");
-        }
-
-        JsonNode? instance;
-        try
-        {
-            instance = JsonNode.Parse(credential.GetRawText());
-        }
-        catch (JsonException)
-        {
-            return SchemaCheckResult.Indeterminate("schema.instance_unparseable", "The credential could not be read for schema validation.");
         }
 
         EvaluationResults results;
         try
         {
-            results = parsed.Evaluate(instance, Options);
+            results = parsed.Evaluate(credential, Options);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -96,14 +95,14 @@ internal sealed class JsonSchema2020Validator : ICredentialSchemaValidator
     private static void CollectErrors(EvaluationResults results, List<CheckDiagnostic> diagnostics)
     {
         // With OutputFormat.List, Details is the flattened set of nodes; surface each node that has errors.
-        if (results.HasErrors && results.Errors is { } errors)
+        if (results.Errors is { Count: > 0 } errors)
         {
             AddErrors(results.InstanceLocation.ToString(), errors, diagnostics);
         }
 
-        foreach (var detail in results.Details)
+        foreach (var detail in results.Details ?? [])
         {
-            if (detail.HasErrors && detail.Errors is { } detailErrors)
+            if (detail.Errors is { Count: > 0 } detailErrors)
             {
                 AddErrors(detail.InstanceLocation.ToString(), detailErrors, diagnostics);
             }

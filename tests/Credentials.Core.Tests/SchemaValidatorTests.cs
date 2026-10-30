@@ -79,6 +79,68 @@ public sealed class SchemaValidatorTests
         result.Outcome.Should().Be(SchemaCheckOutcome.Indeterminate);
     }
 
+    [Theory]
+    [InlineData("""{ "type": 5 }""")]
+    [InlineData("""{ "$ref": 1 }""")]
+    [InlineData("""{ "minimum": "x" }""")]
+    [InlineData("""{ "required": "a" }""")]
+    [InlineData("""{ "properties": [] }""")]
+    [InlineData("""{ "$schema": "https://unknown.example/dialect" }""")]
+    [InlineData("[1]")]
+    [InlineData("5")]
+    public void Structurally_invalid_schema_is_indeterminate_and_never_throws(string schemaJson)
+    {
+        // JsonSchema.Net 9 reports these as JsonSchemaException, which must not escape the validator.
+        var result = Validator.Validate(Schema(schemaJson), Credential("""{ "a": 1 }"""));
+        result.Outcome.Should().Be(SchemaCheckOutcome.Indeterminate);
+    }
+
+    [Fact]
+    public void A_schema_id_from_one_validation_never_resolves_another_validations_ref()
+    {
+        // JsonSchema.Net 9 registers built schemas process-wide unless given a local registry. Without isolation,
+        // the first (attacker-suppliable) schema would answer the second schema's $ref.
+        const string id = "https://isolation.example/a";
+        Validator.Validate(Schema($$"""{ "$id": "{{id}}", "type": "string" }"""), Credential("\"s\""))
+            .Outcome.Should().Be(SchemaCheckOutcome.Success);
+
+        var result = Validator.Validate(Schema($$"""{ "$ref": "{{id}}" }"""), Credential("123"));
+        result.Outcome.Should().Be(SchemaCheckOutcome.Indeterminate, "the $ref must stay unresolved, not borrow another validation's schema");
+    }
+
+    [Fact]
+    public void The_same_schema_id_can_be_validated_repeatedly_with_different_content()
+    {
+        const string id = "https://isolation.example/reused";
+        Validator.Validate(Schema($$"""{ "$id": "{{id}}", "type": "string" }"""), Credential("\"s\""))
+            .Outcome.Should().Be(SchemaCheckOutcome.Success);
+        Validator.Validate(Schema($$"""{ "$id": "{{id}}", "type": "integer" }"""), Credential("123"))
+            .Outcome.Should().Be(SchemaCheckOutcome.Success);
+        Validator.Validate(Schema($$"""{ "$id": "{{id}}", "type": "integer" }"""), Credential("\"s\""))
+            .Outcome.Should().Be(SchemaCheckOutcome.Failure);
+    }
+
+    [Fact]
+    public void An_external_ref_is_unresolved_not_fetched()
+    {
+        // No fetcher is wired (SSRF): an external $ref fails resolution instead of reaching the network.
+        var result = Validator.Validate(Schema("""{ "$ref": "https://schema.invalid/remote.json" }"""), Credential("""{ "a": 1 }"""));
+        result.Outcome.Should().Be(SchemaCheckOutcome.Indeterminate);
+    }
+
+    [Fact]
+    public void A_catastrophic_backtracking_pattern_is_cut_off_as_indeterminate()
+    {
+        // ReDoS: the regex match timeout bounds a pathological pattern instead of hanging verification.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = Validator.Validate(
+            Schema("""{ "type": "string", "pattern": "^(a+)+$" }"""),
+            Credential("\"" + new string('a', 30) + "!\""));
+
+        result.Outcome.Should().Be(SchemaCheckOutcome.Indeterminate);
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(30));
+    }
+
     [Fact]
     public void Registry_dispatches_by_type_and_is_immutable()
     {

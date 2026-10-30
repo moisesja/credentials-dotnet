@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Credentials.Resolution;
 using Credentials.Validation;
+using DataProofsDotnet;
 using DataProofsDotnet.DataIntegrity;
 
 namespace Credentials.Securing;
@@ -48,8 +49,22 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
             Domain = request.Domain,
         };
 
-        var secured = await _pipeline.AddProofAsync(request.Document, proofOptions, request.Signer, cancellationToken)
-            .ConfigureAwait(false);
+        JsonElement secured;
+        try
+        {
+            secured = await _pipeline.AddProofAsync(request.Document, proofOptions, request.Signer, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ProofGenerationException ex)
+        {
+            // Keep the substrate exception behind the seam (NFR-005) and the roles' documented contract. Since
+            // DataProofs 1.4.0, proof creation reports every input problem this way, including a document an
+            // RDFC suite cannot canonicalize without losing data (an undefined term, a malformed IRI).
+            // DataProofs' message names the cause and never quotes the input.
+            throw new InvalidOperationException(
+                $"The document cannot be secured with the '{request.Cryptosuite}' cryptosuite: {ex.Message}", ex);
+        }
+
         return SecureOutcome.ForDocument(secured);
     }
 

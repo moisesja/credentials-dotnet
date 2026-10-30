@@ -56,6 +56,78 @@ public sealed class RdfcIssueVerifyTests
         result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
     }
 
+    private const string UndefinedTermsContext = "https://www.w3.org/ns/credentials/undefined-terms/v2";
+
+    private static Credential WithCustomClaim(string issuerDid, bool listUndefinedTermsContext)
+    {
+        var builder = Credential.Build().WithIssuer(issuerDid);
+        if (listUndefinedTermsContext)
+        {
+            builder.AddContext(UndefinedTermsContext);
+        }
+
+        // "degree" is defined by no context: credentials/v2 has no @vocab.
+        return builder.AddSubject(new JsonObject { ["id"] = "did:example:subject", ["degree"] = "BSc" }).Seal();
+    }
+
+    private static async Task<IssuedCredential> IssueRdfcAsync(IIssuer issuer, Credential credential, KeyPair keyPair) =>
+        await issuer.IssueAsync(credential, new DataIntegrityIssuanceRequest
+        {
+            Cryptosuite = "eddsa-rdfc-2022",
+            Signer = new KeyPairSigner(keyPair, Crypto),
+            VerificationMethod = $"did:key:{keyPair.MultibasePublicKey}#{keyPair.MultibasePublicKey}",
+        });
+
+    [Fact]
+    [FrTag("FR-011")]
+    public async Task An_undefined_term_cannot_be_secured_and_the_failure_keeps_the_issuer_contract()
+    {
+        // DataProofs >= 1.5.0 refuses to sign what RDFC would drop. The substrate's ProofGenerationException must
+        // surface as the InvalidOperationException IIssuer documents, never as a DataProofs type (NFR-005).
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var keyPair = KeyGen.Generate(KeyType.Ed25519);
+
+        var act = () => IssueRdfcAsync(issuer, WithCustomClaim($"did:key:{keyPair.MultibasePublicKey}", listUndefinedTermsContext: false), keyPair);
+
+        (await act.Should().ThrowExactlyAsync<InvalidOperationException>())
+            .WithMessage("*eddsa-rdfc-2022*")
+            .WithInnerException<DataProofsDotnet.ProofGenerationException>();
+    }
+
+    [Fact]
+    [FrTag("FR-011")]
+    [FrTag("FR-040")]
+    public async Task The_undefined_terms_context_makes_custom_claims_signed_and_tamper_evident()
+    {
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var keyPair = KeyGen.Generate(KeyType.Ed25519);
+
+        var issued = await IssueRdfcAsync(issuer, WithCustomClaim($"did:key:{keyPair.MultibasePublicKey}", listUndefinedTermsContext: true), keyPair);
+        (await verifier.VerifyCredentialAsync(issued.Credential)).Decision.Should().Be(VerificationDecision.Accepted);
+
+        // The custom claim is now inside the signature: changing it breaks the proof.
+        var changed = JsonNode.Parse(issued.Credential.ToUtf8().Span)!.AsObject();
+        changed["credentialSubject"]!["degree"] = "PhD";
+        var changedResult = await verifier.VerifyCredentialAsync(System.Text.Encoding.UTF8.GetBytes(changed.ToJsonString()));
+        changedResult.Decision.Should().Be(VerificationDecision.Rejected);
+        changedResult.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
+
+        // A holder who strips the undefined-terms context to make the claim unsigned again (the pre-1.5.0
+        // DataProofs hole) gets a definitive data-loss failure, not an Indeterminate.
+        var stripped = JsonNode.Parse(issued.Credential.ToUtf8().Span)!.AsObject();
+        var contexts = stripped["@context"]!.AsArray();
+        contexts.RemoveAt(contexts.Count - 1);
+        stripped["credentialSubject"]!["degree"] = "PhD";
+        var strippedResult = await verifier.VerifyCredentialAsync(System.Text.Encoding.UTF8.GetBytes(stripped.ToJsonString()));
+        strippedResult.Decision.Should().Be(VerificationDecision.Rejected);
+        var proof = strippedResult.Check(CheckKinds.Proof)!;
+        proof.Status.Should().Be(CheckStatus.Failed);
+        proof.Diagnostics.Should().Contain(d => d.Code == "DATA_LOSS_DETECTION_ERROR");
+    }
+
     [Fact]
     public void UseRdfcSuites_adds_the_rdfc_suites_to_capabilities()
     {
