@@ -72,6 +72,23 @@ matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception
     `https://www.w3.org/ns/credentials/undefined-terms/v2` last in `@context` (VCDM 2.0 §5.2). That context
     is bundled offline, and the RDFC sample now does this.
   - IRIs must be well formed, absolute and normalized.
+  - **Language value objects with a base direction (`@direction`) are unsupported under the RDFC suites**
+    (`eddsa-rdfc-2022`, `ecdsa-rdfc-2019`, `bbs-2023`). This is an explicit scope decision for this
+    release. The Data Integrity specs define no lossless canonicalization of direction, and JSON-LD's
+    default conversion drops it, so earlier versions signed bytes that did not carry the direction (a
+    holder could flip `ltr`/`rtl` undetected). DataProofs 1.5.0 fails closed instead: RDFC issuance of
+    such a document throws `InvalidOperationException` naming `@direction`, and verification of one, from
+    any issuer, fails with `DATA_LOSS_DETECTION_ERROR`. Use the JCS suites (`eddsa-jcs-2022`,
+    `ecdsa-jcs-2019`), which sign the JSON as written, or omit `@direction`. Tracked upstream as
+    [dataproofs-dotnet#40](https://github.com/moisesja/dataproofs-dotnet/issues/40).
+  - **W3C VCDM 2.0 conformance: 57 → 54 of 59.** The four suite cases that issue `name`, `description`,
+    `issuer.name` and `issuer.description` with `@direction` now fail, because the conformance shim issues
+    with `eddsa-rdfc-2022`. The `type` term-resolution case, a documented gap, now passes for RDFC-secured
+    input. The gate no longer relies on a pass count alone: every failing suite test must be one of the
+    **named** known failures in `W3cVcdm2SuiteTests`, so a regression cannot hide behind the count. See
+    `docs/conformance.md`.
+  - The `InvalidOperationException` thrown when a document cannot be secured now includes the specific
+    cause from the substrate (for example "uses @direction"), not only the generic data-loss sentence.
 - **Issuance keeps its documented exception contract.** Since DataProofs 1.4.0, proof creation reports input
   problems with its own `ProofGenerationException`. `IIssuer.IssueAsync` and
   `IHolder.BindWithDataIntegrityAsync` now rethrow it as the documented `InvalidOperationException`, keeping

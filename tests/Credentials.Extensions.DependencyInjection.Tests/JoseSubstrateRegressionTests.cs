@@ -438,18 +438,30 @@ public sealed class JoseSubstrateRegressionTests
         (await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(string.Join('~', issuerTwin)), kbOptions))
             .Decision.Should().Be(VerificationDecision.Rejected, "sd_hash covers the issuer JWT, signature included");
 
+        // The KB-JWT twin: first prove the twin's signature verifies and the binding holds (Accepted with the
+        // matching nonce), so the stale-nonce rejection below can only be the freshness check. Credentials maps
+        // every KB-JWT problem to sdjwt_key_binding_invalid, so the Accepted assertion is what excludes a
+        // signature failure; the code assertion excludes an issuer-signature failure.
         var kbTwin = (string[])parts.Clone();
         kbTwin[^1] = MalleateEs256k(parts[^1]);
-        (await verifier.VerifyCredentialAsync(Encoding.UTF8.GetBytes(string.Join('~', kbTwin)), kbOptions with { ExpectedNonce = "a-fresh-nonce" }))
-            .Decision.Should().Be(VerificationDecision.Rejected, "the KB-JWT twin still carries the old nonce");
+        var kbTwinBytes = Encoding.UTF8.GetBytes(string.Join('~', kbTwin));
+        (await verifier.VerifyCredentialAsync(kbTwinBytes, kbOptions))
+            .Decision.Should().Be(VerificationDecision.Accepted, "the KB-JWT twin is a valid signature over the same nonce and audience");
+        var staleKb = await verifier.VerifyCredentialAsync(kbTwinBytes, kbOptions with { ExpectedNonce = "a-fresh-nonce" });
+        staleKb.Decision.Should().Be(VerificationDecision.Rejected, "the KB-JWT twin still carries the old nonce");
+        staleKb.Check(CheckKinds.Proof)!.Diagnostics.Select(d => d.Code).Should()
+            .Contain("sdjwt_key_binding_invalid").And.NotContain("PROOF_VERIFICATION_ERROR");
 
-        // vp+jwt: a twin still carries the challenge it was bound to.
+        // vp+jwt: the same, with the distinct freshness code.
         var vpJwt = await holderRole.BindWithJoseEnvelopeAsync(
             holderRole.BuildPresentation(new VpAssemblyRequest { Holder = holder.Did, Credentials = [ContainedCredential.Enveloped(jose.CompactJws!)] }),
             new VpBindingRequest { HolderSigner = holder.Signer, VerificationMethod = holder.AuthVm, Challenge = Challenge, Domain = Domain });
-        (await verifier.VerifyPresentationAsync(Encoding.UTF8.GetBytes(MalleateEs256k(vpJwt)),
-                new PresentationVerificationOptions { ExpectedChallenge = "a-fresh-challenge", ExpectedDomain = Domain }))
-            .Decision.Should().Be(VerificationDecision.Rejected, "the vp+jwt twin still carries the old challenge");
+        var vpTwinBytes = Encoding.UTF8.GetBytes(MalleateEs256k(vpJwt));
+        (await verifier.VerifyPresentationAsync(vpTwinBytes, new PresentationVerificationOptions { ExpectedChallenge = Challenge, ExpectedDomain = Domain }))
+            .Decision.Should().Be(VerificationDecision.Accepted, "the vp+jwt twin is a valid holder signature over the same challenge and domain");
+        var staleVp = await verifier.VerifyPresentationAsync(vpTwinBytes, new PresentationVerificationOptions { ExpectedChallenge = "a-fresh-challenge", ExpectedDomain = Domain });
+        staleVp.Decision.Should().Be(VerificationDecision.Rejected, "the vp+jwt twin still carries the old challenge");
+        staleVp.Check(CheckKinds.HolderBinding)!.Diagnostics.Select(d => d.Code).Should().Contain("holder_binding_replay");
     }
 
     // A CredentialFormatException (refusing to parse) is an acceptable outcome; any other exception escaping

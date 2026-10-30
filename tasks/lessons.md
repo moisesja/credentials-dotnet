@@ -2,6 +2,18 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A count-based gate that drops after a dependency change is fixed by naming the failures, never by lowering the count (2026-10-29)
+
+DataProofs 1.5.0 made the W3C suite drop from 57 to 54, and my first proposal was "lower the baseline to 54
+and document it". The reviewer rejected that: a lower count hides any later regression of the same size.
+What was wanted: an explicit support contract for the lost capability (RDFC credentials with `@direction`
+are unsupported; JCS is the path), focused regression tests for the exact positions, accurate docs, and a
+gate that **names** each accepted failure (keyed on the suite's own assertion messages) so any failure
+outside that list fails CI regardless of the count. **Rule:** when a gate is a number and the number must
+move, first ask what the number was standing in for. Replace it with the named set it summarized, keep the
+number only as a sanity floor, and pin the parsing of the named set with its own tests, because the gate
+usually runs only on CI.
+
 ## Mutation-check every security regression test: a test can pass because it never triggers the attack (2026-10-29)
 
 The JsonSchema.Net 9 adversarial pass found a dialect-registry poisoning. I added the fix and a regression
