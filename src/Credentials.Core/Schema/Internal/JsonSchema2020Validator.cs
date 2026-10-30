@@ -13,16 +13,29 @@ namespace Credentials.Schema;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <strong>SSRF:</strong> external <c>$ref</c> resolution is <em>not</em> wired to any network fetcher —
-/// JsonSchema.Net's default registry fetch returns <see langword="null"/>, so an unresolved external
-/// <c>$ref</c> simply fails resolution (→ <see cref="SchemaCheckOutcome.Indeterminate"/>) with no egress.
-/// The caller's resolver controls all schema fetching, and a declared <c>digestSRI</c> pins the bytes.
+/// <strong>SSRF:</strong> no external reference is ever fetched. Each validation's local registry has a
+/// <see cref="SchemaRegistry.Fetch"/> that refuses. That matters because JsonSchema.Net falls back to the
+/// process-wide <see cref="SchemaRegistry.Global"/>'s fetcher, which any other code in the host process may
+/// set. An unresolved external <c>$ref</c>, <c>$dynamicRef</c> or meta-schema therefore yields
+/// <see cref="SchemaCheckOutcome.Indeterminate"/> with no egress. The caller's resolver controls all schema
+/// fetching, and a declared <c>digestSRI</c> pins the bytes.
 /// </para>
 /// <para>
-/// <strong>Registry isolation:</strong> each validation builds its schema into a fresh local
-/// <see cref="SchemaRegistry"/>. JsonSchema.Net 9 otherwise registers every built schema in the process-wide
-/// <see cref="SchemaRegistry.Global"/>. A schema supplied with one credential could then answer another
-/// credential's <c>$ref</c>, and reusing a <c>$id</c> would throw.
+/// <strong>Registry isolation:</strong> each validation builds into a fresh local <see cref="SchemaRegistry"/>
+/// <em>and</em> a fresh local <see cref="DialectRegistry"/>. JsonSchema.Net 9 otherwise records schemas and
+/// custom dialects in process-wide registries, which leads to three problems:
+/// <list type="bullet">
+/// <item>A schema supplied with one credential could answer another credential's <c>$ref</c>.</item>
+/// <item>A schema could redefine a custom <c>$schema</c> dialect for every later validation, the first
+/// writer winning. For example, a core-only vocabulary turns validation keywords into annotations, so a
+/// non-conforming credential would pass.</item>
+/// <item>The process-wide dialect dictionary grows without bound and is not thread-safe.</item>
+/// </list>
+/// </para>
+/// <para>
+/// <strong>Dialect:</strong> a schema without <c>$schema</c> is evaluated as 2020-12. A <c>$schema</c> the
+/// document declares, at the root or in any subschema, selects that dialect if JsonSchema.Net knows it, or if
+/// the same document defines it. Otherwise the result is <see cref="SchemaCheckOutcome.Indeterminate"/>.
 /// </para>
 /// <para>
 /// <strong>ReDoS:</strong> a malicious <c>pattern</c>/<c>format</c> regex cannot hang the validator
@@ -43,6 +56,10 @@ internal sealed class JsonSchema2020Validator : ICredentialSchemaValidator
         OutputFormat = OutputFormat.List,
     };
 
+    // Throwing, rather than returning null, keeps JsonSchema.Net from falling back to SchemaRegistry.Global.Fetch.
+    private static IBaseDocument? RefuseFetch(Uri uri, SchemaRegistry registry) =>
+        throw new InvalidOperationException("Credential schemas never fetch external references.");
+
     public string SchemaType => JsonSchemaType;
 
     public SchemaDialect Dialect => SchemaDialect.JsonSchema2020_12;
@@ -54,15 +71,22 @@ internal sealed class JsonSchema2020Validator : ICredentialSchemaValidator
         JsonSchema parsed;
         try
         {
-            // The dialect is fixed at 2020-12 at build time, whatever $schema the document declares. The local
-            // registry keeps this schema's $id out of the process-wide registry (see the remarks).
+            // Fresh local registries per validation keep this schema's $ids and dialects out of the process-wide
+            // registries and stop any fetch (see the remarks). 2020-12 is the default dialect.
             parsed = JsonSchema.FromText(
                 Encoding.UTF8.GetString(schema.Content.Span),
-                new BuildOptions { Dialect = global::Json.Schema.Dialect.Draft202012, SchemaRegistry = new SchemaRegistry() });
+                new BuildOptions
+                {
+                    Dialect = global::Json.Schema.Dialect.Draft202012,
+                    SchemaRegistry = new SchemaRegistry { Fetch = RefuseFetch },
+                    DialectRegistry = new DialectRegistry(),
+                });
         }
-        catch (Exception ex) when (ex is JsonException or JsonSchemaException or ArgumentException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // JsonSchemaException: a structurally invalid schema ({"type":5}, {"$ref":1}, an unknown $schema).
+            // JsonSchema.Net 9 reports a malformed schema in several ways: JsonException,
+            // JsonSchemaException ({"type":5}, {"$ref":1}, an unknown $schema), and InvalidOperationException
+            // (a non-string $schema, a lone surrogate in a keyword value). All of them mean the same thing here.
             return SchemaCheckResult.Indeterminate("schema.unparseable", "The schema document is not valid JSON Schema.");
         }
 
