@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Credentials.Resolution;
 using Credentials.Validation;
+using DataProofsDotnet;
 using DataProofsDotnet.DataIntegrity;
 
 namespace Credentials.Securing;
@@ -48,8 +49,27 @@ internal sealed class DataIntegrityMechanism : ISecuringMechanism
             Domain = request.Domain,
         };
 
-        var secured = await _pipeline.AddProofAsync(request.Document, proofOptions, request.Signer, cancellationToken)
-            .ConfigureAwait(false);
+        JsonElement secured;
+        try
+        {
+            secured = await _pipeline.AddProofAsync(request.Document, proofOptions, request.Signer, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ProofGenerationException ex)
+        {
+            // Keep the substrate exception behind the seam (NFR-005) and the roles' documented contract. Since
+            // DataProofs 1.4.0, proof creation reports every input problem this way, including a document an
+            // RDFC suite cannot canonicalize without losing data (an undefined term, a malformed IRI, a
+            // `@direction`). DataProofs' top-level message is generic; the specific cause is one level down
+            // (e.g. JsonLdDataLossException), and both name the cause without quoting the document, so the
+            // message includes that one level. Deeper InnerExceptions, such as the JSON-LD processor's, can
+            // quote context URLs or IRIs from the caller's own document. That is the caller's data, not a
+            // verification diagnostic (NFR-008 covers those).
+            var cause = ex.InnerException is { Message: { Length: > 0 } inner } ? " " + inner : string.Empty;
+            throw new InvalidOperationException(
+                $"The document cannot be secured with the '{request.Cryptosuite}' cryptosuite: {ex.Message}{cause}", ex);
+        }
+
         return SecureOutcome.ForDocument(secured);
     }
 
