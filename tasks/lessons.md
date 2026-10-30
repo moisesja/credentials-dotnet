@@ -2,6 +2,34 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## Mutation-check every security regression test: a test can pass because it never triggers the attack (2026-10-29)
+
+The JsonSchema.Net 9 adversarial pass found a dialect-registry poisoning. I added the fix and a regression
+test, and the test passed. The mutation check (remove the fix, rerun) showed the test **still passed
+without the fix**. My helper put the attacker's `{"$schema": U}` at the schema root, where an unknown
+keyword is a plain annotation and not a subschema, so the dialect was never resolved and the attack never
+happened. The reviewer's probe put it inside `$defs`. **Rule:** for every security regression test, run it
+once against the unfixed code and watch it fail before trusting it. Prefer porting the adversarial probe's
+exact input over re-deriving it. Assert the attacker step's own outcome too (here, that the poisoning
+schema builds and evaluates as Success), so a test whose attack silently no-ops cannot pass.
+
+## A dependency PR updates the whole graph to latest, not just the pin the issue names (2026-10-29)
+
+For issue #20 I bumped only what the issue strictly needed: DataProofs, plus NetCrypto after the user's
+override. NetDid stayed at 2.3.0, Microsoft.Extensions at 10.0.8, and JsonSchema.Net and the test stack
+were stale. Meanwhile the upstream stack (DataProofs 1.5.0, NetDid 4.0.0, DidComm.Core 1.5.0) moved
+together. The user called the result "a mess" and asked for **all** dependencies at their latest versions.
+A partial bump leaves Credentials compiled against a graph consumers no longer resolve, which is exactly
+how #20's `MissingMethodException` happened. **Rule:** whenever a task touches dependency pins, inventory
+**every** `PackageVersion` and dotnet tool against nuget.org's latest stable version. Propose the
+full-latest set, and list every hold-back explicitly with its reason; FluentAssertions' licence is one.
+
+For a dependency with an **API break**, "it compiles" is not the bar. Probe the security properties the
+old version gave for free. JsonSchema.Net 9 started registering schemas in a process-wide global registry
+and throwing a new exception type for malformed schemas. Both would have shipped silently, because the
+existing tests covered neither. Run the same probe on the old and new versions, and pin each property with
+a test.
+
 ## For first-party stack dependencies, offer the latest version alongside the minimum floor (2026-10-26)
 
 For issue #20 I planned `NetCrypto` 1.2.0 → **1.4.0**, the lowest version `DataProofsDotnet.Core 1.3.0`

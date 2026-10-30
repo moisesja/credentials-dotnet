@@ -4,61 +4,114 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v1.2.0 - 10/26/2026
+## v1.2.0 - Unreleased
+
+Every dependency moves to its latest stable release, so Credentials is built against the same graph the
+rest of the stack resolves (DataProofs 1.5.0, NetDid 4.0.0, NetCrypto 1.7.1, Microsoft.Extensions 10.0.14,
+matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception.
 
 ### Fixed
 
-- **JOSE and SD-JWT signing no longer throw `MissingMethodException` when `DataProofsDotnet.Jose` 1.3.0
-  is resolved** ([#20](https://github.com/moisesja/credentials-dotnet/issues/20)). 1.1.1 was compiled
-  against Jose 1.1.0. Jose 1.3.0 replaced `JwsSigner..ctor(ISigner, string)` with
-  `JwsSigner..ctor(ISigner, string, JwsKidPlacement)`. The added optional parameter keeps source
-  compatibility but breaks binary compatibility. Any application whose graph resolved Jose 1.3.0 failed
-  at runtime on all four JOSE signing paths: `vc+jwt` issuance, SD-JWT VC issuance, the holder's SD-JWT
-  Key Binding JWT, and the holder's `vp+jwt` presentation. Every application that also references
-  **`DidComm.Core` 1.4.1** resolves Jose 1.3.0, since that package requires Jose ≥ 1.3.0. This release
-  is built against DataProofs 1.3.0, which fixes it with no source change. The signed bytes are
-  unchanged: Jose 1.3.0's default `JwsKidPlacement.Auto` keeps the `kid` in the integrity-protected
-  header for the JWT, SD-JWT and KB-JWT media types. DataProofs states that it does not guarantee
-  binary compatibility across minor versions, so each future move of the DataProofs floor needs a
-  Credentials rebuild and release.
-
-### Changed
-
-- **Dependency floors raised:**
-  - `DataProofsDotnet.Core` / `.Jose` / `.Cose` / `.Rdfc` / `.Extensions.DependencyInjection`:
-    1.1.0 → **1.3.0**
-  - `NetCrypto`: 1.2.0 → **1.7.1**. DataProofs.Core 1.3.0 requires ≥ 1.4.0, and the changes from 1.4.0
-    to 1.7.1 only add APIs. **Behaviour change:** from NetCrypto 1.5.0, ES256K verification accepts
-    high-S signatures. For an ES256K `vc+jwt`, `vc+cose`, SD-JWT VC, KB-JWT or `vp+jwt`, the same
-    token with its signature `S` replaced by `n − S` now verifies, where it used to fail. P-256 tokens
-    already behaved this way. A replaced signature never yields a result the original token couldn't:
-    Credentials keys freshness on signed content (`nonce` / `aud` / `sd_hash` / challenge), and nothing
-    in it keys on signature bytes. **Applications that key replay caches, deduplication or credential
-    identity on the token bytes, or on a hash of them, should key on signed content instead**
-    (`jti`, nonce, credential `id`).
-
-  **Applications still on `DataProofsDotnet.Jose` 1.2.x should stay on Credentials 1.1.1**, because
-  upgrading forces Jose ≥ 1.3.0. That is why this release is a minor version and not a patch.
-- **Verified with NetDid 3.x at runtime:** `DidComm.Core` 1.4.1 also requires `NetDid.Core` ≥ 3.1.0. An
-  application using both libraries runs Credentials, built against NetDid 2.3.0, on NetDid.Core 3.1.0.
-  A consumer app referencing both packages ran all 14 samples successfully on that graph, including DID
-  resolution, Data Integrity, JOSE, COSE, SD-JWT and presentations. The NetDid floor stays at 2.3.0.
-- **AngleSharp security pin removed.** The pin to 1.5.2 from #18 is no longer needed:
-  `DataProofsDotnet.Rdfc` 1.3.0 itself requires the patched `AngleSharp` ≥ 1.6.0. A local pin below an
-  upstream minimum version is an `NU1605` downgrade, so keeping it would have meant bumping it with
-  every DataProofs release. `Credentials.Rdfc` no longer declares an AngleSharp dependency.
-
-  This release makes **no public API change**: all three packages pass ApiCompat against the 1.1.1
-  baseline. The default (`Credentials.Core` / `Credentials.Extensions.DependencyInjection`) dependency
-  graph is still free of Newtonsoft.
+- **JOSE and SD-JWT signing no longer throw `MissingMethodException` when a newer `DataProofsDotnet.Jose` is
+  resolved** ([#20](https://github.com/moisesja/credentials-dotnet/issues/20)). 1.1.1 was compiled against
+  Jose 1.1.0. Jose 1.3.0 replaced `JwsSigner..ctor(ISigner, string)` with
+  `JwsSigner..ctor(ISigner, string, JwsKidPlacement)`; the added optional parameter keeps source
+  compatibility but breaks binary compatibility.
+  - Any application whose graph resolved Jose ≥ 1.3.0 failed at runtime on all four JOSE signing paths:
+    `vc+jwt` issuance, SD-JWT VC issuance, the holder's SD-JWT Key Binding JWT, and the holder's `vp+jwt`.
+    Every application that also references `DidComm.Core` ≥ 1.4.1 resolves such a Jose.
+  - This release is built against DataProofs 1.5.0. The signed bytes are unchanged: the default
+    `JwsKidPlacement.Auto` keeps the `kid` in the integrity-protected header for the JWT, SD-JWT and KB-JWT
+    media types, and a regression test pins this for every token Credentials emits.
+  - DataProofs states that it does not guarantee binary compatibility across minor versions, so each move
+    of the DataProofs floor needs a Credentials rebuild and release.
 
 ### Security
 
+- **Inherited from DataProofs 1.5.0: RDFC proofs now fail closed on JSON-LD data loss.** Before, whatever
+  RDF canonicalization silently dropped or respelled was not signed, so a holder could change it without
+  breaking an `eddsa-rdfc-2022` / `ecdsa-rdfc-2019` / `bbs-2023` proof. That included every custom claim of
+  a credential whose only context was credentials/v2, which has no `@vocab`.
+  - Issuance now refuses such a document with `InvalidOperationException` (see Changed).
+  - Verification fails it with `DATA_LOSS_DETECTION_ERROR`: proof check Failed, decision Rejected.
+  - Also fixed upstream: two bbs-2023 issues that let a holder alter disclosed data, and RDFC proofs over
+    credentials/v1 (without `https://w3id.org/security/data-integrity/v2`) that left the proof
+    configuration unsigned.
+  - The JCS suites, JOSE, COSE and SD-JWT never used JSON-LD processing and are unaffected.
 - **`Microsoft.SourceLink.GitHub` bumped 10.0.300 → 10.0.403** to resolve
-  [GHSA-23fw-v26w-5fgq](https://github.com/advisories/GHSA-23fw-v26w-5fgq) in its
-  `Microsoft.Build.Tasks.Git` dependency. With `TreatWarningsAsErrors`, the `NU1902` audit warning
-  failed restore. Since 2026-09 that broke every CI run on `main`, push and scheduled alike. SourceLink is
-  used only at build time (`PrivateAssets=All`) and never ships to consumers.
+  [GHSA-23fw-v26w-5fgq](https://github.com/advisories/GHSA-23fw-v26w-5fgq) in its `Microsoft.Build.Tasks.Git`
+  dependency. With `TreatWarningsAsErrors`, the `NU1902` audit warning failed restore and broke every CI run
+  on `main` from 2026-09. SourceLink is used only at build time (`PrivateAssets=All`) and never ships to
+  consumers.
+
+### Changed
+
+- **Dependencies, all at the latest stable release:**
+
+  | Package | From | To |
+  |---|---|---|
+  | `DataProofsDotnet.Core` / `.Jose` / `.Cose` / `.Rdfc` / `.Extensions.DependencyInjection` | 1.1.0 | **1.5.0** |
+  | `NetDid.Core` / `.Method.Key` / `.Extensions.DependencyInjection` | 2.3.0 | **4.0.0** |
+  | `NetCrypto` | 1.2.0 | **1.7.1** |
+  | `JsonSchema.Net` | 7.3.2 | **9.5.0** |
+  | `Microsoft.Extensions.*` | 10.0.8 | **10.0.14** (required: NetDid 4.0.0 needs at least this) |
+  | `Microsoft.SourceLink.GitHub` (build-only) | 10.0.300 | **10.0.403** |
+  | `AngleSharp` pin (`Credentials.Rdfc`) | 1.5.2 | **removed** (`DataProofsDotnet.Rdfc` itself requires the patched ≥ 1.6.0) |
+
+  Development-only packages also moved to latest: PublicApiAnalyzers 5.6.0, Microsoft.NET.Test.Sdk 18.11.0,
+  xunit.runner.visualstudio 4.0.1, NSubstitute 6.2.0, coverlet 10.1.0, Xunit.SkippableFact 1.5.85, and the
+  ApiCompat tool 10.0.403. **FluentAssertions stays at 7.0.0**, the last release under the free Apache-2.0
+  licence. It is test-only.
+
+  **Applications pinned to older DataProofs (Jose < 1.5.0) or NetDid (< 4.0.0) should stay on Credentials
+  1.1.1.** Upgrading raises those floors.
+- **RDFC issuance and verification are stricter** (from DataProofs 1.5.0, above).
+  - **Credentials issued earlier with RDFC over undefined terms no longer verify**, including ones
+    Credentials ≤ 1.1.1 issued.
+  - To keep custom claims, define the terms in a context, or list
+    `https://www.w3.org/ns/credentials/undefined-terms/v2` last in `@context` (VCDM 2.0 §5.2). That context
+    is bundled offline, and the RDFC sample now does this.
+  - IRIs must be well formed, absolute and normalized.
+- **Issuance keeps its documented exception contract.** Since DataProofs 1.4.0, proof creation reports input
+  problems with its own `ProofGenerationException`. `IIssuer.IssueAsync` and
+  `IHolder.BindWithDataIntegrityAsync` now rethrow it as the documented `InvalidOperationException`, keeping
+  the original as `InnerException`, so no DataProofs type escapes the public API. The message names the
+  cryptosuite and the cause without quoting the document. The `InnerException` chain keeps the substrate
+  detail, which can include context URLs or IRIs from the caller's own document.
+- **More malformed inputs are definitive failures** (from DataProofs 1.4.0). Malformed UTF-8 or an unpaired
+  surrogate in a JOSE header, an SD-JWT disclosure, the issuer JWT or KB-JWT, or a Data Integrity document
+  now ends **Failed** (Rejected) instead of Indeterminate. A compact JWS header with an invalid-UTF-8 member
+  name, which used to verify, now fails.
+- **DID resolution is stricter** (NetDid 3.0–4.0). DID syntax is checked more tightly, DID documents that
+  break DID Core fail to resolve, and a verification method must have a `controller`. A resolution error is
+  Indeterminate in Credentials, as before. No did:key verdict changes.
+- **JSON Schema validation runs on JsonSchema.Net 9.**
+  - Each validation uses its own schema and dialect registries. A schema supplied with one credential can
+    never answer another credential's `$ref`, and it can never redefine a custom `$schema` dialect for
+    later validations. The same `$id` can be validated repeatedly.
+  - No external reference is ever fetched, even if other code in the process installs a fetcher on
+    JsonSchema.Net's global registry.
+  - Structurally invalid schemas stay Indeterminate (`schema.unparseable`) rather than throwing; this
+    includes a non-string `$schema` and a lone-surrogate escape in a keyword value. An unknown `$schema`
+    dialect now also reports `schema.unparseable` (it used to be `schema.evaluation_error`); both are
+    Indeterminate.
+  - A schema without `$schema` is evaluated as 2020-12. A declared `$schema` selects a dialect JsonSchema.Net
+    knows, or one the same document defines. For draft-07 schemas, keywords beside `$ref` are now evaluated
+    rather than ignored, which is stricter.
+  - A pathological `pattern` is still cut off by the per-match regex timeout. New tests pin all of these
+    properties.
+- **ES256K signatures can be re-encoded** (from NetCrypto 1.5.0). ES256K verification accepts high-S
+  signatures: for an ES256K `vc+jwt`, `vc+cose`, SD-JWT VC, KB-JWT or `vp+jwt`, the same token with its
+  signature `S` replaced by `n − S` now verifies. P-256 tokens always behaved this way.
+  - A re-encoded token never gets a result the original could not. Credentials checks freshness against
+    signed content (`nonce` / `aud` / `sd_hash` / challenge) and never keys on signature bytes.
+  - **Applications that key replay caches, deduplication or credential identity on token bytes, or a hash
+    of them, should key on signed content instead** (`jti`, nonce, credential `id`).
+
+**No public API change.** All three packages pass ApiCompat against the 1.1.1 baseline, and the default
+(`Credentials.Core` / `Credentials.Extensions.DependencyInjection`) consumer graph is still free of
+Newtonsoft. This is a minor release, not a patch, because the dependency floors rise and verification
+narrows.
 
 ## v1.1.1 - 7/20/2026
 
