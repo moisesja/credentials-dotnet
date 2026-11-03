@@ -81,8 +81,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
 
         var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
 
-        // Reveal nothing extra: the mandatory group is still present.
-        var derived = await deriver.DeriveAsync(baseCredential, new BbsDisclosureRequest());
+        // Reveal one non-mandatory claim (DataProofs >= 2.0.0 refuses a mandatory-only reveal; see
+        // Bbs_mandatory_only_reveal_is_refused_with_the_cause): the mandatory group is still present.
+        var derived = await deriver.DeriveAsync(
+            baseCredential, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/favoriteColor"] });
 
         derived.Issuer.Should().NotBeNull();
         derived.ToElement().GetProperty("credentialSubject").TryGetProperty("id", out _).Should().BeTrue();
@@ -150,7 +152,8 @@ public sealed class Bbs2023SelectiveDisclosureTests
         // but the proof's verificationMethod base DID ≠ the credential issuer ⇒ issuer binding fails.
         var (baseCredential, _) = await CraftBaseAsync(
             ["/issuer", "/credentialSubject/id"], issuerDid: "did:example:not-the-signer");
-        var derived = await deriver.DeriveAsync(baseCredential, new BbsDisclosureRequest());
+        var derived = await deriver.DeriveAsync(
+            baseCredential, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/gpa"] });
 
         var result = await verifier.VerifyCredentialAsync(derived);
         result.Decision.Should().Be(VerificationDecision.Rejected);
@@ -214,18 +217,20 @@ public sealed class Bbs2023SelectiveDisclosureTests
     }
 
     [Fact]
-    public async Task Bbs_nonexistent_reveal_pointer_reveals_nothing_extra_and_still_verifies()
+    public async Task Bbs_reveal_pointer_matching_nothing_is_refused_with_the_cause()
     {
         if (!BbsAvailable) { return; }
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
-        var verifier = provider.GetRequiredService<IVerifier>();
         var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
 
-        // A well-formed pointer to an absent path is not an error — it just reveals nothing extra.
-        var derived = await deriver.DeriveAsync(
-            baseCredential, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/doesNotExist"] });
-        (await verifier.VerifyCredentialAsync(derived)).Decision.Should().Be(VerificationDecision.Accepted);
+        // A well-formed pointer to an absent path is refused (DataProofs >= 2.0.0 follows the reference
+        // selection algorithm; 1.5.0 silently revealed nothing for it). The contract exception names the cause.
+        var act = () => deriver.DeriveAsync(
+            baseCredential, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/doesNotExist", "/credentialSubject/gpa"] });
+        (await act.Should().ThrowExactlyAsync<CredentialFormatException>())
+            .WithMessage("*pointer*does not match*")
+            .WithInnerException<DataProofsDotnet.ProofGenerationException>();
     }
 
     [Fact]
@@ -242,16 +247,34 @@ public sealed class Bbs2023SelectiveDisclosureTests
         // cannot tell "no expiry" from "expiry hidden" — so it Accepts. The defence is issuer-side: validity
         // claims MUST be mandatory (documented on IBbsDeriver). This engine does not issue bbs-2023 bases.
         var notMandatory = await CraftExpiringBaseAsync(validUntilMandatory: false);
-        var hidden = await deriver.DeriveAsync(notMandatory, new BbsDisclosureRequest()); // withhold validUntil
+        var hidden = await deriver.DeriveAsync( // withhold validUntil; reveal a non-mandatory claim (2.0.0 needs one)
+            notMandatory, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/alumniOf"] });
         (await verifier.VerifyCredentialAsync(hidden)).Decision.Should().Be(VerificationDecision.Accepted);
 
         // Mitigation: when the issuer puts validUntil in the MANDATORY group, the holder cannot hide it
         // (mandatory disclosure is cryptographically enforced) and the expired credential is correctly Rejected.
         var mandatory = await CraftExpiringBaseAsync(validUntilMandatory: true);
-        var forced = await deriver.DeriveAsync(mandatory, new BbsDisclosureRequest());
+        var forced = await deriver.DeriveAsync(
+            mandatory, new BbsDisclosureRequest { RevealPointers = ["/credentialSubject/alumniOf"] });
         var result = await verifier.VerifyCredentialAsync(forced);
         result.Decision.Should().Be(VerificationDecision.Rejected);
         result.Check(CheckKinds.Validity)!.Status.Should().Be(CheckStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Bbs_mandatory_only_reveal_is_refused_with_the_cause()
+    {
+        if (!BbsAvailable) { return; }
+        using var provider = BuildProvider();
+        var deriver = provider.GetRequiredService<IBbsDeriver>();
+        var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
+
+        // DataProofs >= 2.0.0 (NetCrypto's BBS provider) cannot derive a proof that discloses no non-mandatory
+        // statement. The contract exception carries the substrate's remedy instead of a generic "invalid".
+        var act = () => deriver.DeriveAsync(baseCredential, new BbsDisclosureRequest());
+        (await act.Should().ThrowExactlyAsync<CredentialFormatException>())
+            .WithMessage("*non-mandatory*")
+            .WithInnerException<DataProofsDotnet.ProofGenerationException>();
     }
 
     // ---- issuance gate (FR-014) --------------------------------------------------------------------

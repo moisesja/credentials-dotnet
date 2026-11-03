@@ -37,6 +37,9 @@ public static class Program
                 .WithId("urn:uuid:22222222-2222-2222-2222-222222222222")
                 .WithIssuer(issuerKey.Did)
                 .AddType("UniversityDegreeCredential")
+                // RDFC signs only what the contexts define. Listed last (VCDM 2.0 §5.2), the undefined-terms
+                // context makes this sample's custom claims signable instead of silently dropped.
+                .AddContext("https://www.w3.org/ns/credentials/undefined-terms/v2")
                 .AddSubject(new JsonObject
                 {
                     ["id"] = "did:example:subject",

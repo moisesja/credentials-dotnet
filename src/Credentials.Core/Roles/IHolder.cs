@@ -39,6 +39,7 @@ public interface IHolder
     /// Binds a presentation to the holder key with an embedded Data Integrity <c>authentication</c> proof
     /// carrying the verifier's challenge/domain (FR-034), returning the secured presentation.
     /// </summary>
+    /// <exception cref="System.InvalidOperationException">The presentation cannot be secured with the requested cryptosuite.</exception>
     Task<VerifiablePresentation> BindWithDataIntegrityAsync(VerifiablePresentation presentation, VpBindingRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>

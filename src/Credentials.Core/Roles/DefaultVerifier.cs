@@ -650,6 +650,7 @@ internal sealed class DefaultVerifier : IVerifier
     {
         "PROOF_VERIFICATION_ERROR" => "The proof signature did not verify.",
         "PROOF_TRANSFORMATION_ERROR" => "The credential could not be canonicalized for verification.",
+        "DATA_LOSS_DETECTION_ERROR" => "Canonicalization would drop or alter part of the credential (for example, a term no @context defines), so that part is not covered by the proof.",
         "INVALID_VERIFICATION_METHOD" => "The proof's verification method is not authorized for its purpose.",
         "INVALID_CHALLENGE_ERROR" => "The proof challenge did not match.",
         "INVALID_DOMAIN_ERROR" => "The proof domain did not match.",

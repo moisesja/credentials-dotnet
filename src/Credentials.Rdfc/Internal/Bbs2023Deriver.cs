@@ -67,8 +67,11 @@ internal sealed class Bbs2023Deriver : IBbsDeriver
         }
         catch (ProofGenerationException ex)
         {
+            // The substrate names the cause without quoting the document: an invalid pointer, a malformed base,
+            // or a reveal that discloses no non-mandatory statement, which NetCrypto's BBS provider cannot prove
+            // (DataProofs >= 2.0.0). Carry it, so the caller can tell those apart.
             throw new CredentialFormatException(
-                "The credential is not a valid bbs-2023 base credential, or the disclosure pointers are invalid.", ex);
+                $"The credential is not a valid bbs-2023 base credential, or the disclosure pointers are invalid: {ex.Message}", ex);
         }
         catch (ArgumentException ex)
         {
