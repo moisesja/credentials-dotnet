@@ -26,6 +26,12 @@ namespace Credentials.Rdfc;
 /// gated), so the mandatory-group choice is the third-party issuer's responsibility; this engine will
 /// enforce it when bbs-2023 issuance ships. Mandatory claims, by contrast, cannot be dropped or altered —
 /// that is cryptographically enforced.</para>
+///
+/// <para><b>At least one non-mandatory claim must be revealed, and every pointer must match.</b> The BBS
+/// provider cannot prove a disclosure that reveals only the mandatory group, so a request with no
+/// <see cref="BbsDisclosureRequest.RevealPointers"/> is refused with <see cref="CredentialFormatException"/>
+/// whose message names the remedy; a pointer that matches nothing in the document is refused the same way
+/// (the reference selection algorithm's behaviour).</para>
 /// </summary>
 public interface IBbsDeriver
 {
@@ -39,7 +45,7 @@ public interface IBbsDeriver
     /// <param name="request">Which additional claims to reveal.</param>
     /// <param name="cancellationToken">Cancels the derivation.</param>
     /// <returns>The derived (minimally-disclosing) credential, ready to present.</returns>
-    /// <exception cref="CredentialFormatException">The base credential is not a valid <c>bbs-2023</c> base, or the pointers are invalid.</exception>
+    /// <exception cref="CredentialFormatException">The base credential is not a valid <c>bbs-2023</c> base, the pointers are invalid, or the request reveals no non-mandatory claim. The message carries the specific cause.</exception>
     /// <exception cref="System.NotSupportedException">The BBS native library is unavailable on this host.</exception>
     Task<Credential> DeriveAsync(Credential baseCredential, BbsDisclosureRequest request, CancellationToken cancellationToken = default);
 }

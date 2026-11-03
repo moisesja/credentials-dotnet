@@ -2,6 +2,15 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## "Open PR" from this owner means "get it onto the release PR", not "open another one" (2026-11-02)
+
+With PR #21 (v1.2.0, every dependency at latest) still open, the owner said "update your dependencies and
+open PR" for DataProofs 2.0.0. I planned a second PR stacked on #21 and started a branch; the owner
+stopped it: "add the current work to the existing PR … no, one PR only". The same thing happened the
+round before (the all-latest update was folded into #21). **Rule:** while a release PR is open, every
+change for that release goes onto it. Don't branch or stack; propose folding and only ask if the change
+would make the PR unreviewable. Keep the folded PR's description current for each addition.
+
 ## A count-based gate that drops after a dependency change is fixed by naming the failures, never by lowering the count (2026-10-29)
 
 DataProofs 1.5.0 made the W3C suite drop from 57 to 54, and my first proposal was "lower the baseline to 54

@@ -18,25 +18,20 @@ namespace Credentials.Conformance.Tests;
 /// </summary>
 public sealed partial class W3cVcdm2SuiteTests
 {
-    // The suite tests the engine does not pass (54 of 59 pass), keyed on the suite's own assertion message,
+    // The suite tests the engine does not pass (58 of 59 pass), keyed on the suite's own assertion message,
     // which is the stable identifier the suite prints for a failed expectation. Each entry is explained in
     // docs/conformance.md. When one starts passing, the run prints a notice: remove the entry, raise the
-    // floor, and update the doc.
+    // floor, and update the doc. (The four "language & direction" cases were listed here while DataProofs
+    // 1.5.0 refused @direction; 2.0.0 signs it, and they pass again.)
     private static readonly string[] KnownFailures =
     [
-        // RDFC suites refuse `@direction` since DataProofs 1.5.0 (fail-closed data-loss detection; the Data
-        // Integrity specs define no lossless canonicalization of direction). The shim issues eddsa-rdfc-2022.
-        "Failed to accept a VC using `name` with language & direction expressed.",
-        "Failed to accept a VC using `description` with language & direction expressed.",
-        "Failed to accept a VC using `issuer.name` with language & direction expressed.",
-        "Failed to accept a VC using `issuer.description` with language & direction expressed.",
         // relatedResource digest verification (fetch + hash) is a deferred follow-up.
         "Failed to reject a VC with a relatedResource with wrong digest.",
     ];
 
-    // The passing count the engine must not drop below: 59 suite tests minus the 5 known failures. A
+    // The passing count the engine must not drop below: 59 suite tests minus the 1 known failure. A
     // sanity floor beside the named list, so a run that executes nothing cannot pass with zero failures.
-    private const int PassingFloor = 54;
+    private const int PassingFloor = 58;
 
     [SkippableFact]
     [Trait("Category", "Conformance")]

@@ -114,55 +114,69 @@ public sealed class RdfcIssueVerifyTests
         VerificationMethod = $"did:key:{keyPair.MultibasePublicKey}#{keyPair.MultibasePublicKey}",
     };
 
-    [Theory]
-    [MemberData(nameof(LanguageValuePositions))]
-    [FrTag("FR-011")]
-    [FrTag("FR-040")]
-    public async Task Rdfc_refuses_a_language_value_with_direction_in_every_suite_position_and_jcs_secures_it(string position)
+    private static JsonObject LanguageValueAt(JsonObject document, string position)
     {
-        // Scope decision (v1.2.0, docs/conformance.md): the RDFC suites cannot carry @direction losslessly
-        // (DataProofs >= 1.5.0 fails closed), so issuance refuses it, naming the cause. The JCS suites sign the
-        // JSON as written and are the supported path.
-        using var provider = BuildProvider();
-        var issuer = provider.GetRequiredService<IIssuer>();
-        var verifier = provider.GetRequiredService<IVerifier>();
-        var keyPair = KeyGen.Generate(KeyType.Ed25519);
-        var did = $"did:key:{keyPair.MultibasePublicKey}";
-
-        var withDirection = WithLanguageValue(did, position, withDirection: true);
-        var rdfc = () => issuer.IssueAsync(withDirection, Issuance("eddsa-rdfc-2022", keyPair));
-        (await rdfc.Should().ThrowExactlyAsync<InvalidOperationException>())
-            .WithMessage("*eddsa-rdfc-2022*@direction*")
-            .WithInnerException<DataProofsDotnet.ProofGenerationException>();
-
-        var jcs = await issuer.IssueAsync(withDirection, Issuance("eddsa-jcs-2022", keyPair));
-        (await verifier.VerifyCredentialAsync(jcs.Credential)).Decision.Should().Be(VerificationDecision.Accepted, position);
-
-        // The limitation is the direction, not the language value object: language-only secures under RDFC.
-        var languageOnly = await issuer.IssueAsync(WithLanguageValue(did, position, withDirection: false), Issuance("eddsa-rdfc-2022", keyPair));
-        (await verifier.VerifyCredentialAsync(languageOnly.Credential)).Decision.Should().Be(VerificationDecision.Accepted, position);
+        var holder = position.StartsWith("issuer.", StringComparison.Ordinal) ? document["issuer"]!.AsObject() : document;
+        return holder[position.Split('.')[^1]]!.AsObject();
     }
 
     [Theory]
     [MemberData(nameof(LanguageValuePositions))]
+    [FrTag("FR-011")]
     [FrTag("FR-040")]
-    public async Task Adding_a_direction_after_rdfc_signing_is_detected(string position)
+    public async Task Rdfc_signs_a_language_value_with_direction_in_every_suite_position(string position)
     {
-        // The security meaning of refusing @direction: under DataProofs <= 1.4 the signed bytes did not carry
-        // the direction, so adding or flipping it after signing still verified. It is now a definitive failure.
+        // DataProofs >= 2.0.0 canonicalizes with rdfDirection: i18n-datatype, the representation the reference
+        // implementations sign with, so the direction is inside the signature: flipping or dropping it after
+        // signing breaks the proof. 1.5.0 refused @direction; earlier versions signed ltr and rtl as the same bytes.
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var keyPair = KeyGen.Generate(KeyType.Ed25519);
+        var did = $"did:key:{keyPair.MultibasePublicKey}";
+        var withDirection = WithLanguageValue(did, position, withDirection: true);
+
+        foreach (var cryptosuite in new[] { "eddsa-rdfc-2022", "eddsa-jcs-2022" })
+        {
+            var issued = await issuer.IssueAsync(withDirection, Issuance(cryptosuite, keyPair));
+            (await verifier.VerifyCredentialAsync(issued.Credential)).Decision.Should().Be(VerificationDecision.Accepted, $"{cryptosuite} at {position}");
+        }
+
+        var rdfc = await issuer.IssueAsync(withDirection, Issuance("eddsa-rdfc-2022", keyPair));
+        foreach (var (label, tamper) in new (string, Action<JsonObject>)[]
+        {
+            ("direction flipped to rtl", value => value["@direction"] = "rtl"),
+            ("direction removed", value => value.Remove("@direction")),
+        })
+        {
+            var tampered = JsonNode.Parse(rdfc.Credential.ToUtf8().Span)!.AsObject();
+            tamper(LanguageValueAt(tampered, position));
+            var result = await verifier.VerifyCredentialAsync(System.Text.Encoding.UTF8.GetBytes(tampered.ToJsonString()));
+            result.Decision.Should().Be(VerificationDecision.Rejected, $"{label} at {position}");
+            var proof = result.Check(CheckKinds.Proof)!;
+            proof.Status.Should().Be(CheckStatus.Failed);
+            proof.Diagnostics.Should().Contain(d => d.Code == "PROOF_VERIFICATION_ERROR");
+        }
+    }
+
+    [Fact]
+    [FrTag("FR-040")]
+    public async Task Rdfc_still_refuses_a_direction_on_a_non_string_value()
+    {
+        // dotNetRDF (like jsonld.js) types a number as an XSD literal and drops its direction, so DataProofs
+        // treats it as data loss rather than sign or verify less than the document says.
         using var provider = BuildProvider();
         var issuer = provider.GetRequiredService<IIssuer>();
         var verifier = provider.GetRequiredService<IVerifier>();
         var keyPair = KeyGen.Generate(KeyType.Ed25519);
         var did = $"did:key:{keyPair.MultibasePublicKey}";
 
-        var issued = await issuer.IssueAsync(WithLanguageValue(did, position, withDirection: false), Issuance("eddsa-rdfc-2022", keyPair));
+        var issued = await issuer.IssueAsync(WithLanguageValue(did, "name", withDirection: true), Issuance("eddsa-rdfc-2022", keyPair));
         var tampered = JsonNode.Parse(issued.Credential.ToUtf8().Span)!.AsObject();
-        var holder = position.StartsWith("issuer.", StringComparison.Ordinal) ? tampered["issuer"]!.AsObject() : tampered;
-        holder[position.Split('.')[^1]]!.AsObject()["@direction"] = "rtl";
+        tampered["name"] = new JsonObject { ["@value"] = 1, ["@direction"] = "ltr" };
 
         var result = await verifier.VerifyCredentialAsync(System.Text.Encoding.UTF8.GetBytes(tampered.ToJsonString()));
-        result.Decision.Should().Be(VerificationDecision.Rejected, position);
+        result.Decision.Should().Be(VerificationDecision.Rejected);
         var proof = result.Check(CheckKinds.Proof)!;
         proof.Status.Should().Be(CheckStatus.Failed);
         proof.Diagnostics.Should().Contain(d => d.Code == "DATA_LOSS_DETECTION_ERROR");

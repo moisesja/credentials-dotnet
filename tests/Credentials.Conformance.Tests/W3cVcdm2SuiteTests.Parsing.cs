@@ -63,11 +63,17 @@ public sealed partial class W3cVcdm2SuiteTests
     }
 
     [Fact]
-    public void Failure_parsing_matches_the_known_failure_list_by_message()
+    public void Failure_parsing_tells_known_failures_from_unknown_ones()
     {
         var failures = ParseFailures(MochaExcerpt);
+        var unknown = failures.Where(f => !KnownFailures.Any(k => f.Contains(k, StringComparison.Ordinal))).ToList();
 
-        failures.Should().OnlyContain(f => KnownFailures.Any(k => f.Contains(k, StringComparison.Ordinal)));
+        // The excerpt predates DataProofs 2.0.0, when the direction cases were known failures. Today only the
+        // relatedResource digest case is, so the two direction failures must surface as unknown: exactly what
+        // the gate reports when a regression hides among the counts.
+        unknown.Should().Equal(
+            "Got unwanted rejection: Failed to accept a VC using `name` with language & direction expressed.",
+            "Got unwanted rejection: Failed to accept a VC using `description` with language & direction expressed.");
     }
 
     [Fact]

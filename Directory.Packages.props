@@ -18,12 +18,17 @@
          rebuild + release, never just a consumer-side version float. 1.4.0 made malformed-input
          failures definitive (Failed, not Indeterminate) and throws ProofGenerationException at proof
          creation, which DataIntegrityMechanism wraps. 1.5.0 makes RDFC fail closed on JSON-LD data
-         loss: undefined terms, malformed or respelled IRIs (security fix, dataproofs #36). -->
-    <PackageVersion Include="DataProofsDotnet.Core" Version="1.5.0" />
-    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="1.5.0" />          <!-- M5: bbs-2023 / RDFC -->
-    <PackageVersion Include="DataProofsDotnet.Jose" Version="1.5.0" />          <!-- M3/M4: JOSE + SD-JWT VC -->
-    <PackageVersion Include="DataProofsDotnet.Cose" Version="1.5.0" />          <!-- M3: COSE -->
-    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="1.5.0" />
+         loss: undefined terms, malformed or respelled IRIs (security fix, dataproofs #36). 2.0.0: the
+         Rdfc suites' constructors changed (binary break, source-compatible; rebuilt here), RDFC now
+         carries @direction (dataproofs #40, rdfDirection: i18n-datatype), proof members a verifier acts on
+         are bound to the signature (GHSA-6fxh-mc39-94vc), RDFC bytes changed for tied-blank-node documents,
+         and bbs-2023 was reworked to interoperate with the reference implementation (earlier proofs do not
+         verify; nothing issued before this release exists in the wild, by owner decision). -->
+    <PackageVersion Include="DataProofsDotnet.Core" Version="2.0.0" />
+    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="2.0.0" />          <!-- M5: bbs-2023 / RDFC -->
+    <PackageVersion Include="DataProofsDotnet.Jose" Version="2.0.0" />          <!-- M3/M4: JOSE + SD-JWT VC -->
+    <PackageVersion Include="DataProofsDotnet.Cose" Version="2.0.0" />          <!-- M3: COSE -->
+    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="2.0.0" />
     <!-- Engine crypto operations the engine performs itself: hashing/digests (NetCrypto.Hash),
          ISigner abstraction, JWK conversion. NetCrypto exposes no RNG abstraction; the engine's
          RNG seam wraps the BCL RandomNumberGenerator (see Credentials.Cryptography). -->
@@ -47,7 +52,7 @@
          is an API break, ported in JsonSchema2020Validator. v9 registers built schemas in a process-wide
          registry unless the build gets its own local SchemaRegistry, and it throws JsonSchemaException for
          structurally invalid schemas. The validator isolates and catches both; SchemaValidatorTests pin it. -->
-    <PackageVersion Include="JsonSchema.Net" Version="9.5.0" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.6.0" />
     <!-- No AngleSharp pin: the issue #18 security pin (1.5.2) was removed in issue #20 because
          DataProofsDotnet.Rdfc (>= 1.3.0) itself floors the patched AngleSharp >= 1.6.0. Keeping a local pin
          below an upstream floor is an NU1605 downgrade, so it would have to chase every DataProofs bump. -->

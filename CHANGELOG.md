@@ -7,8 +7,10 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 ## v1.2.0 - Unreleased
 
 Every dependency moves to its latest stable release, so Credentials is built against the same graph the
-rest of the stack resolves (DataProofs 1.5.0, NetDid 4.0.0, NetCrypto 1.7.1, Microsoft.Extensions 10.0.14,
-matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception.
+rest of the stack resolves (DataProofs 2.0.0, NetDid 4.0.0, NetCrypto 1.7.1, Microsoft.Extensions 10.0.14,
+matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception. Nothing issued by an
+earlier Credentials exists in the wild (owner decision), so where DataProofs 2.0.0 changes signed bytes
+or proof formats, this release carries no compatibility shims or migration steps.
 
 ### Fixed
 
@@ -20,7 +22,7 @@ matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception
   - Any application whose graph resolved Jose ≥ 1.3.0 failed at runtime on all four JOSE signing paths:
     `vc+jwt` issuance, SD-JWT VC issuance, the holder's SD-JWT Key Binding JWT, and the holder's `vp+jwt`.
     Every application that also references `DidComm.Core` ≥ 1.4.1 resolves such a Jose.
-  - This release is built against DataProofs 1.5.0. The signed bytes are unchanged: the default
+  - This release is built against DataProofs 2.0.0. The JOSE signed bytes are unchanged: the default
     `JwsKidPlacement.Auto` keeps the `kid` in the integrity-protected header for the JWT, SD-JWT and KB-JWT
     media types, and a regression test pins this for every token Credentials emits.
   - DataProofs states that it does not guarantee binary compatibility across minor versions, so each move
@@ -28,6 +30,20 @@ matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception
 
 ### Security
 
+- **Inherited from DataProofs 2.0.0: the proof members a verifier acts on are bound to the signature**
+  ([GHSA-6fxh-mc39-94vc](https://github.com/moisesja/dataproofs-dotnet/security/advisories/GHSA-6fxh-mc39-94vc)).
+  An RDFC or bbs-2023 signature covers the RDF a proof expands to, not its JSON, and `@context` is not
+  signed, so with DataProofs ≤ 1.5.0 anyone holding a proof could respell `expires`, `challenge`,
+  `domain` or `proofPurpose` through a context and have the verifier read a value the issuer never signed.
+  The RDFC and bbs-2023 suites now verify only if the members they read (`id`, `type`, `cryptosuite`,
+  `created`, `expires`, `verificationMethod`, `proofPurpose`, `challenge`, `domain`, `nonce`,
+  `previousProof`) are what was signed; a renamed-away or never-signed member fails with
+  `PROOF_VERIFICATION_ERROR`. Some spec-legal but unverifiable proof shapes are newly refused (a context
+  mapping a modeled member to another predicate, a proof without exactly one `rdf:type`, a compact-IRI
+  `verificationMethod`, a non-canonical `proofPurpose` spelling). The JCS suites, JOSE, COSE and SD-JWT
+  sign the JSON itself and were never affected. DataProofs also hardened RDFC canonicalization against
+  hostile blank-node graphs (a stack overflow that ended the process; permutation blow-ups) with a work
+  budget that refuses pathological input in about 50 ms.
 - **Inherited from DataProofs 1.5.0: RDFC proofs now fail closed on JSON-LD data loss.** Before, whatever
   RDF canonicalization silently dropped or respelled was not signed, so a holder could change it without
   breaking an `eddsa-rdfc-2022` / `ecdsa-rdfc-2019` / `bbs-2023` proof. That included every custom claim of
@@ -50,10 +66,10 @@ matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception
 
   | Package | From | To |
   |---|---|---|
-  | `DataProofsDotnet.Core` / `.Jose` / `.Cose` / `.Rdfc` / `.Extensions.DependencyInjection` | 1.1.0 | **1.5.0** |
+  | `DataProofsDotnet.Core` / `.Jose` / `.Cose` / `.Rdfc` / `.Extensions.DependencyInjection` | 1.1.0 | **2.0.0** |
   | `NetDid.Core` / `.Method.Key` / `.Extensions.DependencyInjection` | 2.3.0 | **4.0.0** |
   | `NetCrypto` | 1.2.0 | **1.7.1** |
-  | `JsonSchema.Net` | 7.3.2 | **9.5.0** |
+  | `JsonSchema.Net` | 7.3.2 | **9.6.0** |
   | `Microsoft.Extensions.*` | 10.0.8 | **10.0.14** (required: NetDid 4.0.0 needs at least this) |
   | `Microsoft.SourceLink.GitHub` (build-only) | 10.0.300 | **10.0.403** |
   | `AngleSharp` pin (`Credentials.Rdfc`) | 1.5.2 | **removed** (`DataProofsDotnet.Rdfc` itself requires the patched ≥ 1.6.0) |
@@ -63,8 +79,9 @@ matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception
   ApiCompat tool 10.0.403. **FluentAssertions stays at 7.0.0**, the last release under the free Apache-2.0
   licence. It is test-only.
 
-  **Applications pinned to older DataProofs (Jose < 1.5.0) or NetDid (< 4.0.0) should stay on Credentials
-  1.1.1.** Upgrading raises those floors.
+  **Applications pinned to older DataProofs (< 2.0.0) or NetDid (< 4.0.0) should stay on Credentials
+  1.1.1.** Upgrading raises those floors. DataProofs 2.0.0's RDFC suite constructors changed shape, so
+  this release is rebuilt against it (an assembly built against 1.5.0 throws `MissingMethodException`).
 - **RDFC issuance and verification are stricter** (from DataProofs 1.5.0, above).
   - **Credentials issued earlier with RDFC over undefined terms no longer verify**, including ones
     Credentials ≤ 1.1.1 issued.
@@ -72,20 +89,32 @@ matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception
     `https://www.w3.org/ns/credentials/undefined-terms/v2` last in `@context` (VCDM 2.0 §5.2). That context
     is bundled offline, and the RDFC sample now does this.
   - IRIs must be well formed, absolute and normalized.
-  - **Language value objects with a base direction (`@direction`) are unsupported under the RDFC suites**
-    (`eddsa-rdfc-2022`, `ecdsa-rdfc-2019`, `bbs-2023`). This is an explicit scope decision for this
-    release. The Data Integrity specs define no lossless canonicalization of direction, and JSON-LD's
-    default conversion drops it, so earlier versions signed bytes that did not carry the direction (a
-    holder could flip `ltr`/`rtl` undetected). DataProofs 1.5.0 fails closed instead: RDFC issuance of
-    such a document throws `InvalidOperationException` naming `@direction`, and verification of one, from
-    any issuer, fails with `DATA_LOSS_DETECTION_ERROR`. Use the JCS suites (`eddsa-jcs-2022`,
-    `ecdsa-jcs-2019`), which sign the JSON as written, or omit `@direction`. Tracked upstream as
-    [dataproofs-dotnet#40](https://github.com/moisesja/dataproofs-dotnet/issues/40).
-  - **W3C VCDM 2.0 conformance: 57 → 54 of 59.** The four suite cases that issue `name`, `description`,
-    `issuer.name` and `issuer.description` with `@direction` now fail, because the conformance shim issues
-    with `eddsa-rdfc-2022`. The `type` term-resolution case, a documented gap, now passes for RDFC-secured
-    input. The gate no longer relies on a pass count alone: every failing suite test must be one of the
-    **named** known failures in `W3cVcdm2SuiteTests`, so a regression cannot hide behind the count. See
+  - **Language value objects with a base direction (`@direction`) are signed under the RDFC suites**
+    (from DataProofs 2.0.0, resolving
+    [dataproofs-dotnet#40](https://github.com/moisesja/dataproofs-dotnet/issues/40)). RDFC canonicalizes
+    with JSON-LD 1.1 `rdfDirection: i18n-datatype`, the representation the reference Data Integrity
+    implementations sign with, so the direction is inside the signature: flipping `ltr`/`rtl` or dropping
+    the direction after signing fails the proof with `PROOF_VERIFICATION_ERROR`. Earlier versions signed
+    `ltr` and `rtl` as the same bytes, and DataProofs 1.5.0 refused `@direction` outright. A number or
+    boolean with `@direction` is still refused as data loss. Tests cover the four W3C positions (`name`,
+    `description`, `issuer.name`, `issuer.description`) under both RDFC and JCS.
+  - **RDFC signed bytes changed for some documents** (DataProofs 2.0.0 corrected tied-blank-node labelling
+    and Unicode code-point ordering to match `rdf-canonize`). Ordinary credentials without tied blank
+    nodes are unaffected; a document with two same-looking unnamed objects now canonicalizes to the
+    reference implementation's bytes.
+  - **bbs-2023 follows the reference algorithms** (DataProofs 2.0.0): proofs now interoperate with the
+    reference implementation, and the W3C `derivedRevealDocument.json` vector verifies. Base and derived
+    proofs from earlier versions are not compatible. New limitation: a derivation must reveal at least one
+    non-mandatory claim (NetCrypto's BBS provider cannot prove a mandatory-only disclosure); `IBbsDeriver`
+    refuses such a request with `CredentialFormatException`, and its message now carries the substrate's
+    specific cause (an invalid pointer, a malformed base, or the mandatory-only case) instead of a generic
+    sentence. A reveal pointer that matches nothing in the document is now refused too (the reference
+    selection algorithm's behaviour); 1.5.0 silently revealed nothing for it. Documents with `@list` values
+    or language maps are refused at derivation.
+  - **W3C VCDM 2.0 conformance: 57 → 58 of 59.** The `type` term-resolution case, a documented gap, now
+    passes for RDFC-secured input; `relatedResource` digest verification remains the one named gap. The
+    gate no longer relies on a pass count alone: every failing suite test must be one of the **named**
+    known failures in `W3cVcdm2SuiteTests`, so a regression cannot hide behind the count. See
     `docs/conformance.md`.
   - The `InvalidOperationException` thrown when a document cannot be secured now includes the specific
     cause from the substrate (for example "uses @direction"), not only the generic data-loss sentence.
@@ -102,7 +131,7 @@ matching `DidComm.Core` 1.5.0). FluentAssertions is the one deliberate exception
 - **DID resolution is stricter** (NetDid 3.0–4.0). DID syntax is checked more tightly, DID documents that
   break DID Core fail to resolve, and a verification method must have a `controller`. A resolution error is
   Indeterminate in Credentials, as before. No did:key verdict changes.
-- **JSON Schema validation runs on JsonSchema.Net 9.**
+- **JSON Schema validation runs on JsonSchema.Net 9** (9.6.0).
   - Each validation uses its own schema and dialect registries. A schema supplied with one credential can
     never answer another credential's `$ref`, and it can never redefine a custom `$schema` dialect for
     later validations. The same `$id` can be validated repeatedly.
