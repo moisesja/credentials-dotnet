@@ -2,6 +2,36 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A fix that consumers need is not done at merge: `Refs`, not `Closes`, until the release ships (2026-11-20)
+
+For #52 I wrote "Closes #52", although `CredentialsVersion` stayed at 1.2.0, so every nuget.org consumer still
+resolved the vulnerable Cbor. The PR #55 reviewer pointed out that the merge fixes only the CI half. **Rule:**
+when an issue's harm reaches consumers of the published packages and the PR does not release, reference the
+issue (`Refs #N`). Leave it open until a release carrying the fix ships, and say so in the PR, the todo and the
+CHANGELOG. Releasing stays the owner's decision.
+
+The same round asked that the deep-nesting fixture stop depending on `CborWriter`. The reviewer suggested
+splicing the bytes in through `CborWriter.WriteEncodedValue`, but on 10.0.15 that API validates its input with
+the depth-capped reader and refuses anything deeper than 64. The suggestion would have broken the test
+outright. **Rule:** a fixture that builds hostile input must not pass it through the library whose limits it
+probes; splice raw bytes. Before adopting a reviewer's suggested API, probe it on the real package version,
+as with any other review claim.
+
+## A patch release's advisory is not its changelog: A/B the verify paths, and diff the assemblies (2026-11-19)
+
+For #52, the GHSA for `System.Formats.Cbor` 10.0.15 described one fix: seeded hashing for duplicate map
+keys. Reading the advisory and the reader modes, I concluded the bump changed timing only. The adversarial
+A/B through `IVerifier` found a second, unannounced change: a 64-level CBOR depth cap. A genuine COSE
+credential with a deeply nested unsigned header moved from Accepted to `CredentialFormatException`. A
+decompile diff of the two DLLs listed every change. The same pass found that JsonSchema.Net 9.7.0's
+release notes ("a minor hostname fix") also changed `$dynamicRef` in a dialect a schema can declare.
+**Rule:** for any dependency bump on a verify path, run the same corpus through the public verifier on the
+old and new versions, proving which assembly loaded each time, and diff the decisions. Where the notes are
+thin, diff the assemblies or the upstream source between the two release commits. Then pin each behaviour
+that changed with a test, and mutation-check that test on the old version. An invariant the upstream
+change happens not to reach still deserves a pin. Here `hostname` kept its IDNA checks only because the
+validator's build dialect, not the declared `$schema`, picks the format registry.
+
 ## "Open PR" from this owner means "get it onto the release PR", not "open another one" (2026-11-02)
 
 With PR #21 (v1.2.0, every dependency at latest) still open, the owner said "update your dependencies and

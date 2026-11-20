@@ -1,3 +1,4 @@
+using System.Formats.Cbor;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -296,6 +297,38 @@ public sealed class M3EnvelopingTests
         result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
     }
 
+    // System.Formats.Cbor 10.0.15 (issue #52) caps CBOR nesting at 64 levels. 10.0.8 had no cap: a genuine
+    // envelope whose unsigned unprotected header carried thousands of nested arrays verified as Accepted, and at
+    // the 4 MiB input limit it took about 0.9 s and 830 MB to decode. Deep nesting is now refused as malformed
+    // before any crypto runs. The 10-level row shows an unknown unprotected label is still tolerated, so the
+    // 1000-level refusal is the depth bound and nothing else.
+    [Theory]
+    [InlineData(10, true)]
+    [InlineData(1000, false)]
+    public async Task Cose_unprotected_header_nesting_is_bounded(int depth, bool accepted)
+    {
+        using var provider = BuildProvider();
+        var issuer = provider.GetRequiredService<IIssuer>();
+        var verifier = provider.GetRequiredService<IVerifier>();
+        var key = TestKeys.New(KeyType.Ed25519);
+
+        var issued = await issuer.IssueAsync(
+            UnsecuredCredential(key.Did),
+            new CoseEnvelopeIssuanceRequest { Signer = key.Signer, VerificationMethod = key.VerificationMethod });
+        var bytes = WithNestedUnprotectedHeader(issued.CoseBytes!.Value, depth);
+
+        if (accepted)
+        {
+            var result = await verifier.VerifyCredentialAsync(bytes);
+            result.Decision.Should().Be(VerificationDecision.Accepted, result.ToString());
+        }
+        else
+        {
+            var act = () => verifier.VerifyCredentialAsync(bytes).AsTask();
+            await act.Should().ThrowAsync<CredentialFormatException>();
+        }
+    }
+
     [Fact]
     public async Task Cose_issuer_spoofing_is_rejected_by_issuer_binding()
     {
@@ -540,6 +573,53 @@ public sealed class M3EnvelopingTests
             ContentType = contentType,
             Type = type,
         });
+    }
+
+    /// <summary>
+    /// Returns a signed COSE_Sign1 message with an extra private label (99) in its unprotected header whose value is
+    /// <paramref name="depth"/> nested one-element arrays. The unprotected header is outside the signature.
+    /// </summary>
+    /// <remarks>
+    /// The nested value is spliced in as raw bytes (0x81 × depth, then 0x00) so that no System.Formats.Cbor API ever
+    /// handles it: in 10.0.15 its readers and <see cref="CborWriter.WriteEncodedValue"/> refuse nesting deeper than 64,
+    /// so building the input through them would fail before the verifier is reached. The reader below only walks the
+    /// genuine, shallow message to find where its unprotected header starts and ends.
+    /// </remarks>
+    private static byte[] WithNestedUnprotectedHeader(ReadOnlyMemory<byte> cose, int depth)
+    {
+        var reader = new CborReader(cose, CborConformanceMode.Lax);
+        if (reader.PeekState() == CborReaderState.Tag)
+        {
+            reader.ReadTag();
+        }
+
+        reader.ReadStartArray();
+        reader.SkipValue(); // protected header
+        var mapStart = cose.Length - reader.BytesRemaining;
+        var entries = reader.ReadStartMap() ?? throw new InvalidOperationException("Expected a definite-length unprotected header.");
+        var entriesStart = cose.Length - reader.BytesRemaining;
+        for (var i = 0; i < entries * 2; i++)
+        {
+            reader.SkipValue();
+        }
+
+        var mapEnd = cose.Length - reader.BytesRemaining;
+        if (entries + 1 > 23)
+        {
+            throw new InvalidOperationException("The one-byte map header below needs fewer than 24 entries.");
+        }
+
+        var span = cose.Span;
+        return
+        [
+            .. span[..mapStart],
+            (byte)(0xA0 + entries + 1), // map header with one more entry
+            .. span[entriesStart..mapEnd],
+            0x18, 0x63,                 // label 99
+            .. Enumerable.Repeat((byte)0x81, depth),
+            0x00,
+            .. span[mapEnd..],          // payload and signature, unchanged
+        ];
     }
 
     /// <summary>A signer that reports an out-of-scope key type, to exercise the fail-fast path.</summary>
