@@ -2,6 +2,21 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A fix that consumers need is not done at merge: `Refs`, not `Closes`, until the release ships (2026-11-20)
+
+For #52 I wrote "Closes #52", although `CredentialsVersion` stayed at 1.2.0, so every nuget.org consumer still
+resolved the vulnerable Cbor. The PR #55 reviewer pointed out that the merge fixes only the CI half. **Rule:**
+when an issue's harm reaches consumers of the published packages and the PR does not release, reference the
+issue (`Refs #N`). Leave it open until a release carrying the fix ships, and say so in the PR, the todo and the
+CHANGELOG. Releasing stays the owner's decision.
+
+The same round asked that the deep-nesting fixture stop depending on `CborWriter`. The reviewer suggested
+splicing the bytes in through `CborWriter.WriteEncodedValue`, but on 10.0.15 that API validates its input with
+the depth-capped reader and refuses anything deeper than 64. The suggestion would have broken the test
+outright. **Rule:** a fixture that builds hostile input must not pass it through the library whose limits it
+probes; splice raw bytes. Before adopting a reviewer's suggested API, probe it on the real package version,
+as with any other review claim.
+
 ## A patch release's advisory is not its changelog: A/B the verify paths, and diff the assemblies (2026-11-19)
 
 For #52, the GHSA for `System.Formats.Cbor` 10.0.15 described one fix: seeded hashing for duplicate map

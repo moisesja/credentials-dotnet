@@ -115,7 +115,8 @@ First-party changelog review: no first-party package changes version, so there i
 - **New nuspec dependency.** `Credentials.Core` gains a direct `System.Formats.Cbor` dependency. It is the same
   package consumers already got transitively, so the closure doesn't grow; the NFR-002 closure gate stays green.
 - **Upstream drift.** When DataProofs ships dataproofs-dotnet#50, the pin must go. Filed as #53.
-- **Published 1.2.0 consumers** still resolve 10.0.8 until the next release. The CHANGELOG tells them how to pin
+- **Published 1.2.0 consumers** still resolve 10.0.8 until the next release, so this PR says `Refs #52` and
+  #52 stays open until a release carrying the pin ships (review round 1; releasing is the owner's call). The CHANGELOG tells them how to pin
   locally. This PR does not bump `CredentialsVersion`, tag or release (protocol).
 - **Dev-only 11.x tools on the 10.0 SDK.** They run locally on SDK 10.0.404, and CI resolves the latest
   10.0.4xx SDK. If a CI job disagrees, the fallback is the 10.0.404 / 10.0.15 builds of the same tools.

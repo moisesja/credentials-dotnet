@@ -576,58 +576,50 @@ public sealed class M3EnvelopingTests
     }
 
     /// <summary>
-    /// Re-encodes a signed COSE_Sign1 message with an extra private label (99) in its unprotected header whose value
-    /// is <paramref name="depth"/> nested one-element arrays. The unprotected header is outside the signature.
+    /// Returns a signed COSE_Sign1 message with an extra private label (99) in its unprotected header whose value is
+    /// <paramref name="depth"/> nested one-element arrays. The unprotected header is outside the signature.
     /// </summary>
+    /// <remarks>
+    /// The nested value is spliced in as raw bytes (0x81 × depth, then 0x00) so that no System.Formats.Cbor API ever
+    /// handles it: in 10.0.15 its readers and <see cref="CborWriter.WriteEncodedValue"/> refuse nesting deeper than 64,
+    /// so building the input through them would fail before the verifier is reached. The reader below only walks the
+    /// genuine, shallow message to find where its unprotected header starts and ends.
+    /// </remarks>
     private static byte[] WithNestedUnprotectedHeader(ReadOnlyMemory<byte> cose, int depth)
     {
         var reader = new CborReader(cose, CborConformanceMode.Lax);
-        CborTag? tag = reader.PeekState() == CborReaderState.Tag ? reader.ReadTag() : null;
+        if (reader.PeekState() == CborReaderState.Tag)
+        {
+            reader.ReadTag();
+        }
+
         reader.ReadStartArray();
-        var protectedHeader = reader.ReadByteString();
-        var unprotected = new List<(ReadOnlyMemory<byte> Label, ReadOnlyMemory<byte> Value)>();
-        reader.ReadStartMap();
-        while (reader.PeekState() != CborReaderState.EndMap)
+        reader.SkipValue(); // protected header
+        var mapStart = cose.Length - reader.BytesRemaining;
+        var entries = reader.ReadStartMap() ?? throw new InvalidOperationException("Expected a definite-length unprotected header.");
+        var entriesStart = cose.Length - reader.BytesRemaining;
+        for (var i = 0; i < entries * 2; i++)
         {
-            unprotected.Add((reader.ReadEncodedValue(), reader.ReadEncodedValue()));
+            reader.SkipValue();
         }
 
-        reader.ReadEndMap();
-        var payload = reader.ReadByteString();
-        var signature = reader.ReadByteString();
-
-        var writer = new CborWriter(CborConformanceMode.Lax);
-        if (tag is { } t)
+        var mapEnd = cose.Length - reader.BytesRemaining;
+        if (entries + 1 > 23)
         {
-            writer.WriteTag(t);
+            throw new InvalidOperationException("The one-byte map header below needs fewer than 24 entries.");
         }
 
-        writer.WriteStartArray(4);
-        writer.WriteByteString(protectedHeader);
-        writer.WriteStartMap(unprotected.Count + 1);
-        foreach (var (label, value) in unprotected)
-        {
-            writer.WriteEncodedValue(label.Span);
-            writer.WriteEncodedValue(value.Span);
-        }
-
-        writer.WriteInt32(99);
-        for (var i = 0; i < depth; i++)
-        {
-            writer.WriteStartArray(1);
-        }
-
-        writer.WriteInt32(0);
-        for (var i = 0; i < depth; i++)
-        {
-            writer.WriteEndArray();
-        }
-
-        writer.WriteEndMap();
-        writer.WriteByteString(payload);
-        writer.WriteByteString(signature);
-        writer.WriteEndArray();
-        return writer.Encode();
+        var span = cose.Span;
+        return
+        [
+            .. span[..mapStart],
+            (byte)(0xA0 + entries + 1), // map header with one more entry
+            .. span[entriesStart..mapEnd],
+            0x18, 0x63,                 // label 99
+            .. Enumerable.Repeat((byte)0x81, depth),
+            0x00,
+            .. span[mapEnd..],          // payload and signature, unchanged
+        ];
     }
 
     /// <summary>A signer that reports an out-of-scope key type, to exercise the fail-fast path.</summary>

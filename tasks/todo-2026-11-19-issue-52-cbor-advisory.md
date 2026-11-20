@@ -30,9 +30,9 @@ Plan: `tasks/plan-2026-11-19-issue-52-cbor-advisory.md`. Branch `fix/issue-52-cb
 - [x] Follow-ups filed: #53 (remove the pin after dataproofs-dotnet#50) and #54 (schema-stage dialect policy and gaps).
 - [x] Lesson added (`tasks/lessons.md`): a patch release's advisory is not its changelog.
 - [x] Clean Release build, full test suite, the CI gate scripts.
-- [ ] PR opened; CI and Conformance green on the PR.
-- [ ] Review loop: every finding addressed; reviewer's verdict on the current head.
-- [ ] Merged; `main` pulled; issue #52 closed.
+- [x] PR #55 opened; CI and Conformance green on the PR (fcc7300).
+- [x] Review round 1 addressed (two non-blocking items); waiting for the reviewer to re-confirm on the new head.
+- [ ] Merged; `main` pulled. Issue #52 stays **open** (`Refs #52`) until a release carrying the pin ships, by owner decision.
 
 ## Review / results
 
@@ -68,4 +68,9 @@ No exception other than the documented `CredentialFormatException` escaped `Veri
 
 ### CI / review
 
-- PR: _pending_
+- PR: [#55](https://github.com/moisesja/credentials-dotnet/pull/55). The body says `Refs #52`, not `Closes`: #52 stays open until a release carrying the pin ships (see round 1).
+- CI on `fcc7300`: all 6 checks green. These are build + test (ubuntu, windows), W3C VCDM 2.0 suite, no-Newtonsoft consumer closure, API compatibility (semver) and API coverage. The conformance suite ran on the PR because `src/**` and `tests/**` changed; no dispatch was needed.
+- **Round 1** ([comment 7025925921](https://github.com/moisesja/credentials-dotnet/pull/55#issuecomment-7025925921), on `fcc7300`): "looks good, no blockers". The reviewer reproduced the build, the 442 tests, the vulnerability scan, the nuspec floor, the `MaxDepth` switch and the tag date. Two non-blocking items:
+  1. *Consumers are not fixed until a release ships.* Valid. Releasing is the owner's decision, and the orchestrator is putting it to them. `CredentialsVersion`, the tag and the release are untouched. The PR body now says `Refs #52`, so #52 stays open until a release carrying the pin ships. The CHANGELOG keeps its statement that consumers need a release and can pin locally until then.
+  2. *`WithNestedUnprotectedHeader` relies on `CborWriter` not enforcing the depth cap.* The concern is valid, but the suggested fix, splicing via `CborWriter.WriteEncodedValue`, would not work. A probe shows that on 10.0.15 `WriteEncodedValue` validates its input with the capped reader: depth 64 is fine, while 65 and 1000 throw `ArgumentException` ("Not a valid CBOR value encoding"). The helper now splices raw bytes, so no System.Formats.Cbor API handles the nested value; a reader only walks the genuine, shallow message to find the header's offsets. Mutation re-checked: on Cbor 10.0.8 the 1000-level row fails ("Expected a CredentialFormatException to be thrown, but no exception was thrown"), and on 10.0.15 both rows pass.
+- Round 1 fixes are in the commit after `fcc7300`. Full suite before push: see the PR reply.
