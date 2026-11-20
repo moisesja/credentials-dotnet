@@ -2,6 +2,21 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A patch release's advisory is not its changelog: A/B the verify paths, and diff the assemblies (2026-11-19)
+
+For #52, the GHSA for `System.Formats.Cbor` 10.0.15 described one fix: seeded hashing for duplicate map
+keys. Reading the advisory and the reader modes, I concluded the bump changed timing only. The adversarial
+A/B through `IVerifier` found a second, unannounced change: a 64-level CBOR depth cap. A genuine COSE
+credential with a deeply nested unsigned header moved from Accepted to `CredentialFormatException`. A
+decompile diff of the two DLLs listed every change. The same pass found that JsonSchema.Net 9.7.0's
+release notes ("a minor hostname fix") also changed `$dynamicRef` in a dialect a schema can declare.
+**Rule:** for any dependency bump on a verify path, run the same corpus through the public verifier on the
+old and new versions, proving which assembly loaded each time, and diff the decisions. Where the notes are
+thin, diff the assemblies or the upstream source between the two release commits. Then pin each behaviour
+that changed with a test, and mutation-check that test on the old version. An invariant the upstream
+change happens not to reach still deserves a pin. Here `hostname` kept its IDNA checks only because the
+validator's build dialect, not the declared `$schema`, picks the format registry.
+
 ## "Open PR" from this owner means "get it onto the release PR", not "open another one" (2026-11-02)
 
 With PR #21 (v1.2.0, every dependency at latest) still open, the owner said "update your dependencies and

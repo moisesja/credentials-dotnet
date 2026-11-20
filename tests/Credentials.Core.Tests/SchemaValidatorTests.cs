@@ -72,6 +72,114 @@ public sealed class SchemaValidatorTests
         good.Outcome.Should().Be(SchemaCheckOutcome.Success);
     }
 
+    // JsonSchema.Net 9.7.0 (issue #52) split the `hostname` format by dialect, following the JSON Schema
+    // Test Suite: draft 7 through 2020-12 apply the IDNA A-label rules (RFC 5891), draft 6 does not (RFC 1123
+    // only). Up to 9.6.0 every dialect applied them. The format registry comes from the build dialect, not
+    // from the `$schema` a document declares, and the validator always builds with 2020-12. So a schema that
+    // declares draft 6 still gets the IDNA rules, on 9.6.0 and 9.7.0 alike, and the upstream change does not
+    // reach credential verification. The draft 6 rows pin that: they fail if the validator's build dialect
+    // changes or if JsonSchema.Net starts taking formats from the declared dialect.
+    private static string HostnameSchema(string? dialect) =>
+        $$"""
+        {
+          {{(dialect is null ? string.Empty : $"\"$schema\": \"{dialect}\",")}}
+          "type": "object",
+          "properties": { "host": { "type": "string", "format": "hostname" } }
+        }
+        """;
+
+    [Theory]
+    [InlineData("xn--X")]             // invalid Punycode
+    [InlineData("XN--aa---o47jg78q")] // "--" in the third and fourth positions of the decoded label
+    public void Hostname_format_applies_the_IDNA_rules_whatever_dialect_the_schema_declares(string hostname)
+    {
+        var instance = Credential($$"""{ "host": "{{hostname}}" }""");
+
+        foreach (var dialect in new string?[]
+                 {
+                     null, // no $schema: the validator's default, 2020-12
+                     "https://json-schema.org/draft/2020-12/schema",
+                     "https://json-schema.org/draft/2019-09/schema",
+                     "http://json-schema.org/draft-07/schema#",
+                     "http://json-schema.org/draft-06/schema#", // draft 6's own hostname would accept both values
+                 })
+        {
+            Validator.Validate(Schema(HostnameSchema(dialect)), instance).Outcome
+                .Should().Be(SchemaCheckOutcome.Failure, "the 2020-12 format registry applies under {0}", dialect ?? "the default dialect");
+        }
+    }
+
+    [Fact]
+    public void Hostname_format_accepts_a_valid_A_label_in_2020_12()
+    {
+        // Positive control: the 2020-12 rejections above are the IDNA rules, not a refusal of every A-label.
+        Validator.Validate(Schema(HostnameSchema(null)), Credential("""{ "host": "xn--9n2bp8q.xn--9t4b11yi5a" }""")).Outcome
+            .Should().Be(SchemaCheckOutcome.Success);
+    }
+
+    // JsonSchema.Net 9.7.0 (issue #52) changed `$dynamicRef` in the v1 dialect, following the current JSON Schema
+    // Test Suite: v1 now takes a bare anchor name ("node") and refuses "#node", the reverse of 9.6.0. A schema
+    // reaches v1 by declaring it, at the root or in any subschema. 2020-12 keeps the URI-reference form. Every
+    // change is between Indeterminate and an evaluated result, never between Success and Failure, so it cannot
+    // admit a non-conforming credential. The rows pin both dialects, so the next change surfaces here.
+    private static string DynamicRefSchema(string? dialect, string reference) =>
+        $$"""
+        {
+          {{(dialect is null ? string.Empty : $"\"$schema\": \"{dialect}\",")}}
+          "$dynamicAnchor": "node",
+          "type": "object",
+          "properties": { "credentialSubject": { "$dynamicRef": "{{reference}}" }, "n": { "type": "integer" } }
+        }
+        """;
+
+    [Theory]
+    [InlineData("https://json-schema.org/v1", "node", SchemaCheckOutcome.Failure)]            // 9.6.0: Indeterminate
+    [InlineData("https://json-schema.org/v1/2026", "node", SchemaCheckOutcome.Failure)]       // 9.6.0: Indeterminate
+    [InlineData("https://json-schema.org/v1", "#node", SchemaCheckOutcome.Indeterminate)]     // 9.6.0: Failure
+    [InlineData(null, "#node", SchemaCheckOutcome.Failure)]
+    [InlineData("https://json-schema.org/draft/2020-12/schema", "#node", SchemaCheckOutcome.Failure)]
+    // In 2020-12 a bare name is a relative URI, which would need a fetch: unresolved, never fetched.
+    [InlineData("https://json-schema.org/draft/2020-12/schema", "node", SchemaCheckOutcome.Indeterminate)]
+    public void DynamicRef_anchor_syntax_follows_the_declared_dialect(string? dialect, string reference, SchemaCheckOutcome expected)
+    {
+        // credentialSubject re-enters the root through $dynamicRef, so its `n` must be an integer too.
+        Validator.Validate(Schema(DynamicRefSchema(dialect, reference)), Credential("""{ "credentialSubject": { "n": "x" } }"""))
+            .Outcome.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("https://json-schema.org/v1", "node")]
+    [InlineData(null, "#node")]
+    public void DynamicRef_resolves_and_accepts_a_conforming_credential(string? dialect, string reference)
+    {
+        // Positive control: the Failure rows above are the recursive constraint, not an unresolvable reference.
+        Validator.Validate(Schema(DynamicRefSchema(dialect, reference)), Credential("""{ "credentialSubject": { "n": 1 } }"""))
+            .Outcome.Should().Be(SchemaCheckOutcome.Success);
+    }
+
+    [Fact]
+    public void A_v1_subschema_inside_a_2020_12_schema_uses_the_v1_dynamicRef_syntax()
+    {
+        // A root-level $schema check would not see v1 here.
+        const string schema =
+            """
+            {
+              "properties": { "credentialSubject": { "$ref": "https://schema.example/v1" } },
+              "$defs": {
+                "v1": {
+                  "$schema": "https://json-schema.org/v1", "$id": "https://schema.example/v1", "$dynamicAnchor": "n",
+                  "properties": { "c": { "$dynamicRef": "n" }, "k": { "type": "integer" } }
+                }
+              }
+            }
+            """;
+
+        Validator.Validate(Schema(schema), Credential("""{ "credentialSubject": { "c": { "k": "x" } } }""")).Outcome
+            .Should().Be(SchemaCheckOutcome.Failure);
+        Validator.Validate(Schema(schema), Credential("""{ "credentialSubject": { "c": { "k": 1 } } }""")).Outcome
+            .Should().Be(SchemaCheckOutcome.Success);
+    }
+
     [Fact]
     public void Unparseable_schema_is_indeterminate()
     {

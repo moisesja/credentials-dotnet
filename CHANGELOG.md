@@ -4,7 +4,61 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v1.2.0 - Unreleased
+## Unreleased
+
+### Security
+
+- **`System.Formats.Cbor` lifted from 10.0.8 to 10.0.15** to resolve
+  [GHSA-vmv3-wvjp-wqpj](https://github.com/advisories/GHSA-vmv3-wvjp-wqpj) (CVE-2026-118747)
+  ([#52](https://github.com/moisesja/credentials-dotnet/issues/52)).
+  - `DataProofsDotnet.Cose` and `.Rdfc` 2.0.0 bring in 10.0.8, whose duplicate-map-key check can be
+    hash-flooded with colliding keys. `Credentials.Core` now references 10.0.15 directly. Every Credentials
+    package depends on Core, so consumers resolve the patched version.
+  - Of the paths Credentials uses, only bbs-2023 derived-proof verification (`Credentials.Rdfc`) runs that
+    check. COSE parsing reads in lax mode and never ran it. A flood on 10.0.8 also needed the process's
+    random hash seed.
+  - The `NU1902` audit warning, an error under `TreatWarningsAsErrors`, failed restore on `main` once the
+    advisory was published, breaking CI and the nightly Conformance run.
+  - Applications on v1.2.0 still resolve 10.0.8 until the next release. They can add a direct
+    `System.Formats.Cbor` 10.0.15 reference in the meantime.
+- **Deeply nested CBOR in a COSE credential is now refused before any crypto runs.** 10.0.15 also caps CBOR
+  nesting at 64 levels, which the advisory does not mention. On 10.0.8, a genuine COSE credential whose
+  unprotected header (outside the signature) held thousands of nested arrays still verified as Accepted. At
+  the 4 MiB input limit it took about 0.9 s and 830 MB to decode. Verifying such bytes now throws
+  `CredentialFormatException`, like any other undecodable envelope. In practice the limit is reached at 63
+  levels inside the unprotected header and 64 inside the protected one. Hosts can move the limit with the
+  `System.Formats.Cbor.CborReader.MaxDepth` AppContext switch.
+
+### Changed
+
+- **JSON Schema: `$dynamicRef` in the v1 dialect follows the current specification** (JsonSchema.Net 9.7.0).
+  A credential schema that declares `https://json-schema.org/v1` or `https://json-schema.org/v1/2026`, at its
+  root or in any subschema, must now write `$dynamicRef` as a bare anchor name (`"node"`).
+  - `"#node"`, which 9.6.0 required, now makes the schema check Indeterminate. A bare name, which 9.6.0
+    refused, is now evaluated.
+  - No schema result moves between Success and Failure, so the change cannot admit a non-conforming credential.
+  - 2020-12, the default dialect, is unchanged, and so is the `hostname` format under every dialect.
+- **Dependencies:**
+
+  | Package | From | To |
+  |---|---|---|
+  | `System.Formats.Cbor` (new direct reference in `Credentials.Core`) | 10.0.8, transitive | **10.0.15** |
+  | `JsonSchema.Net` | 9.6.0 | **9.7.0** |
+  | `Microsoft.Extensions.*` | 10.0.14 | **10.0.15** |
+  | `Microsoft.SourceLink.GitHub` (build-only) | 10.0.403 | **11.0.100** |
+
+  Development-only packages also moved to latest: Microsoft.NET.Test.Sdk 18.12.0, coverlet.collector 10.1.1,
+  System.Reflection.MetadataLoadContext 11.0.0, and the ApiCompat tool 11.0.100. The first-party stack was
+  already at latest: DataProofs 2.0.0, NetDid 4.0.0, NetCrypto 1.7.1, NetCid 1.6.0. The unused
+  `Microsoft.Extensions.Caching.Memory` pin is removed.
+
+  Held back:
+  - **FluentAssertions stays at 7.0.0**, the last release under the free Apache-2.0 licence.
+  - **`Microsoft.Extensions.*` and `System.Formats.Cbor` stay on the .NET 10 line** rather than move to .NET 11's
+    11.0.0. Their floors reach every consumer's graph. The library targets .NET 10, and NetDid, DataProofs and
+    DidComm are on 10.0.x. Moving lines is a decision for the whole stack.
+
+## v1.2.0 - 2026-11-03
 
 Every dependency moves to its latest stable release, so Credentials is built against the same graph the
 rest of the stack resolves (DataProofs 2.0.0, NetDid 4.0.0, NetCrypto 1.7.1, Microsoft.Extensions 10.0.14,
