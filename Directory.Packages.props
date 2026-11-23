@@ -5,10 +5,10 @@
   <ItemGroup>
     <!-- ============================================================================
          Stack libraries (the credentials-dotnet substrate). Every pin in this file was checked against
-         the latest stable nuget.org release on 2026-11-19 (issue #52) and is at it, with two hold-backs,
+         the latest stable nuget.org release on 2026-11-23 (issue #52) and is at it, with two hold-backs,
          each explained at its entry: FluentAssertions (licence), and the .NET platform packages that reach
-         consumers (Microsoft.Extensions.*, System.Formats.Cbor), which stay on the .NET 10 servicing line
-         (D7) rather than move to .NET 11's 11.0.0. Not every entry is referenced by every project. They
+         consumers (Microsoft.Extensions.*), which stay on the .NET 10 servicing line (D7) rather than move
+         to .NET 11's 11.0.0. Not every entry is referenced by every project. They
          are declared centrally so a project only adds a versionless <PackageReference>.
          ============================================================================ -->
     <!-- Proofs + the faithful System.Text.Json serializer options (DataProofsJsonOptions.Default,
@@ -25,22 +25,18 @@
          carries @direction (dataproofs #40, rdfDirection: i18n-datatype), proof members a verifier acts on
          are bound to the signature (GHSA-6fxh-mc39-94vc), RDFC bytes changed for tied-blank-node documents,
          and bbs-2023 was reworked to interoperate with the reference implementation (earlier proofs do not
-         verify; nothing issued before this release exists in the wild, by owner decision). -->
-    <PackageVersion Include="DataProofsDotnet.Core" Version="2.0.0" />
-    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="2.0.0" />          <!-- M5: bbs-2023 / RDFC -->
-    <PackageVersion Include="DataProofsDotnet.Jose" Version="2.0.0" />          <!-- M3/M4: JOSE + SD-JWT VC -->
-    <PackageVersion Include="DataProofsDotnet.Cose" Version="2.0.0" />          <!-- M3: COSE -->
-    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="2.0.0" />
-    <!-- Security pin (issue #52, GHSA-vmv3-wvjp-wqpj / CVE-2026-118747): DataProofsDotnet.Cose and .Rdfc
-         2.0.0 floor System.Formats.Cbor 10.0.8, whose duplicate-map-key check can be hash-flooded; 10.0.15
-         is the patched 10.0 release. Only bbs-2023 proofValue parsing (strict mode) runs that check; COSE
-         reads in lax mode. 10.0.15 also caps CBOR nesting at 64 levels (not in the advisory), so a deeply
-         nested COSE header is now refused as malformed; M3EnvelopingTests pins it. Not used directly:
-         Credentials.Core references it so the floor lands in its nuspec, and every Credentials package
-         depends on Core, so consumers resolve >= 10.0.15. Stays on the 10.0 line (11.0.0 is also patched;
-         see the header). Remove this pin once DataProofs floors a patched version (dataproofs-dotnet#50):
-         a local pin below an upstream floor is NU1605 (tracked in #53). -->
-    <PackageVersion Include="System.Formats.Cbor" Version="10.0.15" />
+         verify; nothing issued before this release exists in the wild, by owner decision). 2.1.0 (issue
+         #52): additive API, no source change here. It floors System.Formats.Cbor 10.0.15
+         (GHSA-vmv3-wvjp-wqpj, dataproofs #50), which replaced this repo's own pin (#53). SD-JWT verification
+         now refuses a past exp / future nbf (dataproofs #45; reported here by the proof check until #50)
+         and applies the must-not-disclose rule by position (dataproofs #48), so a nested
+         credentialSubject.status now verifies (#51). It also adds a bbs-2023 base proof through a key
+         store (dataproofs #44, consumed by #43). -->
+    <PackageVersion Include="DataProofsDotnet.Core" Version="2.1.0" />
+    <PackageVersion Include="DataProofsDotnet.Rdfc" Version="2.1.0" />          <!-- M5: bbs-2023 / RDFC -->
+    <PackageVersion Include="DataProofsDotnet.Jose" Version="2.1.0" />          <!-- M3/M4: JOSE + SD-JWT VC -->
+    <PackageVersion Include="DataProofsDotnet.Cose" Version="2.1.0" />          <!-- M3: COSE -->
+    <PackageVersion Include="DataProofsDotnet.Extensions.DependencyInjection" Version="2.1.0" />
     <!-- Engine crypto operations the engine performs itself: hashing/digests (NetCrypto.Hash),
          ISigner abstraction, JWK conversion. NetCrypto exposes no RNG abstraction; the engine's
          RNG seam wraps the BCL RandomNumberGenerator (see Credentials.Cryptography). -->

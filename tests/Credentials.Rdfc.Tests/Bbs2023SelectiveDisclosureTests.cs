@@ -294,8 +294,9 @@ public sealed class Bbs2023SelectiveDisclosureTests
             .AddSubject(new JsonObject { ["id"] = "did:example:subject" })
             .Seal();
 
-        // bbs-2023 base proofs cannot be created through the single-message ISigner pipeline (no key-store
-        // BBS create API exists; raw-key export would violate FR-015) — issuance fails fast.
+        // bbs-2023 base proofs cannot be created through the single-message ISigner pipeline, and raw-key
+        // export would violate FR-015, so issuance fails fast. DataProofs 2.1.0's key-store base-proof
+        // overload (ICapableKeyStore) lifts the upstream blocker; issuing through it is issue #43.
         var act = () => issuer.IssueAsync(
             credential,
             new DataIntegrityIssuanceRequest
