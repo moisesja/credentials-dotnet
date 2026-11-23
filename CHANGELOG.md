@@ -4,7 +4,94 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v1.2.0 - Unreleased
+## Unreleased
+
+### Security
+
+- **`System.Formats.Cbor` lifted from 10.0.8 to 10.0.15** to resolve
+  [GHSA-vmv3-wvjp-wqpj](https://github.com/advisories/GHSA-vmv3-wvjp-wqpj) (CVE-2026-118747)
+  ([#52](https://github.com/moisesja/credentials-dotnet/issues/52)).
+  - `DataProofsDotnet.Cose` and `.Rdfc` 2.0.0 bring in 10.0.8, whose duplicate-map-key check can be
+    hash-flooded with colliding keys. DataProofs 2.1.0 floors 10.0.15
+    ([dataproofs-dotnet#50](https://github.com/moisesja/dataproofs-dotnet/issues/50)), and every Credentials
+    package depends on it through `Credentials.Core`, so consumers resolve the patched version. Credentials
+    carries no `System.Formats.Cbor` reference of its own
+    ([#53](https://github.com/moisesja/credentials-dotnet/issues/53)).
+  - An application that references `System.Formats.Cbor` directly at 10.0.8 to 10.0.14 now gets `NU1605` (a
+    package downgrade, an error by default). Raise that reference to 10.0.15 or remove it.
+  - Of the paths Credentials uses, only bbs-2023 derived-proof verification (`Credentials.Rdfc`) runs that
+    check. COSE parsing reads in lax mode and never ran it. A flood on 10.0.8 also needed the process's
+    random hash seed.
+  - The `NU1902` audit warning, an error under `TreatWarningsAsErrors`, failed restore on `main` once the
+    advisory was published, breaking CI and the nightly Conformance run.
+  - Applications on v1.2.0 still resolve 10.0.8 until the next release. They can add a direct
+    `System.Formats.Cbor` 10.0.15 reference in the meantime.
+- **Deeply nested CBOR in a COSE credential is now refused before any crypto runs.** 10.0.15 also caps CBOR
+  nesting at 64 levels, which the advisory does not mention. On 10.0.8, a genuine COSE credential whose
+  unprotected header (outside the signature) held thousands of nested arrays still verified as Accepted. At
+  the 4 MiB input limit it took about 0.9 s and 830 MB to decode. Verifying such bytes now throws
+  `CredentialFormatException`, like any other undecodable envelope. In practice the limit is reached at 63
+  levels inside the unprotected header and 64 inside the protected one. Hosts can move the limit with the
+  `System.Formats.Cbor.CborReader.MaxDepth` AppContext switch.
+
+### Fixed
+
+- **An SD-JWT VC with a nested claim named like a reserved claim now verifies**
+  ([#51](https://github.com/moisesja/credentials-dotnet/issues/51)). A `credentialSubject` property named
+  `status`, `exp`, `iss`, `nbf`, `cnf` or `vct`, made selectively disclosable, was issued but always Rejected
+  with `sdjwt_disallowed_disclosure`. DataProofs 2.1.0 applies the must-not-disclose rule to the top-level
+  claims only ([dataproofs-dotnet#48](https://github.com/moisesja/dataproofs-dotnet/issues/48)), so such a
+  credential now issues, is presented with a Key Binding JWT, and verifies.
+
+### Changed
+
+- **DataProofs 2.1.0: SD-JWT VC verification refuses more.** Its API only adds, and nothing in Credentials
+  changed to consume it. These credentials verified before and are now Rejected, each by the proof check:
+  - **An SD-JWT VC whose top-level `exp` has passed or whose `nbf` is still ahead**
+    ([dataproofs-dotnet#45](https://github.com/moisesja/dataproofs-dotnet/issues/45)), judged at
+    `VerificationTime` with DataProofs' fixed 2-minute skew. The failure is reported as
+    `PROOF_VERIFICATION_ERROR` and the Validity check still shows Passed. Moving it to the Validity check, with
+    the configured `ClockSkew`, is [#50](https://github.com/moisesja/credentials-dotnet/issues/50).
+    Credentials never adds `nbf` or `exp`, so only a credential whose caller set them is affected. Issuance
+    now throws `ArgumentException` for an `nbf` or `exp` that is not a JSON number of seconds between years 1
+    and 9999, where it used to sign it.
+  - An SD-JWT VC with `typ: vc+sd-jwt` (Credentials always emits `dc+sd-jwt`), with a Disclosure or a decoy
+    digest anywhere inside a reserved claim such as `status` or `cnf`, with a digest that appears twice in the
+    payload, with an `_sd_alg` below the top level, or with an `aka_vcts` that is disclosed or malformed.
+  - The SD-JWT VC profile moved from draft-ietf-oauth-sd-jwt-vc-16 to -27 upstream. Re-pinning this
+    library's own documentation is [#38](https://github.com/moisesja/credentials-dotnet/issues/38).
+  - DataProofs 2.1.0 also adds a `bbs-2023` base proof created through a key store. Credentials still refuses
+    `bbs-2023` issuance; issuing through the key store is
+    [#43](https://github.com/moisesja/credentials-dotnet/issues/43).
+- **JSON Schema: `$dynamicRef` in the v1 dialect follows the current specification** (JsonSchema.Net 9.7.0).
+  A credential schema that declares `https://json-schema.org/v1` or `https://json-schema.org/v1/2026`, at its
+  root or in any subschema, must now write `$dynamicRef` as a bare anchor name (`"node"`).
+  - `"#node"`, which 9.6.0 required, now makes the schema check Indeterminate. A bare name, which 9.6.0
+    refused, is now evaluated.
+  - No schema result moves between Success and Failure, so the change cannot admit a non-conforming credential.
+  - 2020-12, the default dialect, is unchanged, and so is the `hostname` format under every dialect.
+- **Dependencies:**
+
+  | Package | From | To |
+  |---|---|---|
+  | `DataProofsDotnet.Core` / `.Jose` / `.Cose` / `.Rdfc` / `.Extensions.DependencyInjection` | 2.0.0 | **2.1.0** |
+  | `System.Formats.Cbor` (transitive, through DataProofs) | 10.0.8 | **10.0.15** |
+  | `JsonSchema.Net` | 9.6.0 | **9.7.0** |
+  | `Microsoft.Extensions.*` | 10.0.14 | **10.0.15** |
+  | `Microsoft.SourceLink.GitHub` (build-only) | 10.0.403 | **11.0.100** |
+
+  Development-only packages also moved to latest: Microsoft.NET.Test.Sdk 18.12.0, coverlet.collector 10.1.1,
+  System.Reflection.MetadataLoadContext 11.0.0, and the ApiCompat tool 11.0.100. The rest of the first-party
+  stack was already at latest: NetDid 4.0.0, NetCrypto 1.7.1, NetCid 1.6.0. The unused
+  `Microsoft.Extensions.Caching.Memory` pin is removed.
+
+  Held back:
+  - **FluentAssertions stays at 7.0.0**, the last release under the free Apache-2.0 licence.
+  - **`Microsoft.Extensions.*` stays on the .NET 10 line** rather than move to .NET 11's 11.0.0. Its floors reach
+    every consumer's graph. The library targets .NET 10, and NetDid, DataProofs and
+    DidComm are on 10.0.x. Moving lines is a decision for the whole stack.
+
+## v1.2.0 - 2026-11-03
 
 Every dependency moves to its latest stable release, so Credentials is built against the same graph the
 rest of the stack resolves (DataProofs 2.0.0, NetDid 4.0.0, NetCrypto 1.7.1, Microsoft.Extensions 10.0.14,

@@ -39,11 +39,12 @@ public static class CredentialsRdfcBuilderExtensions
     /// through the standard <see cref="Credentials.Roles.IVerifier"/> path (FR-053, suite by string).
     /// Idempotent. Call inside <c>AddCredentials(b =&gt; b.UseNetDid().UseBbs2023())</c>.
     ///
-    /// <para><b>Issuance is gated</b> (FR-014): <c>DataProofsDotnet</c> exposes no key-store / signer BBS
-    /// base-proof API — the only path takes a raw private key, which this engine never handles (FR-015) —
-    /// so a <c>bbs-2023</c> issuance request fails fast. Only verification of, and holder derivation from,
-    /// <c>bbs-2023</c> credentials are supported until that capability ships. Requires the BBS native
-    /// library at runtime (<see cref="IBbsDeriver"/> reports unavailability).</para>
+    /// <para><b>Issuance is gated</b> (FR-014): a <c>bbs-2023</c> base proof cannot be created through the
+    /// single-message <c>ISigner</c> pipeline, and this engine never handles a raw private key (FR-015), so a
+    /// <c>bbs-2023</c> issuance request fails fast. <c>DataProofsDotnet</c> 2.1.0 added a base-proof API that
+    /// signs through a NetCrypto key store; issuing through it is tracked in issue #43. Until then only
+    /// verification of, and holder derivation from, <c>bbs-2023</c> credentials are supported. Requires the BBS
+    /// native library at runtime (<see cref="IBbsDeriver"/> reports unavailability).</para>
     /// </summary>
     public static CredentialsBuilder UseBbs2023(this CredentialsBuilder builder)
     {
