@@ -15,7 +15,7 @@ some inputs that 2.0.0 accepted (see its CHANGELOG, "Read these entries before u
 Bumping the five `DataProofsDotnet.*` PackageVersions 2.0.0 → 2.1.0 and removing the Cbor pin:
 
 - Restore and Release build clean: 0 warnings, 0 errors (`TreatWarningsAsErrors`; no `[Obsolete]` use).
-- All 438 tests pass (Core 204, DI 168, Rdfc 29, SampleSmoke 14, Architecture 9, RoundTrip 9, Interop 5,
+- All 442 tests pass (Core 204, DI 168, Rdfc 29, SampleSmoke 14, Architecture 9, RoundTrip 9, Interop 5,
   Conformance 4 + 1 skipped locally; the W3C suite itself runs in CI).
 - Without the pin, every project resolves `System.Formats.Cbor` 10.0.15 transitively.
   `dotnet list package --vulnerable --include-transitive` is clean in every project. The packed
@@ -90,7 +90,7 @@ rules, PR #55's review is the plan gate.
 
 ## Review
 
-- **Commit `e4d804d`.** Release build has 0 warnings and 0 errors. **451 passed, 1 skipped** (the W3C fact, which
+- **Commit `e4d804d`.** Release build has 0 warnings and 0 errors. **455 passed, 1 skipped** (the W3C fact, which
   runs in CI): Core 204, DI 181 (168 + 13 new), Rdfc 29, SampleSmoke 14, Architecture 9, RoundTrip 9, Interop 5,
   Conformance 4. The vulnerable audit is clean in 29 of 29 projects. The no-Newtonsoft closure, API compat
   (no breaking change against 1.2.0) and API coverage gates all pass.
