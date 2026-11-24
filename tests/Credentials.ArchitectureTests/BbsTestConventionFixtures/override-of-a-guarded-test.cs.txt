@@ -1,0 +1,27 @@
+// The guarded test is virtual, and a class in the same file overrides it without the call. xUnit runs the
+// override under the inherited attribute. The base type of the derived class is the finding.
+// expect: base-type Bbs2023OverridingTests
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public abstract class Bbs2023Contract
+{
+    [SkippableFact]
+    public virtual async Task Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        await Task.CompletedTask;
+    }
+}
+
+public sealed class Bbs2023OverridingTests : Bbs2023Contract
+{
+    public override async Task Derives()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+        await Task.CompletedTask;
+    }
+}

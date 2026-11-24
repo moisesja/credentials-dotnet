@@ -1,0 +1,15 @@
+// The only name of bbs-2023 in this file has a soft hyphen (U+00AD) between its two b's. It cannot be seen
+// in a diff, and the compiler drops it.
+// expect: unguarded-test Fixtures.NewSuiteInvisibleCharacterTests.Wires_the_suite
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class NewSuiteInvisibleCharacterTests
+{
+    [Fact]
+    public void Wires_the_suite()
+    {
+        using var provider = new ServiceCollection().AddCredentials(b => b.UseB­bs2023()).BuildServiceProvider();
+    }
+}

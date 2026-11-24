@@ -1,0 +1,18 @@
+// The list names a test the scan does not find. A stale entry could later cover a new test of that name.
+// expect: stale-listing Fixtures.Bbs2023ListedTests.Was_removed
+// listed: Fixtures.Bbs2023ListedTests.Registration_only
+// listed: Fixtures.Bbs2023ListedTests.Was_removed
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023ListedTests
+{
+    [Fact]
+    public void Registration_only()
+    {
+        Assert.True(true);
+    }
+}

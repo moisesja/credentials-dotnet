@@ -1,0 +1,18 @@
+// A static import can bring in a member named like the helper from a type in another file. The test looks
+// guarded; the import is the finding.
+// expect: static-import Fixtures.Guards
+using Xunit;
+using static Fixtures.Guards;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023StaticImportTests
+{
+    [SkippableFact]
+    public void Calls_what_the_import_brought()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+}

@@ -99,8 +99,8 @@ More platforms are requested upstream in
 
 ### What the tests do without the library
 
-Every test that needs the library calls `BbsNativeLibrary.RequireOrSkip()` (in
-`tests/Credentials.TestSupport`) before it touches `bbs-2023`. That covers the derive and verify tests in
+Every test that needs the library has `BbsNativeLibrary.RequireOrSkip()` (in
+`tests/Credentials.TestSupport`) as its first statement. That covers the derive and verify tests in
 `Credentials.Rdfc.Tests`, the interop tests above, and the smoke test of the `Bbs2023` sample;
 `dotnet test --filter "Category=Bbs"` runs them all. When the library did not load, such a test is never
 reported as passed:
@@ -119,9 +119,18 @@ much as for the whole solution. On CI the library is always there, so the failin
 library, on every host and every leg, and pins the rule and where its inputs come from.
 
 A test that used `bbs-2023` and left the call out would not be covered. `BbsTestConventionTests` (in
-`Credentials.ArchitectureTests`) reads the test sources to prevent that: every test in the `Bbs` category
-must be skippable and make the call, unless it is on a short named list of tests that need no native
-library, and every test file that wires `bbs-2023` must be in that category.
+`Credentials.ArchitectureTests`) parses the test sources to prevent that. In every test file whose code
+names anything of `bbs-2023`, each test must be a `[SkippableFact]` or `[SkippableTheory]` that begins with
+the call and is in the `Bbs` category, unless it is on a short named list of tests that need no native
+library. What a parser cannot resolve, a custom test attribute or a base class for example, is reported in
+such a file and not passed over. The ways of getting past the check that were found are kept as fixtures
+beside it, and each must still be reported.
+
+That check has limits. It reads the C# sources under `tests/`, and it reads names, not what they resolve
+to. It does not see a test that reaches `bbs-2023` only through code in another file, such as a shared
+provider factory or a stored credential, in a file that names nothing of the suite. It does not see what
+the build takes from elsewhere: a project file, a source outside `tests/`, another assembly. Only a CI run
+with the library removed would cover those, and there is none today.
 
 The same class pins the first column of the table against the NetCrypto package the build resolved. That
 test fails when NetCrypto drops, adds or renames a platform's library, until the list in `BbsNativeLibrary`

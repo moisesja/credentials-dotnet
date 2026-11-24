@@ -1,0 +1,52 @@
+// Every way of writing a test attribute is a test. None of these begins with the call.
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.Suffix
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.Qualified
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.Global_qualified_with_suffix
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.Plain_suffix
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.Plain_qualified
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.Second_in_its_list
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.In_a_second_list_on_the_line
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.With_a_target
+// expect: unguarded-test Fixtures.Bbs2023SpellingTests.Split_over_lines
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SpellingTests
+{
+    [SkippableFactAttribute]
+    public void Suffix() { Derive(); }
+
+    [Xunit.SkippableFact]
+    public void Qualified() { Derive(); }
+
+    [global::Xunit.SkippableFactAttribute]
+    public void Global_qualified_with_suffix() { Derive(); }
+
+    [FactAttribute]
+    public void Plain_suffix() { Derive(); }
+
+    [Xunit.Theory]
+    [InlineData(1)]
+    public void Plain_qualified(int n) { Derive(); }
+
+    [FrTag("FR-031"), SkippableTheory, InlineData(1)]
+    public void Second_in_its_list(int n) { Derive(); }
+
+    [Trait("Category", "Bbs")][SkippableFact] public void In_a_second_list_on_the_line() { Derive(); }
+
+    [method: SkippableFact]
+    public void With_a_target() { Derive(); }
+
+    [
+        SkippableFact
+    ]
+    public
+        void
+        Split_over_lines()
+    {
+        Derive();
+    }
+}

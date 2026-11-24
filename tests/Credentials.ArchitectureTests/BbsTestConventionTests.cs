@@ -1,185 +1,184 @@
-using System.Text.RegularExpressions;
 using FluentAssertions;
 using Xunit;
 
 namespace Credentials.ArchitectureTests;
 
 /// <summary>
-/// Keeps every <c>bbs-2023</c> test on the rule of issue #57. A test that needs NetCrypto's native BBS
-/// library has to call <c>BbsNativeLibrary.RequireOrSkip()</c>, or it could pass on a host without the
-/// library: a test that only expects an exception gets one from the missing library too. Scans the test
-/// sources, like <see cref="FrCoverageGateTests"/> (deterministic; this assembly must not load
-/// <c>Credentials.Rdfc</c>, so it cannot reflect over the test assemblies that use it).
+/// Holds every <c>bbs-2023</c> test to the rule of issue #57, which <see cref="BbsTestConvention"/> states
+/// and checks on the syntax tree of the test sources: a test in a <c>bbs-2023</c> test file begins with
+/// <c>BbsNativeLibrary.RequireOrSkip();</c> under a skippable attribute, or is named below as needing no
+/// native library. This assembly must not load <c>Credentials.Rdfc</c>, so it reads sources, as
+/// <see cref="FrCoverageGateTests"/> does.
 /// </summary>
 /// <remarks>
-/// <para>What it reads from the source text:</para>
-/// <list type="bullet">
-/// <item>a <b>test</b> is a method under <c>[Fact]</c>, <c>[Theory]</c>, <c>[SkippableFact]</c> or
-/// <c>[SkippableTheory]</c>; its text runs from that attribute to the next test's;</item>
-/// <item>a <b>bbs-2023 test</b> carries <c>[Trait("Category", "Bbs")]</c>, on the method or on the first
-/// class of its file;</item>
-/// <item>a file <b>wires bbs-2023</b> when it calls <c>UseBbs2023(</c> or constructs the cryptosuite.</item>
-/// </list>
-/// <para>It checks text, not behaviour. It does not see a test that reaches <c>bbs-2023</c> only through
-/// code in another file and carries no trait, and it does not check that the call comes before the first
-/// use. The line comments are stripped first, so a commented-out call does not count.</para>
+/// The scan is itself under test. <c>BbsTestConventionFixtures/</c> holds small source files, each a way of
+/// writing a test that must be reported or a legitimate form that must not be, and each says in its first
+/// lines what the scan has to find in it. They have a <c>.cs.txt</c> extension so that they are never
+/// compiled and never scanned as tests.
 /// </remarks>
-public sealed partial class BbsTestConventionTests
+public sealed class BbsTestConventionTests
 {
-    private const string HelperCall = "BbsNativeLibrary.RequireOrSkip();";
+    private const string Rdfc = "Credentials.Rdfc.Tests.";
+    private const string Self = "Credentials.ArchitectureTests.BbsTestConventionTests.";
 
     /// <summary>
-    /// The <c>bbs-2023</c> tests that need no native library, each with the reason. Every other
-    /// <c>bbs-2023</c> test must be skippable and call the helper.
+    /// The tests in <c>bbs-2023</c> test files that need no native library, each with the reason. Every other
+    /// test in such a file must begin with the helper call.
     /// </summary>
     private static readonly IReadOnlyDictionary<string, string> NeedNoNativeLibrary = new Dictionary<string, string>
     {
-        ["Bbs2023SelectiveDisclosureTests.Bbs_issuance_is_gated"] =
+        [Rdfc + "Bbs2023SelectiveDisclosureTests.Bbs_issuance_is_gated"] =
             "asserts the issuance gate, which refuses before any BBS call",
-        ["Bbs2023SelectiveDisclosureTests.UseBbs2023_adds_the_suite_to_capabilities_and_registers_the_deriver"] =
+        [Rdfc + "Bbs2023SelectiveDisclosureTests.UseBbs2023_adds_the_suite_to_capabilities_and_registers_the_deriver"] =
             "registration only",
-        ["Bbs2023SelectiveDisclosureTests.UseBbs2023_is_idempotent"] =
+        [Rdfc + "Bbs2023SelectiveDisclosureTests.UseBbs2023_is_idempotent"] =
             "registration only",
-        ["BbsNativeLibraryTests.A_missing_library_skips_only_off_github_actions_on_an_unshipped_platform"] =
+        [Rdfc + "BbsNativeLibraryTests.A_missing_library_skips_only_off_github_actions_on_an_unshipped_platform"] =
             "pins the rule, a pure function",
-        ["BbsNativeLibraryTests.The_rule_is_carried_out_on_the_calling_test"] =
+        [Rdfc + "BbsNativeLibraryTests.The_rule_is_carried_out_on_the_calling_test"] =
             "pins what an outcome does to a test",
-        ["BbsNativeLibraryTests.The_inputs_of_the_rule_come_from_this_host"] =
+        [Rdfc + "BbsNativeLibraryTests.The_inputs_of_the_rule_come_from_this_host"] =
             "pins where the rule's inputs come from",
-        ["BbsNativeLibraryTests.Without_the_library_the_call_fails_or_skips_and_never_returns"] =
+        [Rdfc + "BbsNativeLibraryTests.Without_the_library_the_call_fails_or_skips_and_never_returns"] =
             "runs the helper where the library is refused; it must not skip",
-        ["BbsNativeLibraryTests.A_platform_maps_to_its_runtime_identifier"] =
+        [Rdfc + "BbsNativeLibraryTests.A_platform_maps_to_its_runtime_identifier"] =
             "pins the platform mapping, a pure function",
-        ["BbsNativeLibraryTests.Netcrypto_declares_the_bbs_native_library_for_exactly_the_documented_platforms"] =
+        [Rdfc + "BbsNativeLibraryTests.Netcrypto_declares_the_bbs_native_library_for_exactly_the_documented_platforms"] =
             "reads the .deps.json; it is skippable for a runtime-specific build, not for the library",
+        [Rdfc + "RdfcSurfaceConfinementTests.Public_surface_exposes_no_substrate_or_rdf_stack_type"] =
+            "reflects over the public surface; it names a bbs-2023 type and calls nothing",
+        [Self + nameof(Every_test_in_a_bbs_2023_test_file_begins_with_the_helper_call_or_is_listed)] = "this scan",
+        [Self + nameof(A_fixture_is_reported_exactly_as_its_header_says)] = "this scan, over its fixtures",
+        [Self + nameof(The_fixtures_hold_both_cases_of_the_review_and_the_legitimate_forms)] = "this scan's fixtures",
+        [Self + nameof(The_first_case_of_the_review_is_reported_on_the_real_test_file)] = "this scan, over an altered copy",
+        [Self + nameof(Only_the_build_output_of_a_project_is_left_out_of_the_scan)] = "this scan's choice of files",
     };
 
+    private static string FixtureDirectory =>
+        Path.Combine(LibrarySurface.RepoRoot, "tests", "Credentials.ArchitectureTests", "BbsTestConventionFixtures");
+
     [Fact]
-    public void Every_bbs_test_calls_the_native_library_helper_or_is_listed_as_not_needing_it()
+    public void Every_test_in_a_bbs_2023_test_file_begins_with_the_helper_call_or_is_listed()
     {
-        var bbsTests = ScanTests().Where(t => t.IsBbs).ToList();
+        var result = BbsTestConvention.Scan(TestSources(), [.. NeedNoNativeLibrary.Keys]);
 
-        var offenders = bbsTests
-            .Where(t => !NeedNoNativeLibrary.ContainsKey(t.Id) && !(t.IsSkippable && t.CallsHelper))
-            .Select(t => $"{t.Id} ({(t.IsSkippable ? "skippable" : "not skippable")}, "
-                         + $"{(t.CallsHelper ? "calls the helper" : "does not call the helper")})")
-            .ToList();
-
-        offenders.Should().BeEmpty(
-            "a bbs-2023 test must be a [SkippableFact] or [SkippableTheory] that calls " + HelperCall
-            + " Without that call it can pass on a host without the native library. If the test needs no "
-            + "native library, add it to NeedNoNativeLibrary with the reason. Offending:\n"
-            + string.Join("\n", offenders));
+        result.Findings.Should().BeEmpty(
+            "every test in a bbs-2023 test file must begin with BbsNativeLibrary.RequireOrSkip(); under "
+            + "[SkippableFact] or [SkippableTheory], or be on the list of tests that need no native library:\n"
+            + string.Join("\n", result.Findings));
 
         // The scan has to see each kind of bbs-2023 test there is, or an empty result would mean nothing.
-        string[] known =
+        result.GuardedTests.Should().Contain(
         [
-            "Bbs2023SelectiveDisclosureTests.Bbs_derive_then_verify_round_trips", // class trait, fact
-            "Bbs2023SelectiveDisclosureTests.Bbs_malformed_reveal_pointer_maps_to_credential_format_exception", // theory
-            "Bbs2023InteropTests.Bbs_derived_proof_pins_the_vc_di_bbs_wire_format_and_verifies",
-            "BbsNativeLibraryTests.Bbs_native_library_loads_wherever_it_has_to",
-            "SampleSmokeTests.Bbs2023", // method trait
-        ];
-        bbsTests.Where(t => t.IsSkippable && t.CallsHelper).Select(t => t.Id).Should().Contain(known);
+            Rdfc + "Bbs2023SelectiveDisclosureTests.Bbs_derive_then_verify_round_trips", // a fact; the trait is on the class
+            Rdfc + "Bbs2023SelectiveDisclosureTests.Bbs_malformed_reveal_pointer_maps_to_credential_format_exception", // a theory
+            Rdfc + "BbsNativeLibraryTests.Bbs_native_library_loads_wherever_it_has_to",
+            "Credentials.InteropTests.Bbs2023InteropTests.Bbs_derived_proof_pins_the_vc_di_bbs_wire_format_and_verifies",
+            "Credentials.SampleSmokeTests.SampleSmokeTests.Bbs2023", // the trait is on the method
+        ]);
+        result.ListedTests.Should().BeEquivalentTo(NeedNoNativeLibrary.Keys);
+    }
+
+    /// <summary>The names of the fixture files.</summary>
+    public static IEnumerable<object[]> Fixtures() =>
+        Directory.EnumerateFiles(FixtureDirectory, "*.cs.txt").Order(StringComparer.Ordinal)
+            .Select(path => new object[] { Path.GetFileName(path) });
+
+    [Theory]
+    [MemberData(nameof(Fixtures))]
+    public void A_fixture_is_reported_exactly_as_its_header_says(string fixture)
+    {
+        var (expected, listed, text) = ReadFixture(fixture);
+
+        var result = BbsTestConvention.Scan([new BbsTestConvention.Source(fixture, text)], listed);
+
+        result.Findings.Select(f => $"{f.Rule} {f.Subject}").Should().BeEquivalentTo(
+            expected, "that is what the header of {0} expects. The scan reported:\n{1}", fixture, string.Join("\n", result.Findings));
     }
 
     [Fact]
-    public void Every_test_file_that_wires_bbs_2023_is_in_the_bbs_category()
+    public void The_fixtures_hold_both_cases_of_the_review_and_the_legitimate_forms()
     {
-        var offenders = ScanTests()
-            .Where(t => t.FileWiresBbs && !t.IsBbs)
-            .Select(t => $"{t.Id} in {t.File}")
+        var fixtures = Fixtures().Select(row => (string)row[0]).ToList();
+
+        fixtures.Should().Contain(
+        [
+            "review-1-call-in-a-block-comment.cs.txt",
+            "review-2-trait-before-the-test-attribute-and-an-early-return.cs.txt",
+        ]);
+
+        // Both directions are covered: fixtures that must be reported, and fixtures that must not be.
+        var expectations = fixtures.Select(f => ReadFixture(f).Expected.Count).ToList();
+        expectations.Should().Contain(count => count == 0, "a fixture of legitimate forms must expect nothing");
+        expectations.Count(count => count > 0).Should().BeGreaterThanOrEqualTo(30);
+    }
+
+    /// <summary>
+    /// The first case of the review of PR #72, as the reviewer made it: every helper call in the real
+    /// <c>Bbs2023SelectiveDisclosureTests</c> replaced by the same text in a block comment. A scan of text
+    /// took that for a call.
+    /// </summary>
+    [Fact]
+    public void The_first_case_of_the_review_is_reported_on_the_real_test_file()
+    {
+        const string call = "BbsNativeLibrary.RequireOrSkip();";
+        var listed = NeedNoNativeLibrary.Keys.ToList();
+        var sources = TestSources();
+        var target = sources.Single(s => s.Path.EndsWith("Bbs2023SelectiveDisclosureTests.cs", StringComparison.Ordinal));
+        var guardedThere = BbsTestConvention.Scan(sources, listed).GuardedTests
+            .Where(id => id.StartsWith(Rdfc + "Bbs2023SelectiveDisclosureTests.", StringComparison.Ordinal))
             .ToList();
+        guardedThere.Should().HaveCountGreaterThanOrEqualTo(11);
 
-        offenders.Should().BeEmpty(
-            "a test file that calls UseBbs2023 or constructs the bbs-2023 cryptosuite must carry the Bbs "
-            + "category trait on its class, so that the rule for bbs-2023 tests applies to every test in it. "
-            + "Offending:\n" + string.Join("\n", offenders));
+        var altered = target with { Text = target.Text.Replace(call, $"/* {call} */", StringComparison.Ordinal) };
+        altered.Text.Should().NotBe(target.Text);
+        var result = BbsTestConvention.Scan([.. sources.Where(s => s != target), altered], listed);
+
+        result.Findings.Select(f => $"{f.Rule} {f.Subject}").Should().BeEquivalentTo(
+            guardedThere.Select(id => $"{BbsTestConvention.Rules.UnguardedTest} {id}"));
     }
 
-    [Fact]
-    public void The_tests_listed_as_needing_no_native_library_exist_and_do_not_call_the_helper()
+    [Theory]
+    [InlineData("Credentials.Rdfc.Tests/obj/Release/net10.0/Generated.cs", true)]
+    [InlineData("Credentials.Rdfc.Tests/bin/Release/net10.0/Copied.cs", true)]
+    [InlineData("Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs", false)]
+    [InlineData("Credentials.Rdfc.Tests/Vectors/obj/Bbs2023VectorTests.cs", false)] // compiled: only the project's own obj is not
+    [InlineData("Credentials.Rdfc.Tests/Vectors/bin/Bbs2023VectorTests.cs", false)]
+    public void Only_the_build_output_of_a_project_is_left_out_of_the_scan(string pathUnderTests, bool leftOut)
     {
-        var bbsTests = ScanTests().Where(t => t.IsBbs).ToDictionary(t => t.Id);
-
-        var stale = NeedNoNativeLibrary.Keys.Where(id => !bbsTests.ContainsKey(id)).ToList();
-        stale.Should().BeEmpty("NeedNoNativeLibrary names a test that is not a bbs-2023 test any more: "
-            + string.Join(", ", stale));
-
-        var contradictory = NeedNoNativeLibrary.Keys.Where(id => bbsTests[id].CallsHelper).ToList();
-        contradictory.Should().BeEmpty("a test that calls the helper needs the library; remove it from "
-            + "NeedNoNativeLibrary: " + string.Join(", ", contradictory));
+        BbsTestConvention.IsProjectBuildOutput(pathUnderTests).Should().Be(leftOut);
+        BbsTestConvention.IsProjectBuildOutput(pathUnderTests.Replace('/', '\\')).Should().Be(leftOut);
     }
 
-    private sealed record ScannedTest(
-        string File, string Id, bool IsSkippable, bool IsBbs, bool CallsHelper, bool FileWiresBbs);
-
-    private static List<ScannedTest> ScanTests()
+    private static List<BbsTestConvention.Source> TestSources()
     {
         var testsRoot = Path.Combine(LibrarySurface.RepoRoot, "tests");
-        var found = new List<ScannedTest>();
+        return Directory.EnumerateFiles(testsRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(file => !BbsTestConvention.IsProjectBuildOutput(Path.GetRelativePath(testsRoot, file)))
+            .Select(file => new BbsTestConvention.Source(Path.GetRelativePath(LibrarySurface.RepoRoot, file), File.ReadAllText(file)))
+            .ToList();
+    }
 
-        foreach (var file in Directory.EnumerateFiles(testsRoot, "*.cs", SearchOption.AllDirectories))
+    // A fixture says what the scan must find in it, in comment lines before the code:
+    //   // expect: <rule> <subject>     one line for each finding
+    //   // expect: nothing             for a fixture of legitimate forms
+    //   // listed: <full test name>    a test the fixture's caller lists as needing no native library
+    private static (List<string> Expected, List<string> Listed, string Text) ReadFixture(string fixture)
+    {
+        var text = File.ReadAllText(Path.Combine(FixtureDirectory, fixture));
+        var header = text.Split('\n').Select(line => line.Trim()).TakeWhile(line => line.StartsWith("//", StringComparison.Ordinal)).ToList();
+
+        var expectations = header.Where(line => line.StartsWith("// expect:", StringComparison.Ordinal))
+            .Select(line => line["// expect:".Length..].Trim()).ToList();
+        expectations.Should().NotBeEmpty("{0} must say what it expects", fixture);
+        if (expectations.Contains("nothing"))
         {
-            // Skip build output.
-            if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}") ||
-                file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")) continue;
-
-            // Strip line comments, so that commented-out code and documentation count for nothing.
-            var lines = File.ReadLines(file).Select(WithoutLineComment).ToArray();
-
-            var classLine = Array.FindIndex(lines, line => ClassRegex().IsMatch(line));
-            var attributeLines = Enumerable.Range(0, lines.Length).Where(i => TestAttributeRegex().IsMatch(lines[i])).ToArray();
-            if (classLine < 0 || attributeLines.Length == 0) continue;
-
-            var className = ClassRegex().Match(lines[classLine]).Groups[1].Value;
-            var classIsBbs = lines.Take(classLine).Any(line => BbsTraitRegex().IsMatch(line));
-            var fileWiresBbs = lines.Any(line => WiresBbsRegex().IsMatch(line));
-
-            for (var n = 0; n < attributeLines.Length; n++)
-            {
-                var start = attributeLines[n];
-                var end = n + 1 < attributeLines.Length ? attributeLines[n + 1] : lines.Length;
-
-                // The attributes of a method may begin above its test attribute.
-                var top = start;
-                while (top > 0 && lines[top - 1].TrimStart().StartsWith('[')) top--;
-
-                var signature = Enumerable.Range(start, end - start).FirstOrDefault(i => MethodRegex().IsMatch(lines[i]), -1);
-                var name = signature < 0 ? $"<no method found at line {start + 1}>" : MethodRegex().Match(lines[signature]).Groups[1].Value;
-                var bodyFrom = signature < 0 ? start : signature;
-
-                found.Add(new ScannedTest(
-                    File: Path.GetRelativePath(LibrarySurface.RepoRoot, file),
-                    Id: $"{className}.{name}",
-                    IsSkippable: TestAttributeRegex().Match(lines[start]).Groups["skippable"].Success,
-                    IsBbs: classIsBbs || lines[top..(bodyFrom + 1)].Any(line => BbsTraitRegex().IsMatch(line)),
-                    CallsHelper: lines[bodyFrom..end].Any(line => line.Contains(HelperCall, StringComparison.Ordinal)),
-                    FileWiresBbs: fileWiresBbs));
-            }
+            expectations.Should().Equal(["nothing"], "{0} expects nothing, or it lists its findings", fixture);
+            expectations.Clear();
         }
 
-        return found;
+        var listed = header.Where(line => line.StartsWith("// listed:", StringComparison.Ordinal))
+            .Select(line => line["// listed:".Length..].Trim()).ToList();
+        return (expectations, listed, text);
     }
-
-    private static string WithoutLineComment(string line)
-    {
-        var comment = line.IndexOf("//", StringComparison.Ordinal);
-        return comment >= 0 ? line[..comment] : line;
-    }
-
-    [GeneratedRegex("""^\s*\[\s*(?<skippable>Skippable)?(?:Fact|Theory)\b""")]
-    private static partial Regex TestAttributeRegex();
-
-    [GeneratedRegex("""Trait\s*\(\s*"Category"\s*,\s*"Bbs"\s*\)""")]
-    private static partial Regex BbsTraitRegex();
-
-    [GeneratedRegex("""\bclass\s+(\w+)""")]
-    private static partial Regex ClassRegex();
-
-    [GeneratedRegex("""\bpublic\s+(?:static\s+)?(?:async\s+)?[\w<>\[\],.?]+\s+(\w+)\s*\(""")]
-    private static partial Regex MethodRegex();
-
-    [GeneratedRegex("""\bUseBbs2023\s*\(|\bnew\s+Bbs2023Cryptosuite\s*\(""")]
-    private static partial Regex WiresBbsRegex();
 }

@@ -1,0 +1,81 @@
+// The call is in the test, where it does not run before the test touches bbs-2023, or does not run at all.
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.After_an_early_return
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.In_dead_code
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.In_a_lambda_that_is_never_invoked
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.In_a_local_function
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.After_the_first_use
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.Inside_a_block
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.Inside_a_try
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.In_an_if
+// expect: unguarded-test Fixtures.Bbs2023CallPlacementTests.Second_statement_after_a_declaration
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023CallPlacementTests
+{
+    [SkippableFact]
+    public void After_an_early_return()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+        BbsNativeLibrary.RequireOrSkip();
+    }
+
+    [SkippableFact]
+    public void In_dead_code()
+    {
+        if (false) { BbsNativeLibrary.RequireOrSkip(); }
+        Derive();
+    }
+
+    [SkippableFact]
+    public void In_a_lambda_that_is_never_invoked()
+    {
+        Action never = () => BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    public void In_a_local_function()
+    {
+        void Never() { BbsNativeLibrary.RequireOrSkip(); }
+        Derive();
+    }
+
+    [SkippableFact]
+    public void After_the_first_use()
+    {
+        Derive();
+        BbsNativeLibrary.RequireOrSkip();
+    }
+
+    [SkippableFact]
+    public void Inside_a_block()
+    {
+        { BbsNativeLibrary.RequireOrSkip(); }
+        Derive();
+    }
+
+    [SkippableFact]
+    public void Inside_a_try()
+    {
+        try { BbsNativeLibrary.RequireOrSkip(); } catch (Exception) { }
+        Derive();
+    }
+
+    [SkippableFact]
+    public void In_an_if()
+    {
+        if (Environment.ProcessorCount > 512) BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    public void Second_statement_after_a_declaration()
+    {
+        var provider = BuildProvider();
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}

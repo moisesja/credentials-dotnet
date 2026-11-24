@@ -1,0 +1,44 @@
+// A test that needs the library and is not in the Bbs category: the Bbs filter would miss it. The trait
+// has to be written with two string literals, or the scan cannot read it.
+// expect: not-in-category Fixtures.Bbs2023UncategorisedTests.No_trait
+// expect: not-in-category Fixtures.Bbs2023UncategorisedTests.Trait_from_constants
+// expect: not-in-category Fixtures.Bbs2023UncategorisedTests.Another_category
+// expect: not-in-category Fixtures.Bbs2023UncategorisedTests.Trait_with_named_arguments
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class Bbs2023UncategorisedTests
+{
+    [SkippableFact]
+    public void No_trait()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    [Trait(Categories.Name, Categories.Bbs)]
+    public void Trait_from_constants()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    [Trait("Category", "Interop")]
+    public void Another_category()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    [Trait(name: "Category", value: "Bbs")]
+    public void Trait_with_named_arguments()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+}

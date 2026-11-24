@@ -1,0 +1,19 @@
+// The test attribute is under a condition the scan does not define, so the scan sees no test here. The
+// condition is what it reports.
+// expect: conditional-compilation (file)
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023ConditionalAttributeTests
+{
+#if RELEASE
+    [Fact]
+#endif
+    public void A_test_only_in_some_builds()
+    {
+        Derive();
+    }
+}

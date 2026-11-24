@@ -1,0 +1,15 @@
+// The only name of bbs-2023 in this file is written with a unicode escape, which the compiler reads as the
+// letter. The scan reads the value of a token, as the compiler does, so this is a bbs-2023 test file.
+// expect: unguarded-test Fixtures.NewSuiteEscapedNameTests.Wires_the_suite
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class NewSuiteEscapedNameTests
+{
+    [Fact]
+    public void Wires_the_suite()
+    {
+        using var provider = new ServiceCollection().AddCredentials(b => b.Use\u0042bs2023()).BuildServiceProvider();
+    }
+}

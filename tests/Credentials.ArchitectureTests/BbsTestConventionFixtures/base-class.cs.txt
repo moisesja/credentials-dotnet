@@ -1,0 +1,18 @@
+// A base class can bring tests from another file, which this scan would not check against this file's
+// use of bbs-2023. The base class is reported.
+// expect: base-type Bbs2023DerivedTests
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023DerivedTests : Bbs2023TestBase
+{
+    [SkippableFact]
+    public void Guarded()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+}

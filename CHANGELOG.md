@@ -55,7 +55,8 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
   - Every test that needs the library now fails where the library has to load, which is on the five platforms
     NetCrypto ships it for and on GitHub Actions whatever the platform, and is skipped with a reason anywhere
     else. None is reported as passed. A new test pins the list of five against the NetCrypto package, and an
-    architecture test fails when a `bbs-2023` test does not follow the rule.
+    architecture test parses the test sources and fails when a test in a `bbs-2023` test file does not
+    begin with that check.
   - CI now also runs on macOS (`osx-arm64`) and on arm64 Linux (`linux-arm64`). With `linux-x64` and `win-x64`
     that is four of the five platforms; `osx-x64` is shipped and not exercised.
   - The `Bbs2023` sample throws `NotSupportedException` and exits non-zero when the library does not load.

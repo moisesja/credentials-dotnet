@@ -1,0 +1,22 @@
+// A type named like an attribute the scan knows. This TraitAttribute derives from FactAttribute, so the
+// method below is a test, and the scan sees a trait. The type is reported, and so is its base.
+// expect: attribute-shadowed TraitAttribute
+// expect: base-type TraitAttribute
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class TraitAttribute(string name, string value) : FactAttribute
+{
+    public string Name { get; } = name;
+    public string Value { get; } = value;
+}
+
+public sealed class NewSuiteTests
+{
+    [Trait("Category", "Bbs")]
+    public void Runs_as_a_test()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+    }
+}

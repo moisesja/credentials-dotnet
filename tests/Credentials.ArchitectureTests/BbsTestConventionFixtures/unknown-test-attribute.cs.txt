@@ -1,0 +1,24 @@
+// An attribute the scan does not know could derive from FactAttribute and make the method a test. A syntax
+// tree has no types to tell, so the name is reported.
+// expect: unknown-attribute Fixtures.Bbs2023CustomAttributeTests.Under_a_custom_fact
+// expect: unknown-attribute Fixtures.Bbs2023CustomAttributeTests.Under_a_retrying_fact
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023CustomAttributeTests
+{
+    [BbsFact]
+    public void Under_a_custom_fact()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+    }
+
+    [Retry(3)]
+    public void Under_a_retrying_fact()
+    {
+        Derive();
+    }
+}

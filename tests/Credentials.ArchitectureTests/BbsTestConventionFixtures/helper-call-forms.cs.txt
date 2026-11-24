@@ -1,0 +1,54 @@
+// The first statement has to be exactly the call, on the bare name or the global:: form. These are near
+// it. The two with a namespace in front could be calls on a field of that name.
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.With_an_argument
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.Awaited
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.On_another_type
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.Another_member
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.Without_the_type
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.Conditional_access
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.As_a_method_group
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.Assigned
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.In_parentheses
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.With_the_namespace
+// expect: unguarded-test Fixtures.Bbs2023CallFormTests.With_part_of_the_namespace
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023CallFormTests
+{
+    [SkippableFact]
+    public void With_an_argument() { BbsNativeLibrary.RequireOrSkip(false); Derive(); }
+
+    [SkippableFact]
+    public async Task Awaited() { await BbsNativeLibrary.RequireOrSkip(); Derive(); }
+
+    [SkippableFact]
+    public void On_another_type() { Elsewhere.BbsNativeLibrary.RequireOrSkip(); Derive(); }
+
+    [SkippableFact]
+    public void Another_member() { BbsNativeLibrary.Enforce(BbsNativeLibrary.Outcome.Run); Derive(); }
+
+    [SkippableFact]
+    public void Without_the_type() { RequireOrSkip(); Derive(); }
+
+    [SkippableFact]
+    public void Conditional_access() { BbsNativeLibrary?.RequireOrSkip(); Derive(); }
+
+    [SkippableFact]
+    public void As_a_method_group() { Action call = BbsNativeLibrary.RequireOrSkip; Derive(); }
+
+    [SkippableFact]
+    public void Assigned() { var nothing = BbsNativeLibrary.RequireOrSkip(); Derive(); }
+
+    [SkippableFact]
+    public void In_parentheses() { (BbsNativeLibrary).RequireOrSkip(); Derive(); }
+
+    [SkippableFact]
+    public void With_the_namespace() { Credentials.TestSupport.BbsNativeLibrary.RequireOrSkip(); Derive(); }
+
+    [SkippableFact]
+    public void With_part_of_the_namespace() { TestSupport.BbsNativeLibrary.RequireOrSkip(); Derive(); }
+}

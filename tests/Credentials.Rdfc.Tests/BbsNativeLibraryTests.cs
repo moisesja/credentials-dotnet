@@ -31,13 +31,12 @@ public sealed class BbsNativeLibraryTests
     [SkippableFact]
     public void Bbs_native_library_loads_wherever_it_has_to()
     {
-        // The product asks DataProofs' suite. Today that reads the same NetCrypto flag as the helper; this
-        // keeps the tests from skipping or running on a different answer if the two ever part.
-        new Bbs2023Cryptosuite().IsAvailable.Should().Be(
-            BbsNativeLibrary.IsAvailable,
-            "the bbs-2023 cryptosuite and the test helper must agree on whether the library loaded");
-
         BbsNativeLibrary.RequireOrSkip();
+
+        // The helper says the library loaded. The product asks DataProofs' suite, which today reads the same
+        // NetCrypto flag; this keeps the tests from running on an answer the product does not share.
+        new Bbs2023Cryptosuite().IsAvailable.Should().BeTrue(
+            "the test helper says the library loaded, and the bbs-2023 cryptosuite must agree");
     }
 
     [Theory]

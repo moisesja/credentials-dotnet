@@ -1,0 +1,19 @@
+// A row of a theory that is switched off never runs, on CI either.
+// expect: static-skip Fixtures.Bbs2023SkippedRowTests.One_row_is_switched_off
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkippedRowTests
+{
+    [SkippableTheory]
+    [InlineData("a")]
+    [InlineData("b", Skip = "later")]
+    public void One_row_is_switched_off(string pointer)
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive(pointer);
+    }
+}

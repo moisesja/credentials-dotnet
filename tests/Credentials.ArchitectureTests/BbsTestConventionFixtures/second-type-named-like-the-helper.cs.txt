@@ -1,0 +1,22 @@
+// A type named like the helper, in the test file: the call goes to it. The test looks guarded; the type is
+// the finding.
+// expect: helper-shadowed BbsNativeLibrary
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023ShadowTypeTests
+{
+    [SkippableFact]
+    public void Calls_the_nested_type()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    private static class BbsNativeLibrary
+    {
+        public static void RequireOrSkip() { }
+    }
+}

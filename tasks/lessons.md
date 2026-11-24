@@ -2,6 +2,29 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A guard that reads source must parse it, fail closed, and keep its mutants in the suite (2026-11-24)
+
+For #57 I wrote a test that scanned the test sources as text, to make sure every `bbs-2023` test called the
+native-library helper. I mutation-checked it with twelve altered copies made in a scratch directory, and it
+caught them all. The reviewer of PR #72 then put every call inside a `/* */` comment, and wrote a test
+attribute second in its attribute list; the scan passed both. Nine more forms of the same kind followed when
+I looked. The rebuild on a syntax tree was attacked in turn, and thirteen tests got past it, most of them
+through things a syntax tree has no way to resolve. **Rules:**
+
+- A check on source code works on a syntax tree. Text has comments, strings, attribute lists and line
+  breaks in it, and a regular expression for one of them is wrong about the next.
+- Start from what must be proven, not from what is recognised. The text scan looked for test attributes it
+  knew and dropped a file in which it found none, so an unfamiliar spelling was a pass. The scan now starts
+  from "this file names the suite" and reports whatever in it the scan cannot classify.
+- Say what the check cannot see, where its users will read it. A syntactic check reads names, not what they
+  resolve to, and only the files it is given. The complete check here is behavioural, running the tests
+  without the library, and that it is not in CI is a decision, written down as one.
+- Mutants belong in the suite. Twelve mutants in a scratch copy proved the scan once, to me. Kept as
+  fixtures that each name the finding they expect, they prove it on every run, show a reader what is
+  covered, and make the next evasion a file to add.
+- My own mutants covered what I had thought of. The reviewer's first idea was one I had not. Ask an
+  independent agent for breadth before trusting a check of this kind, and then mutate the checker too.
+
 ## A gate in one test process does not protect the others, and every exemption needs a detector someone can fool (2026-11-23)
 
 For #57 my first design had one availability test, in `Credentials.Rdfc.Tests`, fail when the native BBS

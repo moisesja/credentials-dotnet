@@ -1,0 +1,21 @@
+// A file with two classes. The tests are in the second; a scan of text read the category of the first.
+// expect: unguarded-test Fixtures.Bbs2023SecondClassTests.Uses_the_first_class
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+public static class Bbs2023Support
+{
+    public static object Suite() => new object();
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SecondClassTests
+{
+    [Fact]
+    public void Uses_the_first_class()
+    {
+        if (Bbs2023Support.Suite() is null) return;
+    }
+}

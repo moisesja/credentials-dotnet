@@ -9,9 +9,9 @@ namespace Credentials.TestSupport;
 /// which every <c>bbs-2023</c> operation needs, did not load in the test process (issue #57).
 /// </summary>
 /// <remarks>
-/// <para>A test that needs the library is a <c>[SkippableFact]</c> or <c>[SkippableTheory]</c> that calls
-/// <see cref="RequireOrSkip"/> before it touches <c>bbs-2023</c>. When the library did not load, the test is
-/// never reported as passed:</para>
+/// <para>A test that needs the library is a <c>[SkippableFact]</c> or <c>[SkippableTheory]</c> whose first
+/// statement is <see cref="RequireOrSkip"/>. When the library did not load, the test is never reported as
+/// passed:</para>
 /// <list type="bullet">
 /// <item>it <b>fails</b> where the library has to be there: on a platform NetCrypto ships it for
 /// (<see cref="ShippedRuntimeIdentifiers"/>), and on GitHub Actions whatever the platform;</item>
@@ -22,8 +22,8 @@ namespace Credentials.TestSupport;
 /// tests run in, no such test can be skipped: a green run means each of them ran.</para>
 /// <para>A test that uses <c>bbs-2023</c> without this call is not covered: without the library it fails if
 /// it expects success, but it can pass if all it expects is an exception. <c>BbsTestConventionTests</c> (in
-/// <c>Credentials.ArchitectureTests</c>) reads the test sources and fails when a <c>bbs-2023</c> test lacks
-/// the call.</para>
+/// <c>Credentials.ArchitectureTests</c>) parses the test sources and fails when a test in a file that names
+/// <c>bbs-2023</c> does not begin with the call.</para>
 /// </remarks>
 public static class BbsNativeLibrary
 {
@@ -74,8 +74,8 @@ public static class BbsNativeLibrary
         string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Call before a test touches <c>bbs-2023</c>. Returns when the library loaded; otherwise fails or skips
-    /// the calling test, as <see cref="OutcomeFor"/> decides for this host.
+    /// The first statement of every test that needs the library. Returns when the library loaded; otherwise
+    /// fails or skips the calling test, as <see cref="OutcomeFor"/> decides for this host.
     /// </summary>
     /// <exception cref="InvalidOperationException">The library did not load although it has to.</exception>
     public static void RequireOrSkip() =>

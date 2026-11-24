@@ -1,4 +1,3 @@
-using Credentials.TestSupport;
 using FluentAssertions;
 using Xunit;
 
@@ -9,7 +8,12 @@ namespace Credentials.SampleSmokeTests;
 /// (e.g. a credential that should verify but doesn't), so "completes without throwing + produced
 /// narration" is the assertion. Under coverlet this run also drives the api-coverage gate.
 /// </summary>
-public sealed class SampleSmokeTests
+/// <remarks>
+/// The <c>bbs-2023</c> sample has its test in <c>SampleSmokeTests.Bbs2023.cs</c>. The convention test for
+/// <c>bbs-2023</c> tests checks every test of a file that names anything of <c>bbs-2023</c>; this file names
+/// none, so the other samples stay outside that rule.
+/// </remarks>
+public sealed partial class SampleSmokeTests
 {
     private static async Task Run(Func<TextWriter, IServiceProvider?, Task> sample)
     {
@@ -31,15 +35,4 @@ public sealed class SampleSmokeTests
     [Fact] public Task IssuerTrust() => Run(Samples.IssuerTrust.Program.RunAsync);
     [Fact] public Task Vcdm11() => Run(Samples.Vcdm11.Program.RunAsync);
     [Fact] public Task FullPipeline() => Run(Samples.FullPipeline.Program.RunAsync);
-
-    // The bbs-2023 sample needs NetCrypto's native BBS library and throws without it. Without the library this
-    // test fails where the library has to load and is skipped, with a reason, elsewhere; it is never reported
-    // as passed (issue #57).
-    [SkippableFact]
-    [Trait("Category", "Bbs")]
-    public Task Bbs2023()
-    {
-        BbsNativeLibrary.RequireOrSkip();
-        return Run(Samples.Bbs2023.Program.RunAsync);
-    }
 }

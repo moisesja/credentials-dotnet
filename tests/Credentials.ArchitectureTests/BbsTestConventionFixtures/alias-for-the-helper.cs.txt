@@ -1,0 +1,18 @@
+// An alias named like the helper sends the call somewhere else. The test looks guarded; the alias is the
+// finding.
+// expect: alias BbsNativeLibrary
+using Xunit;
+using BbsNativeLibrary = Fixtures.DoesNothing;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023HelperAliasTests
+{
+    [SkippableFact]
+    public void Calls_something_else()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+}

@@ -1,0 +1,19 @@
+// The first case of the review of PR #72: the call is there as text, inside a block comment.
+// A scan of text took it for a call.
+// expect: unguarded-test Fixtures.Bbs2023CommentedCallTests.Bbs_derive_then_verify_round_trips
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023CommentedCallTests
+{
+    [SkippableFact]
+    public async Task Bbs_derive_then_verify_round_trips()
+    {
+        /* BbsNativeLibrary.RequireOrSkip(); */
+        var derived = await Derive();
+        Assert.NotNull(derived);
+    }
+}

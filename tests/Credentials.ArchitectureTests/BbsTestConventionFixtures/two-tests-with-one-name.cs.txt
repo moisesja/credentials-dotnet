@@ -1,0 +1,26 @@
+// The list of tests that need no native library goes by name. Two tests with one name could hide behind
+// one entry.
+// expect: duplicate-test Fixtures.Bbs2023OverloadTests.Derives
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023OverloadTests
+{
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableTheory]
+    [InlineData(1)]
+    public void Derives(int n)
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+}

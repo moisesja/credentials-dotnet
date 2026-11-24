@@ -1,0 +1,12 @@
+// A SkippableFactAttribute of the project's own, in a file that names nothing of bbs-2023. A test under
+// it looks guarded and is run by whatever this attribute says. Reported in any file.
+// expect: attribute-shadowed SkippableFactAttribute
+using Xunit;
+using Xunit.Sdk;
+
+namespace Fixtures;
+
+[XunitTestCaseDiscoverer("Fixtures.ForgivingDiscoverer", "Fixtures")]
+public sealed class SkippableFactAttribute : FactAttribute
+{
+}

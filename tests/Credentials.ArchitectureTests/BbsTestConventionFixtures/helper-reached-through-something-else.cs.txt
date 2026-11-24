@@ -1,0 +1,28 @@
+// A field named TestSupport, or Credentials, whose value has a member named like the helper. Only the bare
+// name and the global:: form are accepted, because neither can be made to mean a field.
+// expect: unguarded-test Fixtures.Bbs2023IndirectHelperTests.Through_a_field_named_TestSupport
+// expect: unguarded-test Fixtures.Bbs2023IndirectHelperTests.Through_a_field_named_Credentials
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023IndirectHelperTests
+{
+    private static readonly dynamic TestSupport = new { BbsNativeLibrary = new DoesNothing() };
+    private static readonly dynamic Credentials = new { TestSupport };
+
+    [SkippableFact]
+    public void Through_a_field_named_TestSupport()
+    {
+        TestSupport.BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    public void Through_a_field_named_Credentials()
+    {
+        Credentials.TestSupport.BbsNativeLibrary.RequireOrSkip();
+        Derive();
+    }
+}
