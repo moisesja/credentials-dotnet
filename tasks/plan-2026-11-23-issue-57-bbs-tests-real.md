@@ -741,8 +741,10 @@ found so far, and nothing shows that the next reader would find nothing.
 
 **Proof.** All run, on `osx-arm64` unless it says otherwise.
 
-- The new fixtures of the reviewer's class against the scan of 28925f2: it reported nothing for thirteen of
-  them. All are reported now.
+- The fixtures of the reviewer's class against the scan of 28925f2: it reported nothing for the reviewer's
+  file and for seven more (the test in an `#elif` or an `#else` branch, nested conditions, a condition
+  around only the usings, only the trait or one method, a comment in the other branch that hides the
+  directives). All are reported now.
 - Every compiled candidate of the three adversarial rounds, put back into `Credentials.Rdfc.Tests` in a
   scratch copy and scanned: each is reported, in its own file or in the file that holds its mechanism,
   except the two that are limits.
