@@ -16,14 +16,16 @@ namespace Credentials.Samples.Bbs2023;
 /// <summary>
 /// Selective disclosure via the <c>bbs-2023</c> cryptosuite (FR-014 gated / FR-031 / FR-042): a holder
 /// derives a minimal proof from a bbs-2023 base (mandatory group + a selected claim, the rest withheld),
-/// and the verifier accepts the derived proof. The whole crypto path is gated on the native BBS library's
-/// availability — on an unsupported host the sample narrates a clear skip and exits 0.
+/// and the verifier accepts the derived proof.
 /// </summary>
 /// <remarks>
-/// The engine intentionally gates bbs-2023 issuance (no key-store BBS create API exists; raw-key export
-/// would violate FR-015), so — exactly like the M5 test suite — the base credential here is crafted
-/// directly through the substrate's raw-key API. This is sample/test-only; the engine never does raw-key
-/// issuance.
+/// <para>bbs-2023 needs NetCrypto's native BBS library (<c>docs/conformance.md</c> lists the platforms it
+/// ships for). On a host where it does not load the sample has nothing to show, so it throws
+/// <see cref="NotSupportedException"/> and the process exits non-zero. It does not report success for a path
+/// it did not run.</para>
+/// <para>The engine gates bbs-2023 issuance until issue #43 (it never handles a raw private key, FR-015), so
+/// — exactly like the M5 test suite — the base credential here is crafted directly through the substrate's
+/// raw-key API. This is sample/test-only; the engine never does raw-key issuance.</para>
 /// </remarks>
 public static class Program
 {
@@ -40,11 +42,13 @@ public static class Program
         var narrator = new SampleNarrator(output);
         narrator.Banner("BBS selective disclosure (bbs-2023) — derive + verify", "FR-014 (gated)", "FR-031", "FR-042");
 
-        // Gate the whole crypto path on the native BBS library, exactly as the M5 test does.
+        // Without the native BBS library there is nothing to demonstrate. Say so and fail: a sample that
+        // returned here would report success for a path it never ran.
         if (!new Bbs2023Cryptosuite().IsAvailable)
         {
-            narrator.Result("skipped: the native BBS library is unavailable on this host (no bbs-2023 path to exercise)");
-            return;
+            throw new NotSupportedException(
+                "bbs-2023 needs NetCrypto's native BBS library, which did not load on this host. " +
+                "docs/conformance.md lists the platforms it ships for.");
         }
 
         var provider = services ?? new ServiceCollection().AddCredentials(b => b.UseNetDid().UseBbs2023()).BuildServiceProvider();

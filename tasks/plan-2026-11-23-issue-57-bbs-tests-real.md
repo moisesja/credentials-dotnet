@@ -1,6 +1,8 @@
 # Plan: issue #57, bbs-2023 tests that fail or skip visibly without the BBS native library
 
-**Status:** awaiting approval. Until it is approved, this file is the only change on the branch.
+**Status:** in progress. The owner made the external review of the PR the approval gate for epic #25 on
+2026-11-23 (issue #25, instruction 1), so this plan ships in the PR and the work did not wait for a separate
+approval. The first commit on the branch (c96fd95) is this plan alone.
 **Date:** 2026-11-23
 **Branch:** `test/issue-57-bbs-tests-real` (from `main` @ 66ab8ce)
 **Tracking:** issue #57, step 1 of epic #25. The PR will say `Closes #57`: the change is tests, one sample, CI
@@ -75,197 +77,245 @@ the eleven.
 
 ## Decisions
 
-Decisions 2, 5, 6, 7, 8 and 9 are judgement calls the owner can overturn; each names the alternative.
+This section is the design as built. Where it differs from the first version of this plan (commit c96fd95),
+"What changed during the work" at the end says what changed and why.
 
-1. **Three outcomes, by host.** CI legs are always in one of the first two rows, so a green CI run means the
-   `bbs-2023` tests ran.
+Who decided what:
 
-   | Host | Availability test | Other tests that need the library | Sample smoke test |
-   |---|---|---|---|
-   | One of the five platforms, library loads | Passes | Run | Runs |
-   | One of the five platforms, library does not load | **Fails** | Skipped, with a reason | Skipped, with a reason |
-   | Any other platform (`win-arm64`, for example) | Skipped, with a reason | Skipped, with a reason | Skipped, with a reason |
+- **The owner**, on 2026-11-23: the external PR review is the approval gate, and CI also gets a `linux-arm64`
+  leg (decision 8).
+- **Defaults the owner can overturn**, each with its alternative: decisions 2, 5, 6, 7, 9, and leaving out
+  `osx-x64` in decision 8. Decisions 2, 8 and 9 were put to the epic orchestrator, whose rulings are recorded
+  with them. A ruling is the orchestrator's default, not the owner's.
 
-   This is the issue's own design: one test fails, the rest skip visibly. Removing the guards outright was the
-   alternative. It would turn every `bbs-2023` test red on a platform upstream does not ship for, where there
-   is nothing to fix.
+1. **Without the library, a test that needs it fails or is skipped. It never passes.**
 
-2. **"One of the five platforms" is decided from the operating system and the process architecture**, mapped
-   to an identifier such as `linux-x64` and looked up in one list of five. It does not read
-   `RuntimeInformation.RuntimeIdentifier`, whose value can depend on how the SDK was built. A mapping that
-   cannot vary is what keeps the availability test from being skipped on a CI leg.
-   - Consequence: a Linux host on musl (Alpine), or on glibc older than 2.34, is `linux-x64` or `linux-arm64`
-     to this test, the library does not load there, and the availability test fails. That is accurate:
-     `bbs-2023` does not work on that host although its platform is on the list. The docs will say so.
-   - Alternative: treat musl as "not shipped" and skip. Not taken: it needs a detection rule I cannot verify
-     on every distribution, and no CI leg or known developer machine is on musl.
+   | Host | Every test that needs the library, and the sample's smoke test |
+   |---|---|
+   | The library loads | Runs |
+   | The library does not load, and it has to (decision 2) | **Fails**, with a message that says why |
+   | The library does not load on any other host (`win-arm64`, for example) | Skipped, with a reason that names the platform |
 
-3. **One shared helper, in `Credentials.TestSupport`.** Three test assemblies need the same answer and the
-   same skip reason. `TestSupport` is the existing shared test library, and it must not reference
-   `Credentials.Rdfc` (the architecture tests keep the RDF stack out of their host). So the helper asks
-   NetCrypto's provider, which is already in every test project's graph through `Credentials.Core`. The
-   availability test, which lives in `Credentials.Rdfc.Tests`, also asks `Bbs2023Cryptosuite`, the object the
-   product asks, and requires the two answers to agree.
+   The rule is applied by each test, in its own test process, so it holds for every test assembly and for any
+   subset of the tests. Removing the guards outright was the alternative. It would turn every `bbs-2023` test
+   red on a platform upstream does not ship for, where there is nothing to fix.
 
-4. **Visible skips use `[SkippableFact]` / `[SkippableTheory]` with `Skip.IfNot`**, the style the interop
-   tests and the W3C harness already use, and the one the issue names. A custom `[BbsFact]` attribute was
-   considered and not taken: it would be a second convention for the same thing.
+2. **Where the library has to load.** Either rule is enough:
+   - **On one of the five platforms NetCrypto ships it for.** The platform is the operating system and the
+     process architecture, as the runtime itself reports them. It is not read from
+     `RuntimeInformation.RuntimeIdentifier`, which the `DOTNET_RUNTIME_ID` environment variable overrides.
+   - **On GitHub Actions, whatever the platform.** When `GITHUB_ACTIONS` is `true` no such test is skipped: a
+     missing library fails it. So a green CI leg means the `bbs-2023` tests ran on it, and a leg on a platform
+     outside the five cannot go green without the library. Adding such a leg takes a deliberate change to
+     this rule.
+   - **musl and old glibc are Linux, and fail.** NetCrypto's Linux builds are glibc builds that need glibc
+     2.34 or later. A Linux host on musl, or on an older glibc, is `linux-x64` or `linux-arm64` by operating
+     system and architecture, the library does not load there, and the tests fail with a message that says
+     so. That is accurate: `bbs-2023` does not work on that host.
+   - Ruling of the epic orchestrator: never skip on GitHub Actions; fail on old glibc; skip on musl if musl
+     can be detected reliably, and otherwise keep the first plan (fail) and document it.
+   - **Why musl is not skipped.** Three ways of detecting musl were built and each was run on real hosts: the
+     runtime identifier, the process map, and asking the C library whether it is glibc. Each one worked on
+     Alpine, and each one gave a way to turn the failure into a skip on a glibc host, off CI, by setting a
+     variable or placing a file (adversarial findings below). CI was never affected, because of the GitHub
+     Actions rule. But a skip that can be forced where the library is shipped is the thing this issue
+     removes, and a musl host is red in any case (see "Considered and not taken", BLS keys). Without the
+     exemption, no skip can be reached on a shipped operating system and architecture at all.
+   - Alternative: skip on musl, detected by asking the C library (the most accurate of the three, about 25
+     lines). Cost: someone who puts a file named `libc.so.6` next to the tests on a glibc host, off CI, gets
+     a skip.
 
-5. **A second test pins which platforms NetCrypto declares the library for: exactly the five.** It reads the
-   test project's `.deps.json`, so it runs on any host and never skips.
-   - It catches a release that drops a binary for a platform CI does not run (`linux-arm64`, `osx-x64`).
+3. **One shared helper, `BbsNativeLibrary` in `Credentials.TestSupport`**, with one call,
+   `BbsNativeLibrary.RequireOrSkip()`, that every test needing the library makes before it touches
+   `bbs-2023`. Three test assemblies need the same decision, and a test author cannot get it half right.
+   - The call is two public steps, so each can be tested: `OutcomeFor` is the rule as a pure function, and
+     `Enforce` carries an outcome out on the calling test.
+   - With the library present, which is the case on every CI leg, `RequireOrSkip()` just returns, and a
+     regression in it would go unnoticed until the day the library is missing. So one test runs the real
+     call where the library is missing, on every host and every CI leg: it loads a second copy of NetCrypto
+     and of the helper into a load context that refuses to load `zkryptium_ffi`, and requires the call to
+     fail (or, on a platform outside the five and off CI, to skip).
+   - Every `bbs-2023` test class and the sample's smoke test carry `[Trait("Category", "Bbs")]`, which only
+     the interop tests had. `dotnet test --filter "Category=Bbs"` now selects them all.
+   - `TestSupport` is the existing shared test library. It must not reference `Credentials.Rdfc` (the
+     architecture tests keep the RDF stack out of their host), so the helper asks NetCrypto's provider, which
+     is already in every test project's graph through `Credentials.Core`. It gains two package references:
+     `NetCrypto` and `Xunit.SkippableFact`.
+   - `BbsNativeLibraryTests` also asks `Bbs2023Cryptosuite`, the object the product asks, and requires the
+     two answers to agree. Today both read the same NetCrypto flag; the assertion keeps the tests from acting
+     on a different answer if the two ever part.
+
+4. **A skip is an xUnit skip**: `[SkippableFact]` / `[SkippableTheory]`, the style the interop tests and the
+   W3C harness already use. A `RequireOrSkip()` under a plain `[Fact]` fails instead of skipping, so a wrong
+   attribute cannot hide anything. A custom `[BbsFact]` attribute was considered and not taken: it would be a
+   second convention for the same thing.
+
+5. **A test pins what NetCrypto declares: the library, under its file name, for exactly the five platforms.**
+   It reads the test project's `.deps.json`, so it runs on any host.
+   - It catches a release that drops a binary for a platform CI does not run (`osx-x64`).
    - It keeps the list in `docs/conformance.md` true: when crypto-dotnet#34 ships more platforms, the PR that
      takes that release fails this test until the list and the docs are updated.
+   - It proves a declaration. Only a run on the platform shows that the binary loads.
+   - A build made for one runtime (`dotnet build -r <rid>`) lists only that platform's assets. There the test
+     is skipped with a reason, except on GitHub Actions, where it fails.
    - Alternative: "at least the five", which never fails on an addition and lets the docs fall behind.
 
-6. **The sample loses its "unavailable" branch.** A sample that could not show its subject should not exit 0.
-   Without the branch, the first BBS call throws NetCrypto's `BbsUnavailableException`, whose message names
-   the five platforms, and the process exits non-zero. That is how every sample reports a failure (they throw).
-   The smoke test asks the shared helper first and skips visibly, so the three assemblies behave alike.
-   - Alternative: keep a branch that prints its own message and exits with a non-zero code, without a stack
-     trace. Not taken: it changes the entry point every sample shares, for one sample.
+6. **The sample fails when it cannot run.** Its "unavailable" branch now throws `NotSupportedException`, the
+   exception `IBbsDeriver` documents for this case, and the process exits non-zero. A sample that could not
+   show its subject should not exit 0. Its smoke test calls `RequireOrSkip()` first, like every other test.
+   - Alternative: delete the branch and let the first BBS call throw. Tried first and not kept: NetCrypto's
+     exception carries the loader's output, about forty lines of `dlopen` attempts, in front of the message.
 
 7. **CI gets a macOS leg: `macos-latest` in the `build-test` matrix.**
    - Development happens on macOS. A failure seen locally should be reproducible in CI, and a macOS-only
      break should not wait for the owner's machine to find it.
-   - NetCrypto ships two macOS binaries and CI loads neither. Loading has macOS-specific failure modes that
+   - NetCrypto ships two macOS binaries and CI loaded neither. Loading has macOS-specific failure modes that
      only a macOS host shows: the code signature Apple Silicon requires, and the minimum OS version the
      binary was built for.
    - Cost: the repository is public (checked with `gh repo view`), and GitHub's billing documentation says
-     standard hosted runners are free in public repositories (read today from the `github/docs` source). The
-     label must stay `macos-latest`; the `-large` and `-xlarge` labels are billed even there. I expect a run
-     time of a minute or two, since the Ubuntu and Windows legs take 33 s and 92 s; it is not measured yet.
-   - `macos-latest` is macOS 26 on arm64 according to the `actions/runner-images` README (read today), so
-     this leg exercises `osx-arm64`, the development platform. The suite passes there locally.
+     standard hosted runners are free in public repositories (read on 2026-11-23 from the `github/docs`
+     source). The label must stay `macos-latest`; the `-large` and `-xlarge` labels are billed even there.
+   - `macos-latest` is macOS 26 on arm64 according to GitHub's runner table (read the same day), so this leg
+     exercises `osx-arm64`, the development platform.
    - `main` has no branch protection and no rulesets (checked), so a new check changes no merge rule.
    - The three gate jobs (`no-newtonsoft`, `semver`, `api-coverage`) wait for every `build-test` leg. A slow
-     macOS queue would delay them. If that becomes a problem, the leg can move to its own job.
+     queue on a new leg would delay them. If that becomes a problem, the leg can move to its own job.
    - Alternative: no macOS leg, and the docs say macOS is shipped but not exercised in CI.
 
-8. **No `linux-arm64` or `osx-x64` leg in this PR.** Both have a standard runner that is free for a public
-   repository (`ubuntu-24.04-arm`, `macos-26-intel`; read today from GitHub's runner table), so all five
-   platforms could be exercised. The issue asks about macOS only, and which platforms CI covers for the whole
-   library is a wider question than `bbs-2023`. The docs will list these two as shipped and not exercised in
-   CI. Whether to add either leg is a question for the owner.
+8. **CI gets a `linux-arm64` leg, `ubuntu-24.04-arm`, by the owner's decision of 2026-11-23** ("For CI
+   platform, also add linux-arm64"). It is a standard runner, free for a public repository (GitHub's runner
+   table, read the same day). The matrix now exercises four of the five platforms.
+   - **`osx-x64` stays out.** The owner did not ask for it, and the Intel macOS label (`macos-26-intel`) is
+     on a retirement path. The docs list it as shipped and not exercised. This part is a default the owner
+     can overturn; the cost is one matrix entry and about a minute of free runner time per run.
+   - Nothing else in the workflows assumes x64 on the new leg: its steps are checkout, `setup-dotnet` from
+     `global.json`, restore, build and test, with no cache and no tool download. The three gate jobs run on
+     `ubuntu-latest` and only wait for it.
 
-9. **The proof that the availability test can fail is a one-off, recorded in the Review**, as every earlier
-   mutation check in this repo is. It will be a real hidden-library run on `osx-arm64` and on `linux-arm64`
-   (the .NET SDK container is on this machine: SDK 10.0.404, glibc 2.39), and on `linux-x64` under emulation
-   if that container runs. Windows cannot be run locally. There the claim rests on the failure path being the
-   same managed code on every OS, and on a test that pins the platform mapping for all five platforms.
-   - Alternative: a standing CI step on every leg that hides the library and requires the availability test
-     to fail (about 20 s per leg, one more script to maintain). It would give the Windows proof.
+9. **The proof that these tests can fail is in two parts.**
+   - A one-off, recorded in the Review, as every earlier mutation check in this repo is: real runs with the
+     library hidden on `osx-arm64`, `linux-arm64` and `linux-x64` (emulated), a real old-glibc host and a
+     real musl host.
+   - A standing one, inside the suite: the load-context test of decision 3 runs the failing path on every
+     leg, Windows included. It came out of the adversarial pass, which showed that nothing else would notice
+     a broken helper while the library is present.
+   - Ruling of the epic orchestrator: the one-off is enough; no standing CI step. There is none.
+   - Alternative: a standing CI step on every leg that hides the library file and requires the tests to fail
+     (about 20 s per leg, one more script). It would also catch a test that needs the library and forgets
+     the helper call; the in-suite test cannot.
 
-10. **`FrCoverageGateTests` does not change.** It stays a static scan. What changes is that it can no longer
-    be read as coverage in a run that tested nothing: the same `dotnet test` run that executes the gate also
-    executes the availability test on that leg.
+10. **`FrCoverageGateTests` does not change.** It stays a static scan of `[FrTag]` attributes. What changes
+    is that a tagged `bbs-2023` test can no longer pass without running, and cannot be skipped on CI.
 
 11. **No change under `src/`, no PRD change.** No public API moves, so the ApiCompat and PublicAPI gates are
     untouched. None of the epic's open PRD decisions (5 to 12) is reached by this issue.
 
 Considered and not taken:
 
-- **CI declares the expected platform per leg in an environment variable, and the test checks it.** It would
-  catch a runner label that silently changes architecture. Decision 2 already makes the mapping fixed.
-- **An architecture test that forbids hand-written availability guards in test sources.** The guarantee that
-  matters, a green CI run means the tests ran, comes from the availability test and does not depend on how a
-  later test is written.
+- **CI declares the expected platform per leg in an environment variable, and a test checks it.** It would
+  catch a runner label that silently changes architecture. The GitHub Actions rule already keeps any leg from
+  skipping, whatever its platform.
+- **An architecture test that forbids hand-written availability guards in test sources**, or that requires
+  the helper call in every test that touches `bbs-2023`. On CI such a test still runs, because the library
+  is there. The gap is on a host without the library: a test that forgets the call fails there if it expects
+  success, but passes if all it expects is an exception, because the missing library throws too. No such
+  test exists today. Left to review, and said in the helper's documentation.
+- **Treating BLS key generation like the BBS library.** `Bbs_issuance_is_gated` needs no BBS call, but it
+  generates a BLS key, which needs NetCrypto's second native library (`blst`). Where that is missing the test
+  fails loudly with `DllNotFoundException`. NetCrypto has no availability check for it (crypto-dotnet#34),
+  and #43 replaces this test, so it is documented and left as it is.
 
 ## Changes, file by file
 
 | File | Change |
 |---|---|
-| `tests/Credentials.TestSupport/Credentials.TestSupport.csproj` | Add a versionless `NetCrypto` package reference (the version is already pinned centrally). |
-| `tests/Credentials.TestSupport/BbsNativeLibrary.cs` (new) | The helper: `IsAvailable`; the list of five runtime identifiers; the host's identifier, from a pure function of operating system and architecture; the skip reason, which names the host and the five. |
-| `tests/Credentials.Rdfc.Tests/BbsNativeLibraryTests.cs` (new) | Three tests. (a) The availability test of decision 1. (b) The declaration test of decision 5. (c) A theory that pins the mapping: each of the five platforms maps to its identifier and is on the list; `win-arm64`, `linux-arm` and one non-Linux Unix are not. |
-| `tests/Credentials.Rdfc.Tests/Credentials.Rdfc.Tests.csproj` | Add the `Xunit.SkippableFact` reference (already pinned centrally). |
-| `tests/Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs` | The 11 guards become `Skip.IfNot` on the helper; 10 `[Fact]` become `[SkippableFact]` and the theory becomes `[SkippableTheory]`. Remove the `BbsAvailable` field and the "COVERAGE NOTE"; correct the class summary. Test bodies do not change. |
-| `tests/Credentials.InteropTests/Bbs2023InteropTests.cs` | Use the helper and its reason in place of the private `Available` field. Reword "IsAvailable-gated" in the summary and in the `.csproj` comment. |
-| `tests/Credentials.SampleSmokeTests/SampleSmokeTests.cs` and its `.csproj` | `Bbs2023` becomes a `[SkippableFact]` that skips on the helper, then runs the sample. Add the `TestSupport` project reference and the `Xunit.SkippableFact` package reference. |
-| `samples/Credentials.Sample.Bbs2023/Program.cs` | Remove the "unavailable" branch (decision 6). Correct the summary, which promises "a clear skip and exits 0". |
-| `tests/Credentials.RoundTripTests/Credentials.RoundTripTests.csproj` | Comment only: it says the project exercises `bbs-2023` derivation, and it holds no such test. |
-| `.github/workflows/ci.yml` | `os: [ubuntu-latest, windows-latest, macos-latest]`, with a comment that names the three platforms and points at `docs/conformance.md`. |
-| `docs/conformance.md` | A new section, "bbs-2023: platforms" (below). |
-| `CHANGELOG.md` | An *Unreleased* entry (below). |
-| This file | Checklist ticks and the Review. |
+| `tests/Credentials.TestSupport/BbsNativeLibrary.cs` (new) | The helper: `RequireOrSkip()`, made of `OutcomeFor` (the rule, a pure function) and `Enforce` (what an outcome does to the calling test); `IsAvailable`; the list of five runtime identifiers; the host's identifier, from a pure function of operating system and architecture. |
+| `tests/Credentials.TestSupport/Credentials.TestSupport.csproj` | Versionless `NetCrypto` and `Xunit.SkippableFact` package references (both already pinned centrally). Header comment updated. |
+| `tests/Credentials.Rdfc.Tests/BbsNativeLibraryTests.cs` (new) | Seven tests. (a) The named check that the library is there, with the agreement assertion of decision 3. (b) A theory that pins the rule of decisions 1 and 2, all eight cases. (c) What each outcome does to a test: return, fail, skip. (d) Where the rule's inputs come from on this host. (e) The real call against a copy of NetCrypto that is refused the library. (f) A theory that pins the platform mapping. (g) The declaration test of decision 5. |
+| `tests/Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs` | The 11 guards become `BbsNativeLibrary.RequireOrSkip()`; 10 `[Fact]` become `[SkippableFact]` and the theory becomes `[SkippableTheory]`. The `BbsAvailable` field and the "COVERAGE NOTE" go; the class summary is corrected; the class gains the `Bbs` category. Test bodies do not change. |
+| `tests/Credentials.Rdfc.Tests/Credentials.Rdfc.Tests.csproj` | `Xunit.SkippableFact` reference. |
+| `tests/Credentials.InteropTests/Bbs2023InteropTests.cs` and its `.csproj` | The two tests call `RequireOrSkip()` in place of their own `Skip.IfNot`. "IsAvailable-gated" reworded. The file now imports `Credentials.TestSupport`, so its two `[TestSupport.FrTag]` attributes are written `[FrTag]`, the form the FR gate's scan recognises. |
+| `tests/Credentials.SampleSmokeTests/SampleSmokeTests.cs` and its `.csproj` | `Bbs2023` becomes a `[SkippableFact]` that calls `RequireOrSkip()`, then runs the sample. `TestSupport` project reference and `Xunit.SkippableFact` package reference. |
+| `samples/Credentials.Sample.Bbs2023/Program.cs` | The "unavailable" branch throws (decision 6). The summary, which promised "a clear skip and exits 0", is corrected. |
+| `tests/Credentials.RoundTripTests/Credentials.RoundTripTests.csproj` | Comment only: it said the project exercises `bbs-2023` derivation, and it holds no such test. |
+| `.github/workflows/ci.yml` | `os: [ubuntu-latest, windows-latest, macos-latest, ubuntu-24.04-arm]`, with a comment that names the four platforms and points at `docs/conformance.md`. |
+| `docs/conformance.md` | New section, "bbs-2023: platforms". The interop bullet loses "`IsAvailable`-gated". |
+| `CHANGELOG.md` | An *Unreleased* entry under *Changed*. |
+| This file | Decisions, checklist ticks and the Review. |
 
 ## Checklist
 
-- [ ] 1. Helper in `Credentials.TestSupport`
-- [ ] 2. `BbsNativeLibraryTests`: availability, declaration, mapping
-- [ ] 3. The 11 guards in `Bbs2023SelectiveDisclosureTests` become visible skips
-- [ ] 4. `Bbs2023InteropTests` uses the helper
-- [ ] 5. Sample: remove the "unavailable" branch; smoke test skips visibly
-- [ ] 6. Stale comments (`RoundTripTests.csproj`, class and project summaries)
-- [ ] 7. `ci.yml`: macOS leg
-- [ ] 8. Local verification, including the hidden-library runs (next section)
-- [ ] 9. Adversarial pass; findings handled
-- [ ] 10. `docs/conformance.md`
-- [ ] 11. `CHANGELOG.md`
-- [ ] 12. PR opened; CI evidence from the three legs recorded in the Review
-- [ ] 13. Review section written
+- [x] 1. Helper in `Credentials.TestSupport`
+- [x] 2. `BbsNativeLibraryTests`: the named check, the rule, its enforcement, its inputs, the call without the library, the mapping, the declaration
+- [x] 3. The 11 guards in `Bbs2023SelectiveDisclosureTests` call the helper
+- [x] 4. `Bbs2023InteropTests` calls the helper
+- [x] 5. Sample: the "unavailable" branch throws; its smoke test calls the helper
+- [x] 6. Stale comments (`RoundTripTests.csproj`, class and project summaries)
+- [x] 7. `ci.yml`: macOS and `linux-arm64` legs
+- [x] 8. Local verification, including the hidden-library runs
+- [x] 9. Adversarial pass: the gate (three rounds) and the product; findings handled
+- [x] 10. `docs/conformance.md`
+- [x] 11. `CHANGELOG.md`
+- [ ] 12. PR opened; CI evidence from the four legs recorded in the Review
+- [x] 13. Review section written
 
 ## How each "Done when" bullet is proven
 
-**1. The availability test exists and can fail.**
+The results are in the Review.
 
-- Hidden-library run of `Credentials.Rdfc.Tests`: the availability test is reported Failed with its own
-  message, and the run exits non-zero. On `main` the same run exits 0 with 29 Passed.
-- Broken-library run: the library file replaced by an empty file of the same name. Same expectation.
-- Both on `osx-arm64` and in the `linux-arm64` container; on `linux-x64` under emulation if it runs.
-- The declaration test: in a copy, remove one platform's entry from the `.deps.json`, then add a sixth. It
-  must fail both times.
-- The mapping theory passes for all five platforms on every host, including the three CI platforms.
-- CI on the PR: on each of the three legs, the summaries of `Credentials.Rdfc.Tests`, `Credentials.InteropTests`
-  and `Credentials.SampleSmokeTests` show 0 Skipped. With a green job, that means the availability test ran
-  and passed there.
+**1. A test asserts the library is available and fails when it is not.**
+`BbsNativeLibraryTests.Bbs_native_library_loads_wherever_it_has_to` is the named one; every test that needs
+the library applies the same rule.
+
+- Hidden-library runs of each of the three test assemblies, with the library deleted and with it replaced by
+  an empty file: the tests that need it are reported Failed and the run exits non-zero. On `main` the same
+  runs exit 0.
+- The same on `linux-arm64` and `linux-x64`, and on real old-glibc and musl hosts, where the shipped
+  library cannot load.
+- The load-context test, which runs the failing path inside the suite on every leg.
+- The declaration test against altered copies of the `.deps.json`.
+- CI on the PR: on each of the four legs the three assemblies show 0 Skipped under a green job.
 
 **2. No silent guard is left.**
 
-- `grep` finds no `if (!BbsAvailable)` and no `IsAvailable` under `tests/` or `samples/` outside the helper
-  and the availability test.
-- Hidden-library run of `Credentials.Rdfc.Tests`: exactly the 14 cases of the 11 methods are reported Skipped,
-  each with the reason. The only tests of `Bbs2023SelectiveDisclosureTests` reported Passed are the three that
-  never needed the library. `Credentials.InteropTests`: 2 Skipped, as today, with the shared reason.
-- With the library, the list of tests (`dotnet test --list-tests`) differs from `main` only by the new tests,
-  and all pass.
+- `grep` finds no `if (!BbsAvailable)` and no `IsAvailable` under `tests/` or `samples/` outside the helper,
+  `BbsNativeLibraryTests` and the sample's throwing branch.
+- In the hidden-library runs no test that needs the library is reported Passed: the 14 cases of the 11
+  methods, the 2 interop tests and the smoke test are Failed.
+- The list of tests differs from `main` only by the new tests.
 
 **3. The sample smoke test.**
 
-- Hidden-library run of `Credentials.SampleSmokeTests`: `Bbs2023` is reported Skipped with the reason. On
-  `main` it is Passed.
-- The sample run directly from a hidden-library copy exits non-zero and prints NetCrypto's message. On `main`
-  it exits 0.
-- One local mutation, not committed: with the skip line removed from the smoke test, the hidden-library run
-  reports `Bbs2023` Failed. This shows the sample has no path that returns quietly.
+- Hidden-library run of `Credentials.SampleSmokeTests`: `Bbs2023` is Failed. On `main` it is Passed.
+- The sample run directly from a hidden-library copy exits non-zero. On `main` it exits 0.
+- One local mutation, not committed: with the `RequireOrSkip()` line removed from the smoke test, the
+  hidden-library run reports `Bbs2023` Failed with the sample's own exception. The sample has no path that
+  returns quietly.
 
-**4. The macOS leg.** Decision 7, and the PR's `build + test (macos-latest)` job: green, with 0 Skipped in the
-three assemblies.
+**4. The macOS leg** (and the owner's `linux-arm64` leg): decisions 7 and 8, and the PR's four `build + test`
+jobs.
 
 **5. The docs.** The diff of `docs/conformance.md`. Its list of five is the list the declaration test pins,
-and its "exercised in CI" rows are the `ci.yml` matrix.
+and its "exercised in CI" column is the `ci.yml` matrix.
 
 **Everything else.** Release build with 0 warnings; `dotnet test Credentials.sln -c Release --filter
-"Category!=Conformance"`; `tools/check-no-newtonsoft-closure.sh` (TestSupport gains a reference),
-`tools/run-api-coverage.sh` (the sample changes) and `tools/check-api-compat.sh`.
+"Category!=Conformance"`; `tools/check-no-newtonsoft-closure.sh`, `tools/run-api-coverage.sh` and
+`tools/check-api-compat.sh`.
 
 ## Adversarial pass
 
-One subagent, after the implementation passes locally and before the PR is opened. It gets the diff and this
-goal, not my conclusions: **make `dotnet test` exit 0, or CI go green, while `bbs-2023` did not run; or make
-any test that needs the library report Passed without it.** It reports every attempt in detail. It should at
-least try:
+Two independent subagents, after the implementation passed locally and before the PR was opened. Each got the
+code and a goal, not my conclusions, and worked in its own copy of the tree.
 
-- Hiding the library in other ways: an empty file, a binary for the wrong architecture, the whole `runtimes`
-  folder gone, hidden in one test assembly only (the availability test runs in one of three).
-- The filters CI and the release workflow use (`Category!=Conformance`): can any of them drop the
-  availability test?
-- A `Skip.IfNot` left under a plain `[Fact]`, a wrong row in the platform mapping, a failure in the helper's
-  static initialisation, any test that catches the "unavailable" exception and carries on.
-- The declaration test against stale files in a build output directory.
-- The product on a host without the library, which nothing has run before: `IBbsDeriver.DeriveAsync` should
-  throw its documented `NotSupportedException`, and `IVerifier` must not return Accepted for a `bbs-2023`
-  credential, genuine or altered. By reading, it reports Indeterminate.
+- **The test gate**, three rounds. Goal: make `dotnet test` exit 0, or CI go green, while `bbs-2023` did not
+  run; make any test that needs the library report Passed without it; make it skip where it has to fail;
+  make the tests of the helper pass while wrong. The second round, by a fresh subagent, attacked the rework
+  that the first round caused; the third attacked the host detection and the helper's own tests. (An earlier
+  attempt at the second round was lost to a network failure and produced nothing; it was run again from the
+  start.)
+- **The product on a host without the library**, which nothing had run before: `ISecuringCapabilities`,
+  `IBbsDeriver.DeriveAsync`, and `IVerifier` on genuine, altered and forged `bbs-2023` credentials, each made
+  with the library and verified without it.
 
 This PR changes no signing, binding or integrity code, so epic instruction 8 adds no new attack tests. The
 existing tamper and issuer-binding tests keep their bodies; the test-list comparison shows none was lost.
@@ -275,45 +325,252 @@ orchestrator and into no commit, PR or issue.
 
 ## Docs and CHANGELOG
 
-**`docs/conformance.md`, new section "bbs-2023: platforms".**
-
-- `bbs-2023` needs NetCrypto's native BBS library. A table of the five runtime identifiers NetCrypto 1.7.1
-  ships it for, and for each whether CI exercises it: `linux-x64` (`ubuntu-latest`), `win-x64`
-  (`windows-latest`), `osx-arm64` (`macos-latest`); `linux-arm64` and `osx-x64` shipped, not exercised in CI.
-- The Linux binaries are glibc builds and need glibc 2.34 or later. More platforms are requested in
-  moisesja/crypto-dotnet#34.
-- What the tests do: the three outcomes of decision 1, and which test fails. On a platform outside the five,
-  `IBbsDeriver.DeriveAsync` throws `NotSupportedException`, as its documentation says.
-- The interop bullet loses "`IsAvailable`-gated" and points at the new section.
-
-**`CHANGELOG.md`, *Unreleased*, under *Changed*.** One entry for #57: the `bbs-2023` tests fail or skip
-visibly without the native library; CI runs on macOS; the `Bbs2023` sample no longer exits 0 when it cannot
-run; the platform list is documented.
-
-**Not changed.** The PRD (decision 11). `README.md` (a thin router). `SECURITY.md` (no change in what the
-library guarantees). Older CHANGELOG entries that say "`IsAvailable`-gated" are history and stay.
+- **`docs/conformance.md`, new section "bbs-2023: platforms".** The five runtime identifiers NetCrypto 1.7.1
+  ships the library for and which of them CI exercises; the glibc 2.34 requirement of the Linux builds; what
+  the tests do without the library; old glibc and musl; the sample; crypto-dotnet#34.
+- **`CHANGELOG.md`, *Unreleased*, under *Changed*.** One entry for #57.
+- **Not changed.** The PRD (decision 11). `README.md` (a thin router). `SECURITY.md` (no change in what the
+  library guarantees). Older CHANGELOG entries that say "`IsAvailable`-gated" are history and stay.
 
 ## Risks
 
-- **First macOS run.** A test that depends on the platform could fail on the hosted runner although the suite
-  passes on the development machine. It would be fixed in this PR, or reported if it is not this PR's to fix.
-- **A NetCrypto release that adds platforms fails the declaration test** until the list and the docs are
-  updated. That is the intent of decision 5. The epic's table says crypto-dotnet#34 needs "nothing in this
-  repo"; with this test it needs one list entry and one docs line.
-- **A developer on musl, or on glibc older than 2.34, gets one failing test** (decision 2).
-- **The sample now fails on an unsupported host** where it used to print "skipped" and exit 0.
-- **The availability test runs in one assembly.** The other two resolve the same NetCrypto package (versions
-  are pinned centrally), so one load check stands for all three. The adversarial pass probes this.
-- **`Credentials.TestSupport` gains a package reference.** NetCrypto is already in the graph of every project
-  that references it. The architecture tests and the no-Newtonsoft script are re-run to confirm.
+- **First run on two new runners.** A test that depends on the platform could fail on a hosted runner
+  although the suite passes on the development machine and in the `linux-arm64` container.
+- **A NetCrypto release that adds, drops or renames a platform's library fails the declaration test** until
+  the list and the docs are updated. That is the intent of decision 5. The epic's table says crypto-dotnet#34
+  needs "nothing in this repo"; with this test it needs a list entry and a docs line.
+- **A developer on musl, or on glibc older than 2.34, gets failing `bbs-2023` tests.** That is accurate:
+  `bbs-2023` does not work on that host.
+- **The sample now fails on a host without the library**, where it used to print "skipped" and exit 0.
+- **`Credentials.TestSupport` gains two package references.** Both are already in the graph of the test
+  projects that use them. The architecture tests and the no-Newtonsoft script were re-run.
 
 ## Out of scope, reported to the epic orchestrator
 
 - The API-coverage gate measures `Credentials.Core` and the DI package only. Epic instruction 10 relies on it
-  for new public API, and all BBS API lands in `Credentials.Rdfc`.
-- `ISecuringCapabilities` reports `bbs-2023` as supported on a host where the library is missing.
-- No test covers what the product does on a host without the library.
+  for new public API, and all BBS API lands in `Credentials.Rdfc`. The orchestrator is filing it as its own
+  sub-issue.
+- What the product does on a host without the library: for #59.
+- `Bbs_issuance_is_gated` fails where NetCrypto's BLS library is missing (musl): for #43 or crypto-dotnet#34.
 
 ## Review
 
-To be written when the work is done.
+Written on 2026-11-24, before the PR was opened. "Run" means I ran it and read the output. All numbers
+are for the code as committed; earlier revisions are named where they matter.
+
+### Results with the library
+
+- Release build: 0 warnings, 0 errors.
+- **477 passed, 0 skipped** on `osx-arm64`: Core 204, DI 181, Rdfc 51, SampleSmoke 14, Architecture 9,
+  RoundTrip 9, Interop 5, Conformance 4 (the W3C fact is filtered out, as in CI). `main` has 455. The 22 new
+  tests are all in `BbsNativeLibraryTests`: the named check, 8 cases of the rule, what an outcome does to a
+  test, where the inputs come from, the call without the library, 9 cases of the mapping, and the
+  declaration test. `dotnet test --list-tests` shows nothing removed.
+- The same 477 and 0 skipped, with `GITHUB_ACTIONS=true`, in a `linux-arm64` container (glibc 2.39) and in a
+  `linux-x64` container under emulation.
+- `tools/run-api-coverage.sh`: 53 covered, 0 uncovered. `tools/check-no-newtonsoft-closure.sh`: clean.
+  `tools/check-api-compat.sh`: no breaking change in the three packages.
+
+### Results without the library
+
+A hidden-library run copies a test project's build output, removes the host's library from the copy and runs
+the copied assembly:
+
+```sh
+cp -R tests/Credentials.Rdfc.Tests/bin/Release/net10.0 "$SCRATCH/rdfc"
+rm "$SCRATCH/rdfc/runtimes/osx-arm64/native/libzkryptium_ffi.dylib"   # or: truncate it to an empty file
+dotnet test "$SCRATCH/rdfc/Credentials.Rdfc.Tests.dll" --logger "console;verbosity=normal"
+```
+
+On `osx-arm64`, before and after:
+
+| Hidden-library run | `main` @ 66ab8ce | This branch |
+|---|---|---|
+| `Credentials.Rdfc.Tests` | 29 Passed, exit 0; 14 cases "pass" in under 1 ms | 36 Passed, **15 Failed**, exit 1 |
+| `Credentials.InteropTests` | 3 Passed, 2 Skipped, exit 0 | 3 Passed, **2 Failed**, exit 1 |
+| `Credentials.SampleSmokeTests` | 14 Passed, exit 0 | 13 Passed, **1 Failed**, exit 1 |
+| The sample, run directly | prints "skipped", exit 0 | `NotSupportedException`, exit 134 |
+
+- The 15 are the 14 cases of the 11 converted methods and the named check. The 36 that pass never needed
+  the library, among them `Bbs_issuance_is_gated`, the two registration tests and the rest of
+  `BbsNativeLibraryTests`.
+- The failure reads: "NetCrypto ships the BBS native library (zkryptium_ffi) for osx-arm64, but it did not
+  load in this process, so bbs-2023 cannot be tested here. Check the NetCrypto package's
+  runtimes/osx-arm64/native asset. See docs/conformance.md." On Linux it adds that the Linux builds are glibc
+  builds that need glibc 2.34 or later and do not load on musl.
+- With the library replaced by an empty file, the outcomes are identical, test for test.
+
+The other hosts, all run:
+
+| Host | What it is | Result without a loadable library |
+|---|---|---|
+| `linux-arm64`, glibc 2.39 | `mcr.microsoft.com/dotnet/sdk:10.0` container | Library deleted: Rdfc 15 Failed, Interop 2 Failed, SampleSmoke 1 Failed, each exit 1. |
+| `linux-x64`, glibc 2.39 | the same image under emulation | The same. |
+| `linux-arm64`, glibc 2.28 | AlmaLinux 8 container, SDK from Microsoft's install script | Nothing removed: the shipped library cannot load. Rdfc 15 Failed, Interop 2 Failed, SampleSmoke 1 Failed. `Bbs_issuance_is_gated` passes. |
+| `linux-arm64` on musl | Alpine 3.24 SDK container | Nothing removed: the glibc build cannot load. Rdfc 16 Failed (the 15 and `Bbs_issuance_is_gated`), Interop 2 Failed, SampleSmoke 1 Failed. The same with `GITHUB_ACTIONS=true`. |
+| `linux-arm` (32-bit), outside the five | the same image for `linux/arm/v7` under emulation; tests built on the host, run with `--filter "Category=Bbs"` | Nothing removed: there is no library for it. Rdfc 15 Skipped, Interop 2 Skipped, SampleSmoke 1 Skipped, each with "did not load on this host (linux-arm)". With `GITHUB_ACTIONS=true` the same 15, 2 and 1 are Failed, and the inputs test fails too: a CI leg on a platform outside the five. |
+
+On that 32-bit host two more tests fail in both settings, for reasons that are not this change:
+`Bbs_issuance_is_gated` (no BLS library for the platform either) and one registration test (a
+`NullReferenceException` while a cryptosuite is constructed, under the emulator). The compiler crashed the
+emulator, which is why the tests were built on the host.
+
+**`Bbs_issuance_is_gated` on musl.** It fails with `DllNotFoundException` for `libblst.so`, on `main` as well.
+The test makes no BBS call, but it generates a BLS key, and NetCrypto's BLS library has no musl build either.
+It is documented in `docs/conformance.md` and left as it is (see "Considered and not taken").
+
+**Attempts to turn the failure into a skip**, on the `linux-arm64` and `linux-x64` containers with the
+library deleted and `GITHUB_ACTIONS` unset. Each still gave 15 Failed and 0 Skipped:
+`DOTNET_RUNTIME_ID=linux-musl-<arch>`; `DOTNET_RUNTIME_ID=win-arm64`; the test directory under a path that
+contains ` /lib/ld-musl-`; a file named `libc.so.6` next to the tests, and in `runtimes/<rid>/native`; a
+file named like musl's loader in `/usr/lib`, preloaded. The middle four are the ways the adversarial rounds
+got past the three musl detectors; the committed code has no detector to get past.
+
+**The same scenarios the adversarial rounds used against the gate**, on `osx-arm64`:
+
+- Library missing from the `InteropTests` and `SampleSmokeTests` output only, the exact CI command, with
+  `GITHUB_ACTIONS=true`: exit 1 (Interop 2 Failed, SampleSmoke 1 Failed, Rdfc 51 Passed).
+- Library missing from the `Rdfc.Tests` and `SampleSmokeTests` output only, `--filter "Category=Bbs"`:
+  exit 1 (Rdfc 15 Failed, SampleSmoke 1 Failed, Interop 2 Passed).
+
+### Mutation checks
+
+- **The helper**, sixteen mutants, each built in a scratch copy and run against `BbsNativeLibraryTests` with
+  the library present, which is the CI situation, with `GITHUB_ACTIONS` unset and set.
+
+  | Mutant | Killed by |
+  |---|---|
+  | `RequireOrSkip()` does nothing; treats the library as always available; computes the outcome and drops it; always skips when the library is missing | the call without the library, in both settings |
+  | Passes "not shipped" to the rule | the call without the library, off GitHub Actions (on it the outcome is a failure either way) |
+  | `Enforce` skips where it should fail; `Enforce` returns where it should skip | what an outcome does to a test |
+  | The rule skips on a shipped platform | the rule theory |
+  | `IsShippedForHost` always false; host operating system unknown; host always Linux | where the inputs come from, in both settings |
+  | `IsShippedForHost` true only on GitHub Actions | where the inputs come from, off GitHub Actions |
+  | The variable name misspelt | where the inputs come from, on GitHub Actions |
+  | Passes "not on GitHub Actions" to the rule | **survives**: on a shipped platform the outcome is a failure either way |
+  | Host identifier taken from `RuntimeInformation.RuntimeIdentifier` | **survives**: the two agree on a Microsoft build unless `DOTNET_RUNTIME_ID` is set |
+
+- **The smoke test without its `RequireOrSkip()` line** (in a scratch copy), hidden-library run: `Bbs2023`
+  Failed with the sample's own `NotSupportedException`. The sample has no path that returns quietly.
+- **The declaration test** against altered copies of `Credentials.Rdfc.Tests.deps.json`. It passes unaltered
+  and fails for each of: `win-x64` dropped; a `linux-musl-x64` entry added; the `win-x64` asset turned into a
+  `.pdb`; the `linux-x64` asset renamed; all five entries moved under another package; an asset typed
+  `runtime`; an entry's `rid` changed.
+- **A build for one runtime** (`dotnet test -r osx-arm64`): the declaration test is Skipped with its reason,
+  and the other 21 tests of the class pass; with `GITHUB_ACTIONS=true` it is Failed.
+
+### What was not run
+
+- **Windows without the library, as a real host.** No Windows host was available. On the Windows CI leg the
+  load-context test runs the failing path of the helper, and the rest is the same managed code on every OS.
+- **`osx-x64`** in the committed revision. An earlier revision ran under Rosetta during the second
+  adversarial round (all three assemblies passed, and failed with the library deleted). It is not in CI.
+- **A GitHub runner.** Everything above ran on the development machine and in containers; the four legs are
+  recorded under "CI on the PR".
+
+### Adversarial pass: the test gate
+
+Three rounds, each by an independent subagent that got the code and a goal, not my conclusions. Every
+finding was checked against the code and re-run before it was acted on.
+
+**Round 1** attacked the first design, in which one availability test failed and the other tests skipped.
+
+| # | Finding | Checked | Disposition |
+|---|---|---|---|
+| 1 | **Hole.** With the library missing from the `InteropTests` and `SampleSmokeTests` output only, the exact CI command exits 0 with three tests skipped. The gate ran in one assembly of three. | Real. I had listed it as a risk and argued it away. | **Fixed.** The decision moved into `BbsNativeLibrary.RequireOrSkip()`, which every test that needs the library calls. Replayed above: exit 1. |
+| 2 | **Hole**, off CI only. `DOTNET_RUNTIME_ID=linux-musl-arm64` renames a glibc host to musl, and the missing library becomes a skip. | Real: `RuntimeInformation.RuntimeIdentifier` obeys that variable. | **Fixed**, finally by removing the musl exemption (round 3). |
+| 3 | Weakness. The `api-coverage` job runs only the smoke tests, so a skipped `Bbs2023` there went unnoticed. | Real. | **Fixed by 1.** The smoke test now fails. |
+| 4 | Weakness. `--filter "Category=Bbs"` selects the interop tests and not the gate. | Real; the trait was on the interop tests only. | **Fixed.** Every `bbs-2023` test class and the smoke test carry the trait. Replayed above. |
+| 5 | Weakness. "CI" means `GITHUB_ACTIONS=true` and nothing else. | True, and intended: it is the variable this repository's build already keys on. | Kept. The code and the docs say "GitHub Actions", and that a job running the tests in its own container has to pass the variable on. |
+| 6 | Weakness. The declaration test fails on a build for one runtime (`-r`). | Real. | **Fixed.** It is skipped there with a reason, and fails on GitHub Actions. |
+| 7 | Weakness. The declaration test accepted any package and any file whose name contains `zkryptium_ffi`. | Real: three altered `.deps.json` files passed. | **Fixed.** It requires the NetCrypto package and the exact asset paths. |
+| 8 | False comment. "`Bbs_issuance_is_gated` needs no native code": it fails on musl, where BLS key generation cannot load `libblst`. | Real, and on `main` too. | Comment corrected; documented; the test is left as it is. |
+| 9 | Observation. A stub library that exports the one probed symbol makes NetCrypto report "available". | True; it is NetCrypto's probe. The 14 tests then fail loudly. | No change. |
+| 10 | Note. `main` has no branch protection, so a red leg does not block a merge. | True. | Outside this PR; reported. |
+| 11 | Sloppy. Docs cited before they were written; the platform list repeated in the sample; a stale project comment; "on any host" and "green means ran" too strong as written. | True at the time. | Docs and CHANGELOG written; the sample no longer lists platforms; comments corrected. |
+
+Held in round 1, each run: the library deleted, empty, or built for the wrong architecture; the whole
+`runtimes` folder gone; a stub without the symbol; `Xunit.SkippableFact.dll` removed; a skip under a plain
+`[Fact]` or `[Theory]` (reported Failed); a helper whose static initialiser throws (Failed); the test list
+against `main` (nothing removed).
+
+**Round 2** attacked the rework, which then detected musl from the process map.
+
+| # | Finding | Checked | Disposition |
+|---|---|---|---|
+| 1 | **Hole**, off CI only. A glibc host looks like musl when any mapped file's path contains ` /lib/ld-musl-`: a test directory or an `LD_LIBRARY_PATH` entry with that text in its name. | Real: the check matched the whole line of the map. | **Fixed**, finally by removing the musl exemption (round 3). |
+| 2 | Weakness. `--filter "Category=Bbs"` still selected 2 of the 18 tests that need the library. | Real. | **Fixed** (round 1, finding 4). |
+| 3 | Weakness. No test pinned the helper's own wiring: a helper that skipped where the rule says fail, a misspelt variable name and an `IsShippedForHost` that is always false all passed. | Real. | **Fixed.** Tests for what an outcome does to a test and for where the inputs come from; see the mutation table. |
+| 4 | Weakness. musl was recognised on Alpine and not on Void Linux, where the tests failed instead. | Real. | Moot: musl is no longer exempt. |
+| 5 | Weakness. The GitHub Actions rule holds only if the variable reaches the test process. | True. | Documented. |
+| 6 | Weakness. On GitHub Actions a build for one runtime failed the declaration test with a misleading message. | Real. | **Fixed**: the message says CI has to test the portable build. |
+| 7 | Weakness. A future test that expects an exception from `bbs-2023` and forgets the helper call would pass without the library. | True; no such test exists. | Said in the helper's documentation; see "Considered and not taken". |
+| 8 | Ten statements in the docs, CHANGELOG and comments that were false, too strong or unverifiable. | Each checked. | Corrected, except "exercised in CI: yes" for the two new legs, which the PR's CI run settles. |
+
+Held in round 2, each run: the library deleted, empty, of the wrong architecture or operating system; the
+`runtimes` folder gone; the library missing from one or two assemblies in every combination under the exact
+CI command; `DOTNET_RUNTIME_ID` set to four values; a simulated `ubuntu-24.04-arm` leg (all eight assemblies
+passed, 0 skipped); AlmaLinux 8; altered `.deps.json` files; misuse of the helper under plain attributes;
+`tools/run-api-coverage.sh` with the library removed (exit 1); the sample as a process; the test list
+against `main`; verification without the library (nothing Accepted).
+
+**Round 3** attacked the next rework, which detected musl by asking the C library whether it is glibc, and
+the helper's own tests.
+
+| # | Finding | Checked | Disposition |
+|---|---|---|---|
+| 1 | **Hole**, off CI only. A file named `libc.so.6` in the test output directory (a link to the dynamic loader is enough) makes a glibc host report musl and skip. .NET looks next to the application before it asks the loader. | Real. | **Fixed by removing the musl exemption** (decision 2). Replayed above against the committed code: 15 Failed. |
+| 2 | **Hole**, off CI only. `LD_LIBRARY_PATH` pointing at a patched copy of glibc. | Real. | The same. |
+| 3 | Weakness. A preloaded library that interposes `dlsym`. | True; whoever can inject code can fake anything. | The same; nothing is detected any more. |
+| 4 | Surviving mutants. A `RequireOrSkip()` that does nothing passed all 25 tests of the class, with the library deleted too. The reviewer judged that it could not be pinned inside the process. | Real. | **Fixed** inside the process after all: the load-context test. It kills that mutant and the three like it; see the mutation table. |
+| 5 | Surviving mutants in the inputs: `IsShippedForHost` wrong off GitHub Actions; a host always named Linux. | Real. | **Fixed**: where the library loaded the platform must be on the list, and the host's name must match its operating system and architecture. |
+| 6 | Statements in the two files that were false or too strong, among them the glibc note printed on macOS. | Each checked. | Corrected or removed with the code they described. |
+
+Held in round 3, each run: environment variables alone (`DOTNET_RUNTIME_ID`, `GLIBC_TUNABLES`, `LD_PRELOAD`
+of the loader and others); a musl host made to look like glibc (it then fails, the safe direction); crashes
+and unexpected exception types from the C-library call (the tests fail, none skips); macOS never making that
+call. No false alarm on the hosts standing in for the CI legs.
+
+### Adversarial pass: the product on a host without the library
+
+Run by a separate subagent: 47 test documents made with the library, then 194 verify calls with it and 194
+without, in two processes.
+
+- **No `bbs-2023` credential or presentation was Accepted without the library**, genuine, altered or forged,
+  and no exception escaped the verifier.
+- `IBbsDeriver.DeriveAsync` throws the documented `NotSupportedException`.
+- `ISecuringCapabilities` still lists `bbs-2023` and reports it supported.
+- The full table went to the epic orchestrator for #59. Nothing under `src/` changes in this PR.
+
+### What changed during the work
+
+Against the first version of this plan (c96fd95):
+
+- **Every test that needs the library fails where it has to load.** The first plan had one test fail and the
+  others skip. Round 1 showed that one failing test in one assembly does not protect the others.
+- **The rule also applies on GitHub Actions whatever the platform**: the orchestrator's ruling.
+- **musl fails, as in the first plan, after two revisions that skipped it.** The orchestrator's ruling was
+  to skip musl if it could be detected reliably. Three detectors were built and each was fooled (round 1
+  finding 2, round 2 finding 1, round 3 findings 1 and 2), so the exemption went (decision 2).
+- **The failing path of the helper is run inside the suite**, by the load-context test (round 3 finding 4).
+  The first plan had only the one-off runs.
+- **The sample throws its own `NotSupportedException`.** The first plan deleted the branch; the upstream
+  exception that then surfaced carries about forty lines of loader output.
+- **The declaration test is stricter** and is skipped on a build for one runtime (round 1 findings 6 and 7).
+- **Every `bbs-2023` test carries the `Bbs` category** (round 1 finding 4).
+- **CI has a `linux-arm64` leg**: the owner's decision.
+- `Credentials.TestSupport` references `Xunit.SkippableFact` as well as `NetCrypto`, because the helper now
+  performs the skip.
+- `tasks/lessons.md` has an entry for what this taught.
+
+### Follow-ups, none in this PR
+
+- The API-coverage gate does not measure `Credentials.Rdfc` (the orchestrator is filing a sub-issue).
+- The product's behaviour without the library, for #59.
+- `Bbs_issuance_is_gated` on a host without NetCrypto's BLS library, for #43 or crypto-dotnet#34.
+- When crypto-dotnet#34 ships, the declaration test fails until `BbsNativeLibrary.ShippedRuntimeIdentifiers`,
+  the test's list and `docs/conformance.md` are updated.
+
+### CI on the PR
+
+To be recorded here when the checks of the PR have finished.

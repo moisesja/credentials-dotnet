@@ -45,6 +45,21 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ### Changed
 
+- **`bbs-2023` tests fail or skip visibly without the native BBS library**
+  ([#57](https://github.com/moisesja/credentials-dotnet/issues/57)). Tests, one sample, CI and documentation;
+  no library code changes.
+  - `bbs-2023` needs NetCrypto's native BBS library. Where it did not load, eleven test methods returned early
+    and were reported as passed, and the `Bbs2023` sample printed "skipped" and exited 0, so its smoke test
+    passed too. A run on such a host was green although no `bbs-2023` test had run; only the two interop
+    tests said so, as skipped.
+  - Every test that needs the library now fails where the library has to load, which is on the five platforms
+    NetCrypto ships it for and on GitHub Actions whatever the platform, and is skipped with a reason anywhere
+    else. None is reported as passed. A new test pins the list of five against the NetCrypto package.
+  - CI now also runs on macOS (`osx-arm64`) and on arm64 Linux (`linux-arm64`). With `linux-x64` and `win-x64`
+    that is four of the five platforms; `osx-x64` is shipped and not exercised.
+  - The `Bbs2023` sample throws `NotSupportedException` and exits non-zero when the library does not load.
+  - [`docs/conformance.md`](docs/conformance.md) has a new section, "bbs-2023: platforms": the platforms, the
+    glibc 2.34 requirement of the Linux builds, and what the tests do on a host without the library.
 - **PRD: `bbs-2023` decisions of 2026-11-23** (epic [#25](https://github.com/moisesja/credentials-dotnet/issues/25)).
   Documentation only; no code implements these yet.
   - New targets: the `bbs-2023` optional features, anonymous holder binding and pseudonyms (FR-017, FR-036,

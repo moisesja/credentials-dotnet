@@ -2,6 +2,30 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A gate in one test process does not protect the others, and every exemption needs a detector someone can fool (2026-11-23)
+
+For #57 my first design had one availability test, in `Credentials.Rdfc.Tests`, fail when the native BBS
+library was missing, while every other test that needed it skipped visibly. The plan even listed "the
+availability test runs in one of three assemblies" as a risk and argued it away: all three resolve the same
+package. The adversarial pass removed the library from the other two assemblies' output only, and the exact CI
+command went green with three tests skipped. Three more things came out of the same pass. **Rules:**
+
+- A rule about what happens when a precondition is missing belongs in the helper every dependent test calls,
+  so each test process enforces it for any subset of the tests. One sentinel test elsewhere is only as good as
+  the assumption that every process sees the same world.
+- A risk that a plan argues away is the first thing to hand to the adversarial pass.
+- A branch that only runs when something is missing is never run by CI, where nothing is missing. With the
+  library present the helper just returned, and a helper that did nothing would have passed every test. Run
+  that branch inside the suite: here, a second copy of NetCrypto in a load context that refuses the native
+  library. Then mutate the helper and watch the test fail.
+- An exemption ("skip on musl") needs a detector, and each detector is a way in. I built three for musl (the
+  runtime identifier, the process map, asking the C library) and each was fooled on a glibc host by a
+  variable or a file. Before adding an exemption, ask what it buys. Here a musl host was red anyway, so the
+  answer was nothing, and the design without it has no skip to force.
+- Run the decision on a real host of each class it distinguishes (here glibc, old glibc and musl
+  containers). A reading of the code got one wrong: "`Bbs_issuance_is_gated` needs no native code" is false
+  on musl, where BLS key generation cannot load its own library.
+
 ## A fix that consumers need is not done at merge: `Refs`, not `Closes`, until the release ships (2026-11-20)
 
 For #52 I wrote "Closes #52", although `CredentialsVersion` stayed at 1.2.0, so every nuget.org consumer still

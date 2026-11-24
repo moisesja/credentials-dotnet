@@ -65,11 +65,75 @@ addressable.
   matched against the issued `_sd` array, proving cross-implementation agreement on the disclosure-digest
   algorithm. The negative cases (a tampered disclosure value; an unmatched disclosure) reject, and the
   `dc+sd-jwt` media type / `typ` are drift sentinels.
-- **bbs-2023 (vc-di-bbs)** — `IsAvailable`-gated. A derived proof pins the wire-format drift sentinels
+- **bbs-2023 (vc-di-bbs)** — A derived proof pins the wire-format drift sentinels
   (the `bbs-2023` cryptosuite name and a multibase-base64url `proofValue`), verifies, and a tampered
   revealed-mandatory value is rejected (the cryptographically-enforced mandatory group). DataProofs ≥ 2.0.0
   follows the reference `bbs-2023` algorithms (its own conformance tests verify the W3C
-  `derivedRevealDocument.json` vector and cross-verify with the reference verifier).
+  `derivedRevealDocument.json` vector and cross-verify with the reference verifier). These tests need a
+  native library; see [bbs-2023: platforms](#bbs-2023-platforms).
 
 The no-Newtonsoft consumer-closure guarantee (NFR-002) is asserted separately by
 `Credentials.ConsumerProbe` (`tools/check-no-newtonsoft-closure.sh`).
+
+## bbs-2023: platforms
+
+`bbs-2023` runs on native code. NetCrypto, the cryptographic foundation, carries a native BBS library
+(`zkryptium_ffi`) inside its NuGet package, and every `bbs-2023` operation needs it: deriving and verifying
+here, and issuing once [#43](https://github.com/moisesja/credentials-dotnet/issues/43) lands. Where the
+library does not load, `IBbsDeriver.DeriveAsync` throws `NotSupportedException`.
+
+NetCrypto 1.7.1 ships the library for five runtime identifiers. CI exercises four of them:
+
+| Runtime identifier | Library shipped | `bbs-2023` exercised in CI |
+|---|---|---|
+| `linux-x64` | yes; needs glibc 2.34 or later | yes (`ubuntu-latest`) |
+| `linux-arm64` | yes; needs glibc 2.34 or later | yes (`ubuntu-24.04-arm`) |
+| `osx-arm64` | yes | yes (`macos-latest`) |
+| `win-x64` | yes | yes (`windows-latest`) |
+| `osx-x64` | yes | no |
+| any other (musl Linux, `win-arm64`, mobile) | no | no |
+
+More platforms are requested upstream in
+[crypto-dotnet#34](https://github.com/moisesja/crypto-dotnet/issues/34).
+
+### What the tests do without the library
+
+Every test that needs the library calls `BbsNativeLibrary.RequireOrSkip()` (in
+`tests/Credentials.TestSupport`) before it touches `bbs-2023`. That covers the derive and verify tests in
+`Credentials.Rdfc.Tests`, the interop tests above, and the smoke test of the `Bbs2023` sample;
+`dotnet test --filter "Category=Bbs"` runs them all. When the library did not load, such a test is never
+reported as passed:
+
+- It **fails** where the library has to be there: on one of the five platforms, and on GitHub Actions
+  whatever the platform. GitHub sets `GITHUB_ACTIONS=true` on every runner, and the tests read it. A green CI
+  leg therefore means the `bbs-2023` tests ran on it, and a leg on a platform outside the five cannot go
+  green without the library. (A job that runs the tests inside a container of its own has to pass the
+  variable on.)
+- It is **skipped**, with a reason that names the platform, on any other host: `win-arm64`, for example.
+
+The decision is taken in each test process, so it holds for a single test project and for a filtered run as
+much as for the whole solution. On CI the library is always there, so the failing branch would never run;
+`BbsNativeLibraryTests` therefore runs the call against a second copy of NetCrypto that is refused the
+library, on every host and every leg, and pins the rule and where its inputs come from.
+
+The same class pins the first column of the table against the NetCrypto package the build resolved. That
+test fails when NetCrypto drops, adds or renames a platform's library, until the list in `BbsNativeLibrary`
+and this page are updated. It reads what the package declares, in the portable build that CI tests. Only a
+run on the platform itself shows that the binary loads, which is what the CI column records; `osx-x64` has
+the declaration check alone.
+
+The tests name a platform by its operating system and architecture. NetCrypto's Linux builds are glibc
+builds, and two kinds of Linux host are on the list by that name although the library cannot load there:
+
+- **glibc older than 2.34** (RHEL 8 and its rebuilds, for example);
+- **musl** (Alpine, for example), for which NetCrypto has no build.
+
+On both the tests fail, and the message says that the Linux builds need glibc 2.34 or later and do not load
+on musl. On a stock Alpine image `Bbs_issuance_is_gated` fails as well, for a related reason: it generates a
+BLS key, and BLS key generation needs NetCrypto's second native library (`blst`, through
+`Nethermind.Crypto.Bls`), which ships for the same five platforms and has no availability check of its own.
+Both are part of crypto-dotnet#34.
+
+The `Credentials.Sample.Bbs2023` sample follows the same line. Run on a host where the library does not
+load, it throws `NotSupportedException` and exits non-zero. It does not print a result for a path it did not
+run.

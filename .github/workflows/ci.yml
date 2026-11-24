@@ -18,7 +18,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # linux-x64, win-x64, osx-arm64 and linux-arm64: four of the five platforms NetCrypto ships the
+        # native BBS library for (osx-x64 is the fifth). On GitHub Actions a test that needs that library
+        # fails, and is never skipped, when it does not load (TestSupport's BbsNativeLibrary), so a green
+        # leg means the bbs-2023 tests ran there (issue #57). docs/conformance.md lists what is and is not
+        # exercised: keep it in step with this list. All four are standard GitHub-hosted runners.
+        os: [ubuntu-latest, windows-latest, macos-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
