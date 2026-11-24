@@ -3,6 +3,8 @@
 **Status:** in progress. The owner made the external review of the PR the approval gate for epic #25 on
 2026-11-23 (issue #25, instruction 1), so this plan ships in the PR and the work did not wait for a separate
 approval. The first commit on the branch (c96fd95) is this plan alone.
+The plan was re-made on 2026-11-24, after three rounds of external review, by the owner's decision: see
+"Re-plan" below. The record of the earlier rounds is condensed there and under "Review".
 **Date:** 2026-11-23
 **Branch:** `test/issue-57-bbs-tests-real` (from `main` @ 66ab8ce)
 **Tracking:** issue #57, step 1 of epic #25. The PR will say `Closes #57`: the change is tests, one sample, CI
@@ -23,6 +25,75 @@ Issue #57 is done when:
 4. It is decided whether CI gets a macOS leg.
 5. `docs/conformance.md` names the platforms on which `bbs-2023` is exercised in CI, and the platforms
    NetCrypto ships the native library for.
+
+## Re-plan, 2026-11-24 (review round 4): a gate that runs without the library, and a scan with one job
+
+**The owner's decision, 2026-11-24.** Asked how round 4 should close the convention check in this PR, the
+owner chose "CI gate + slim scanner": on every CI leg, run the tests again with the native library removed
+and require each `bbs-2023` test to fail; the source scan shrinks to one job, saying which test classes are
+`bbs-2023` classes, and stops restricting how tests are written. This is the owner's decision, not a
+default. It replaces the orchestrator's ruling of 2026-11-23 that the one-off runs were enough (decision 9).
+
+**Why.** The property is about what happens at run time: a test that needs the library must not pass or
+skip without it. Three review rounds and four adversarial passes read source to prove it, and each found
+something new. The last, on cf28395, found a hole no source rule covers: a `[SkippableTheory]` whose rows
+come up empty without the library runs no body, xUnit reports nothing for it, and the run exits 0
+(reproduced on cf28395: the scan lists both forms as guarded, and neither appears in the results). By then
+the scan also rejected much that a contributor would write, and fifteen more sub-issues will write
+`bbs-2023` tests.
+
+**The principle.** xUnit decides what a test is. Running without the library decides whether a test is
+guarded. The source scan decides only which test classes are `bbs-2023` classes. No rule depends on
+recognising a test, an attribute or a call in source.
+
+**The gate** (`tools/check-bbs-tests-without-library.sh`, driving `tests/Credentials.BbsGate`):
+
+1. It runs on all four `build + test` legs after the normal test step, from that step's result files, and
+   locally by the same script. It works on copies of the test output folders, so the build output is not
+   touched.
+2. In each copy it removes every `zkryptium_ffi` file, then runs the same assemblies under the same filter
+   with `GITHUB_ACTIONS=true`, so that a missing library has to fail a test on any host.
+3. It compares the two runs test by test, by class and method name, not by row: rows may differ between
+   the runs. For a test of a `bbs-2023` class, every result without the library must be a failure; passed,
+   skipped and no result at all are each reported by name.
+4. The named list of tests that need no native library stays, now a text file with a reason per entry, and
+   checked by running: a listed test must pass without the library. An entry may name a class.
+5. The whole suite is compared, not only the `bbs-2023` classes (my choice on the orchestrator's point 5):
+   a test of any other class must have the same outcomes in both runs. That reports a test that depends on
+   the library through another file and fails loudly, which scope by names cannot see. It costs the
+   no-library run of the other assemblies, a few seconds each.
+6. The run has to be a no-library run: the named availability check must pass with the library and fail
+   without it, and at least one library file must have been removed. Otherwise the gate fails.
+7. Test assemblies are taken from the result files of the normal run, so a new test project is covered
+   without anyone editing the script.
+8. The gate is proven by committed coverage that runs on every leg: its comparison on made-up results (unit
+   tests), and `tests/Credentials.BbsGate.Fixtures`, a small project of deliberately wrong tests that is not
+   in the solution. The script's `--self-test` builds it, runs the gate on it and requires exactly the
+   findings in `expected-findings.txt`: the reviewer's case 1 (the call in a block comment) and case 2
+   (trait first, early return), both forms of the empty theory, a test that skips where it must fail, a
+   listed test that fails, a test outside the `bbs-2023` classes whose outcome changes.
+
+**The scan, with one job** (`BbsScope`, in `tests/Credentials.BbsGate`; its tests stay in
+`Credentials.ArchitectureTests`): the types declared in test source files whose code names anything of
+`bbs-2023`. Kept, because that one decision needs them: the syntax tree, the choice of files, UTF-8, the
+language version held to the build's, the syntax-error rule, and one reading of each file (`#if` is a
+finding in any test source file; the reviewer's round 3 fixture and its variants stay).
+
+**Removed:** every rule that tried to prove from source that a test is guarded, and its fixtures: the
+first-statement rule, the lists of known attributes and base types, sealed and partial, static imports,
+skips outside a test body, return types, shadowed names, duplicate tests, the category rule. `#define` and
+`#undef` are no longer findings: without an `#if` they choose no code.
+
+**Two things that stay, and why.**
+- `[Trait("Category", "Bbs")]` stays on the existing tests as a convenience for `--filter`. Nothing enforces
+  it any more, and the docs say so.
+- The `bbs-2023` smoke test stays in a class of its own, `Bbs2023SampleSmokeTests`. Scope is by class now,
+  so in one class with the other thirteen samples every one of them would be a `bbs-2023` test to list. The
+  class is no longer partial-for-the-scan; it is just a second class.
+
+**Order of work:** this plan (its own commit); the gate project and the script; the slim scan and its
+tests; the fixture project and the self-test; CI; an adversarial round on the whole design; docs,
+CHANGELOG, PR description, lessons.
 
 ## What is there today
 
@@ -137,19 +208,8 @@ Who decided what:
      fail (or, on a platform outside the five and off CI, to skip).
    - Every `bbs-2023` test class and the sample's smoke test carry `[Trait("Category", "Bbs")]`, which only
      the interop tests had. `dotnet test --filter "Category=Bbs"` now selects them all.
-   - **A test that forgets the call is caught by an architecture test** (added after the external review,
-     as the epic's decision: eleven more sub-issues will add `bbs-2023` tests). `BbsTestConventionTests`
-     parses the test sources. In every test file whose code names anything of `bbs-2023`, each test must be
-     skippable, begin with the call and be in the `Bbs` category, unless it is on a named list of tests
-     that need no native library. What the parser cannot resolve is reported, not passed over. Its limits
-     are under "External review, round 2".
-   - `TestSupport` is the existing shared test library. It must not reference `Credentials.Rdfc` (the
-     architecture tests keep the RDF stack out of their host), so the helper asks NetCrypto's provider, which
-     is already in every test project's graph through `Credentials.Core`. It gains two package references:
-     `NetCrypto` and `Xunit.SkippableFact`.
-   - `BbsNativeLibraryTests` also asks `Bbs2023Cryptosuite`, the object the product asks, and requires the
-     two answers to agree. Today both read the same NetCrypto flag; the assertion keeps the tests from acting
-     on a different answer if the two ever part.
+   - **A test that forgets the call is caught by running without the library** (since the re-plan of
+     2026-11-24; before that an architecture test read the sources). See "Re-plan" above.
 
 4. **A skip is an xUnit skip**: `[SkippableFact]` / `[SkippableTheory]`, the style the interop tests and the
    W3C harness already use. A `RequireOrSkip()` under a plain `[Fact]` fails instead of skipping, so a wrong
@@ -205,11 +265,9 @@ Who decided what:
    - A standing one, inside the suite: the load-context test of decision 3 runs the failing path on every
      leg, Windows included. It came out of the adversarial pass, which showed that nothing else would notice
      a broken helper while the library is present.
-   - Ruling of the epic orchestrator: the one-off is enough; no standing CI step. There is none.
-   - Alternative: a standing CI step on every leg that hides the library file and requires the tests to fail
-     (about 20 s per leg, one more script). It checks behaviour, so it would also catch what the source scan
-     of decision 3 cannot see: a test that reaches `bbs-2023` only through code in another file and carries
-     no category.
+   - Ruling of the epic orchestrator, 2026-11-23: the one-off is enough; no standing CI step.
+   - **Superseded on 2026-11-24 by the owner's decision:** a standing step on every leg removes the library
+     and requires each `bbs-2023` test to fail. See "Re-plan" above.
 
 10. **`FrCoverageGateTests` does not change.** It stays a static scan of `[FrTag]` attributes. What changes
     is that a tagged `bbs-2023` test can no longer pass without running, and cannot be skipped on CI.
@@ -225,10 +283,8 @@ Considered and not taken:
 - **An architecture test that forbids hand-written availability guards in test sources.** On CI a test with
   such a guard still runs, because the library is there, and off CI the helper call that the convention test
   requires fails or skips before the guard is reached.
-- **Checking the convention by behaviour, not by reading sources.** The convention test reads C# sources
-  and names. Reflection over the test assemblies would not see the call either, and the architecture tests
-  must not load `Credentials.Rdfc`. The standing CI step of decision 9 is the behavioural check, and the only
-  complete one; see the limits under "External review, round 2".
+- **Checking the convention by behaviour, not by reading sources**, was not taken at first and is what the
+  re-plan of 2026-11-24 does.
 - **Treating BLS key generation like the BBS library.** `Bbs_issuance_is_gated` needs no BBS call, but it
   generates a BLS key, which needs NetCrypto's second native library (`blst`). Where that is missing the test
   fails loudly with `DllNotFoundException`. NetCrypto has no availability check for it (crypto-dotnet#34),
@@ -241,7 +297,9 @@ Considered and not taken:
 | `tests/Credentials.TestSupport/BbsNativeLibrary.cs` (new) | The helper: `RequireOrSkip()`, made of `OutcomeFor` (the rule, a pure function) and `Enforce` (what an outcome does to the calling test); `IsAvailable`; the list of five runtime identifiers; the host's identifier, from a pure function of operating system and architecture. |
 | `tests/Credentials.TestSupport/Credentials.TestSupport.csproj` | Versionless `NetCrypto` and `Xunit.SkippableFact` package references (both already pinned centrally). Header comment updated. |
 | `tests/Credentials.Rdfc.Tests/BbsNativeLibraryTests.cs` (new) | Seven tests. (a) The named check that the library is there, with the agreement assertion of decision 3. (b) A theory that pins the rule of decisions 1 and 2, all eight cases. (c) What each outcome does to a test: return, fail, skip. (d) Where the rule's inputs come from on this host. (e) The real call against a copy of NetCrypto that is refused the library. (f) A theory that pins the platform mapping. (g) The declaration test of decision 5. |
-| `tests/Credentials.ArchitectureTests/BbsTestConvention.cs`, `BbsTestConventionTests.cs`, `BbsTestConventionFixtures/` (new, review rounds 1 to 3) | The convention scan on a syntax tree, its tests, and 78 fixtures (45 after round 2). `Directory.Packages.props` and the project file gain `Microsoft.CodeAnalysis.CSharp`, test-only. |
+| `tools/check-bbs-tests-without-library.sh`, `tests/Credentials.BbsGate/` (new, round 4) | The no-library gate: the script, and a console project with the scope scan (`BbsScope`), the reading of result files and the comparison of the two runs. `Directory.Packages.props` and the project file gain `Microsoft.CodeAnalysis.CSharp`, for this tool alone. |
+| `tests/Credentials.BbsGate.Fixtures/` (new, round 4; not in the solution) | Deliberately wrong `bbs-2023` tests, the list and the findings the gate must report for them. Run by the script's `--self-test` on every leg. |
+| `tests/Credentials.ArchitectureTests/BbsScopeTests.cs`, `NoLibraryGateTests.cs`, `BbsScopeFixtures/` (new, round 4; they replace the convention test of rounds 1 to 3) | Tests of the scope scan over the real sources and over fixtures, and of the comparison over made-up results. |
 | `tests/Credentials.SampleSmokeTests/Bbs2023SampleSmokeTests.cs` (new; `SampleSmokeTests.Bbs2023.cs`, a part of a partial class, in review round 2) | The `bbs-2023` smoke test, in a class and a file of its own, so that the other samples' tests stay outside the convention scan. |
 | `tests/Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs` | The 11 guards become `BbsNativeLibrary.RequireOrSkip()`; 10 `[Fact]` become `[SkippableFact]` and the theory becomes `[SkippableTheory]`. The `BbsAvailable` field and the "COVERAGE NOTE" go; the class summary is corrected; the class gains the `Bbs` category. Test bodies do not change. |
 | `tests/Credentials.Rdfc.Tests/Credentials.Rdfc.Tests.csproj` | `Xunit.SkippableFact` reference. |
@@ -273,6 +331,8 @@ Considered and not taken:
 - [x] 15. External review, round 2: the convention scan rebuilt on a syntax tree, with fixtures
 - [x] 16. External review, round 3: one reading for every test source file; the early exits audited; three
   adversarial rounds, with what they found closed or recorded as a limit
+- [ ] 17. External review, round 4 (re-plan): the no-library gate on every leg, the scan cut down to scope,
+  committed coverage of what the gate must report, an adversarial round on the whole design
 
 ## How each "Done when" bullet is proven
 
@@ -559,219 +619,33 @@ without, in two processes.
 - `ISecuringCapabilities` still lists `bbs-2023` and reports it supported.
 - The full table went to the epic orchestrator for #59. Nothing under `src/` changes in this PR.
 
-### External review, round 1
+### The source scan, review rounds 1 to 3: what was tried, and why it went
 
-The review of PR #72 (on 386da36) approved, with five optional observations. Each was checked against the
-code before anything changed. The work is in the commit after 1d17c74.
+The external review asked for a check that a `bbs-2023` test cannot leave the helper call out. For three
+rounds that check read the test sources. Each version, what the review found in it, and what changed:
 
-| # | Observation | Checked | Done |
+| Round | The check | What the review found | What changed |
 |---|---|---|---|
-| 1 | The load-context test depends on how NetCrypto loads the library. A release that used an absolute path or its own import resolver would bypass the context; the failure would be loud. | True: NetCrypto uses an ordinary P/Invoke, and an import resolver set on the assembly is asked before the load context. | The test's remarks now say why it works and what that failure would mean. |
-| 2 | A test that forgets the helper call. Suggested: an architecture test that every non-skippable test in a `Category=Bbs` class is one of the three named registration tests. | The gap is real. The suggestion as worded would fail today: `BbsNativeLibraryTests` is in the category too and has five plain tests of its own, and one skippable test that rightly makes no call. | **`BbsTestConventionTests`**, which also covers the omitted call the suggestion left open. See below. |
-| 3 | The sample exits with a stack trace. | True; decision 6 weighed it. | No change, as the review agrees. |
-| 4 | `docs/conformance.md` hard-coded "NetCrypto 1.7.1". | True; nothing ties that string to the pin. | The text now refers to the version `Directory.Packages.props` pins. |
-| 5 | A local `act` run sets `GITHUB_ACTIONS=true` too. | True (read in act's source). | One clause in the docs, where they say what counts as GitHub Actions. No code change. |
+| 1 (ac942a4) | A scan of the sources as text: every test in a `Bbs` class contains the call. | Case 1: the call inside a block comment counts as a call. Case 2: `[Trait("Category", "Bbs"), SkippableFact]` with an early return is not seen as a test. | Rebuilt on a Roslyn syntax tree; scope became "a file that names the suite"; what the tree cannot resolve was reported. 45 fixtures. |
+| 2 (28925f2) | The syntax-tree scan. | Case 3: a file wrapped whole in `#if NET10_0` is all disabled text to a parser without symbols, so it was out of scope before any rule ran. | Conditional compilation, bytes that are not UTF-8 and a wrong language version became findings in every test source file. |
+| 3 (cf28395) | The same, after three adversarial passes of my own, with rules on skips before the call, trusted names, attributes, return types, sealed and partial classes. 78 fixtures, 102 mutants of the scanner. | The orchestrator's independent pass: a theory whose rows come up empty without the library reports nothing at all; and the scan now rejected `[Collection]`, any base class, `using static`, `partial`, `ValueTask` and more. | The re-plan above. |
 
-Observation 2 was first answered with a scan of the source text. Round 2 replaced it; the mutants that
-scan was checked against are among the fixtures now.
+What the adversarial passes of round 3 found, for the record, since each is now a matter for the gate and
+not for a rule: a file that names nothing of the suite; a file name with an upper-case extension on Linux;
+a parser a language version ahead of the compiler; a skip in a constructor, an initializer,
+`InitializeAsync`, theory data or an attribute's argument; `BeforeAfterTestAttribute` on the class or the
+assembly; a string, or an alias named `global`, in the place of the helper type; an `enum Task` with its
+own method builder; a test attribute on a property accessor, and under `[@method: ...]`; `async ValueTask`,
+which xUnit 2 does not await; the other part of a partial class and a derived class in another file; a
+global static import of `Xunit.Skip`. Twenty-odd rules later, no pass had come back empty.
 
-### External review, round 2
+Why it went: every one of those is a way for a test to pass or skip without the library, and running the
+tests without the library shows each of them without a rule that names it. The scan could only ever
+enumerate the ways someone had already thought of.
 
-**Found.** The review of ac942a4 showed that the convention test accepted missing helper calls under
-ordinary C# syntax. Each form below was run against the unchanged scan before anything was touched.
-
-| Form | Reported by the text scan? |
-|---|---|
-| Review, case 1: every helper call replaced by the same text in a block comment | No |
-| Review, case 2: `[Trait("Category", "Bbs"), SkippableFact]` and an early return | No |
-| `[SkippableFactAttribute]`; `[Xunit.SkippableFact]` | No |
-| Two classes in a file, the tests in the second | No |
-| The call in a later method that is not a test | No |
-| The call in dead code, in a lambda that is never invoked, after an early return | No |
-| The word `class` in a block comment before the class | No |
-| `//` inside a string on the line of the call | Yes, wrongly: the call was hidden and the test reported |
-
-**Changed.**
-
-- **The scan parses the sources.** `BbsTestConvention` works on a Roslyn syntax tree, so comments, disabled
-  text and the contents of strings are not code by construction. `Microsoft.CodeAnalysis.CSharp` 5.12.0, the
-  latest stable, is a reference of the architecture tests alone. It is not older than the compiler of the
-  SDK that builds the tests (5.9.0 in SDK 10.0.404); if it ever is, new syntax fails the scan, it does not
-  slip past it. The package audit is clean and the three gate scripts give the same results as before.
-- **Scope is the file.** A test file whose code has an identifier that contains "bbs", a string that names
-  the suite or one of its types, or the `Bbs` category trait is a `bbs-2023` test file, and every test in
-  it is checked, in whichever class. The text scan started from the category, so a file without it was
-  never looked at.
-- **The call is the first statement.** One form, so there is one thing to check: it closes dead code,
-  lambdas, local functions and calls after a return. All fifteen call sites already had it there but one,
-  the named check, whose call moved up.
-- **It fails closed.** In a `bbs-2023` test file these are findings: a file that does not parse; an
-  attribute on a method that the scan does not know; a base type it does not know, on any type;
-  conditional compilation; a partial method; a static import; a test that returns anything but `void` or a
-  task; a `Skip` on any attribute of a test; an unnamed argument on a test attribute; anything else declared
-  with the helper's name. In any test file: a type or an alias named like an attribute the scan knows.
-- **The smoke test of the `bbs-2023` sample moved** into its own part of `SampleSmokeTests`. Otherwise the
-  thirteen other samples' tests would be in a `bbs-2023` test file and would each need a place on the list.
-- **The mutants are in the suite.** `BbsTestConventionFixtures/` holds 45 source files that are never
-  compiled (`.cs.txt`): 42 that must be reported, each naming the rule and the offender it expects, and 3 of
-  legitimate forms that must not be. Both cases of the review are there as written, and the first is also
-  applied to the real test file at run time and must be reported for all eleven tests.
-
-**Evidence.**
-
-- 530 passed, 0 skipped on `osx-arm64`: the 480 of round 1, less the 3 tests of the text scan, plus 53 (the
-  real scan, 45 fixtures, the review's first case on the real file, the fixture inventory, and 5 cases of
-  which folders the scan leaves out). The hidden-library runs are unchanged: Rdfc 15 failed, Interop 2,
-  SampleSmoke 1.
-- **The scan under mutation.** 39 mutants of the scanner, each a rule switched off or loosened, among them
-  "the call anywhere in the body", "the call found as text" and "a test attribute only when first in its
-  list". Each one fails at least one fixture. The unaltered scanner passes.
-- **Adversarial pass**, one fresh subagent with the scanner and the fixtures, asked for a test that
-  compiles, passes without the library and is not reported. It delivered thirteen, each reproduced here
-  before it was acted on. (A first attempt at this pass was lost to a usage limit and reported nothing.)
-
-  | Evasion | Disposition |
-  |---|---|
-  | A test that returns a sequence: xUnit never enumerates it, so the body does not run | Closed: `return-type` |
-  | A guarded virtual test, overridden without the call in the same file; a contract base class in another | Closed: a base type the scan does not know is a finding on every type |
-  | A `dynamic` field named `TestSupport`, so that `TestSupport.BbsNativeLibrary` is not the helper | Closed: only the bare name and the `global::` form are accepted |
-  | A `TraitAttribute`, or a `SkippableFactAttribute`, of the project's own | Closed: `attribute-shadowed`, in any test file |
-  | A global alias that makes `[ClassData]` a `[Fact]` | Closed: `attribute-shadowed` |
-  | Names written with unicode escapes or a soft hyphen; a static import of a member named like the helper | Closed: token values, not spellings; `static-import` |
-  | The body of a partial method, its `[Fact]` in another file | Closed: `partial-method` |
-  | A test file in a folder named `obj` below the project's own | Closed: only the project's `bin` and `obj` are left out |
-  | `[SkippableFact(typeof(InvalidOperationException))]`: the helper's failure becomes a skip | Closed: `test-attribute-arguments` |
-  | A category on an outer class, which xUnit does not pass to a nested one | Closed: the category must be on the test or its own class |
-  | An alias for the helper in the project file | **Limit.** Not in a C# source under `tests/` |
-  | A type named like the helper, declared under `samples/` | **Limit.** The same |
-  | A test whose file names nothing of `bbs-2023`: the provider from a shared factory, the credential from a stored file | **Limit.** The scan's stated one |
-
-  It also reported false alarms, which are fixed and kept as a fixture of legitimate forms: a base64 value
-  with the letters b-b-s in it put a file in scope; `[Obsolete]`, `[MethodImpl]` and a `return:` attribute,
-  `IEquatable<T>`, `TheoryData<T>` and an ordinary `using` alias were reported.
-
-**Not covered.** A syntactic check cannot be complete, and this one is not:
-
-- a test that reaches `bbs-2023` only through code in another file, in a file that names nothing of it. A
-  shared provider factory, stored test vectors or a loop over the registered suites would each open this,
-  and each is an ordinary refactoring;
-- what the build takes from outside the C# sources under `tests/`: a project file, generated code, a source
-  elsewhere, another assembly;
-- the body of a test on the list of those that need no native library.
-
-The standing CI step of decision 9, which removes the library and requires that no test of the `Bbs`
-category passes, is the only complete closure. It is the owner's call.
-
-### External review, round 3
-
-**Found.** The review of 28925f2: a test file wrapped whole in `#if NET10_0 ... #endif` drew no finding. The
-scan parsed with no symbols, so the file was all disabled text; `TouchesBbs` reads tokens, found none, and
-the file was dropped before `CheckFile`, which reports conditional compilation, could run. Reproduced
-before anything was touched, all by running:
-
-- the reviewer's file, against the unchanged scan: no finding, no `bbs-2023` file. Without the wrapper:
-  `unguarded-test`. With `#if true`: `conditional-compilation` and `unguarded-test`;
-- the build defines the symbol: `NET`, `NET10_0`, `NET10_0_OR_GREATER`, `NETCOREAPP` and `RELEASE` each
-  raised its `#error` in a test project built as CI builds it;
-- the reviewer's file compiled into `Credentials.Rdfc.Tests`: its test is discovered, and it passes with
-  the library removed, beside the named check, which fails.
-
-**Changed: one tree for a file.** The scope decision was one of several things the scan decided before its
-rules ran. They are now listed (the table below), and whatever could make the scan's reading of a file
-differ from the build's is a finding in every test source file, before scope is decided:
-
-- **Conditional compilation** (`#if`, `#define`, `#undef`), in any test source file. No test, sample or
-  tool source uses a preprocessor directive of any kind today, so nothing legitimate is lost.
-  The orchestrator suggested deciding scope over every branch, by reading the file with its directives
-  neutralised. That was tried and does not hold: which lines are directives depends on the branch taken
-  (the fixture `condition-hidden-by-a-comment-in-another-branch` compiles a class that neither reading
-  sees), and the rules that apply in every file need the syntax of every branch, not its tokens. A file
-  without a condition has one reading, which is the property asked for.
-- **Bytes that are not UTF-8.** The compiler reads them by a code page of the machine; the scan sees a
-  replacement character and reports the file.
-- **The language version.** The parser package's `Latest` is C# 15; the SDK compiles at 14. The scan
-  parses at a named version, and a test compares it with the one the compiler recorded in the PDB of the
-  test assembly.
-- **The choice of files.** `*.cs` as a pattern is matched by letter case on Linux, where the build
-  compiles `X.CS` (run in a container). Every file is now listed and the extension matched without case;
-  a test builds a small tree on disk on every leg.
-
-**The early exits.** Each place where the scan decides that something is out of scope or needs no check:
-
-| Exit | Reads | Why it cannot leave out code the build compiles | At the boundary |
-|---|---|---|---|
-| Root folder `tests/` | the folder | **Limit:** a project file can compile a source from elsewhere | none |
-| Extension | the file name | `.cs` in any case is what the build's glob takes, on every platform (run) | the on-disk test; rows of the path theory |
-| Build output | the path | Only a project's own `bin` and `obj`, which the SDK excludes. Nested ones, another letter case, hidden files and dot folders are scanned. **Limit:** an output path moved by a project file | rows of the path theory |
-| Links | the file system | Linked files and folders are followed by the build and by the listing (run on macOS and Linux) | none: a link cannot be made on every leg |
-| Decoding | the bytes | UTF-8 and byte order marks are detected as the compiler detects them; other bytes are a finding | `replacement-character`; the on-disk test |
-| Parse options | the text | The build's language version, held by a test. **Limit:** not the same parser release | the language-version test |
-| Syntax error | parser diagnostics | Reports, then stops | `syntax-error`, `else-without-if` |
-| Conditional compilation | directive trivia | Reported in every file, so no file has an unread branch | `review-3-…`, nine `condition-…`, `define-…`, `undef-…`, the theory of conditions; `ok-directives-that-select-no-code` on the other side |
-| Checks in every file | declarations, aliases, assembly attributes, global static imports | They run before scope, on the one tree | `own-skippable-fact-attribute`, `alias-named-like-…`, `task-type-of-the-project`, `base-type-named-like-…`, `attribute-of-the-assembly`, `global-static-import` |
-| Scope (`TouchesBbs`) | values of identifiers and strings, the trait | **Limit by design:** a file that names nothing | `names-bbs-2023-without-a-category`, `only-a-string-names-it`, the three escape fixtures; `ok-not-a-bbs-2023-file`; `limit-a-file-that-names-nothing-…` |
-| What is a test | every attribute in the file | A test attribute anywhere but on a method is a finding; so is an attribute the scan does not know, except on a parameter or a return value, which are not run | `test-attribute-off-a-method`, `test-attribute-on-a-local-function`, `test-outside-a-class`, `unknown-…` |
-| The list | full names | By review. A stale, duplicate or guarded entry is a finding | `ok-listed-tests`, `list-names-…`, `listed-test-…`, `two-tests-with-one-name` |
-| The helper type, for skips | the name of the enclosing type | One type of that name, in a file without tests | `ok-the-helper-itself`, `second-type-named-like-the-helper` |
-| The declared `FrTagAttribute` | name, file name, base list | Only in its own file, with `Attribute` as its one base | the theory on the declared attribute |
-
-**Adversarial pass: three rounds, and the third was not clean.** Each round was a fresh sub-agent with the
-code and a goal; every reported case was reproduced (scan green, test passing or skipped with the library
-removed and `GITHUB_ACTIONS=true`) before it was acted on.
-
-| Round | Aim | Found | Disposition |
-|---|---|---|---|
-| 1 | the scope decision and the early exits | A test in a file that names nothing, reaching the suite by reflection on a split type name | **Limit**, the stated one; now with a fixture, and the wording covers the in-file case |
-| own audit, between rounds | the same | `X.CS` on Linux; the parser a language version ahead; bytes that are not UTF-8 | Closed, as above |
-| own audit | what runs before the call | A skip in a constructor, a field initializer, `InitializeAsync`, theory data; a `BeforeAfterTestAttribute` on the class or the assembly: the guarded test is **skipped** where it has to fail | Closed: `skip-outside-a-test`; an unknown attribute is a finding on a type and on the assembly |
-| 2 | the whole scan | `"BbsNativeLibrary".RequireOrSkip()` on a string | Closed: the helper has to be written as a name |
-| 2 | | A nested `enum Task` with a method builder that drops the exception | Closed: `name-shadowed`, in every file, for every name the scan trusts |
-| 2 | | A test attribute under an unknown name on a property getter (two forms) | Closed: every attribute in the file has to be known, wherever it sits |
-| 2 | | A base class named `TheoryData`; a method named `Skip`; the helper's own `Enforce` | Closed: `name-shadowed`; `skip-outside-a-test` counts all three names |
-| 3 | the whole scan | `async ValueTask`: xUnit 2 does not await it, so the test passes whatever it throws. A fixture of mine listed it as legitimate | Closed: `return-type`; only `void` and `Task` |
-| 3 | | `[@method: Fact]`; `@global::` with an alias named `global` | Closed: no target filter on a method's attributes; `global` has to be the keyword |
-| 3 | | A skip named in an attribute of the test and handed to its data (two forms) | Closed: only the body of a test is exempt |
-| 3 | | The other part of a partial class, and a derived class, in a file out of scope; a partial property | Closed: `partial-type`, `unsealed-test-class`. `SampleSmokeTests` was partial for the sake of this scan; the `bbs-2023` smoke test is now `Bbs2023SampleSmokeTests`, a class of its own |
-| 3 | | `global using static Xunit.Skip;` in another file | Closed: a global static import is a finding in any file |
-| 3 | | A skip made by reflection in a constructor | **Limit**, with a fixture |
-
-The orchestrator set a stop at three rounds. The third still found ten cases the scan could close, all
-closed here, and no round has run since. That is the state of this check: it holds against everything
-found so far, and nothing shows that the next reader would find nothing.
-
-**Proof.** All run, on `osx-arm64` unless it says otherwise.
-
-- The fixtures of the reviewer's class against the scan of 28925f2: it reported nothing for the reviewer's
-  file and for seven more (the test in an `#elif` or an `#else` branch, nested conditions, a condition
-  around only the usings, only the trait or one method, a comment in the other branch that hides the
-  directives). All are reported now.
-- Every compiled candidate of the three adversarial rounds, put back into `Credentials.Rdfc.Tests` in a
-  scratch copy and scanned: each is reported, in its own file or in the file that holds its mechanism,
-  except the two that are limits.
-- 78 fixtures: 70 that must be reported, 6 of legitimate forms, 2 that record a limit.
-  `BbsTestConventionTests` has 114 test cases.
-- 102 mutants of the scanner, each a rule switched off or loosened or an entry of a known list removed.
-  101 fail at least one test on every platform. The last, a `*.cs` pattern for the file listing, fails the
-  on-disk test on Linux only (run in a `linux-arm64` container, where the 114 pass unmutated).
-- The whole suite, by the CI command: 591 passed, 0 skipped. The 61 more than before this round are all in
-  `Credentials.ArchitectureTests`. With the library removed: 15, 2 and 1 failed, as before. The three gate
-  scripts pass.
-- Nothing under `src/` changed. One test moved: the smoke test of the `Bbs2023` sample is now
-  `Bbs2023SampleSmokeTests.Bbs2023`, with the same body.
-
-**Not covered.** As before, and stated in the scanner's remarks, `docs/conformance.md` and two fixtures
-that the scan must *not* report (`limit-…`): a test in a file that names nothing of `bbs-2023`; a skip
-before the call that comes from another file under a name of its own, or is made by reflection; what the
-build takes from a project file, generated code, a source outside `tests/` or another assembly; a
-difference between two Roslyn releases at one language version; the body of a listed test. The standing
-CI step of decision 9 remains the only complete closure, and the owner's call.
-
-**Stricter than before, on purpose.** In a `bbs-2023` test file the scan now also reports things a
-contributor may well write: `[Collection]`, `IAsyncDisposable`, `[SuppressMessage]`, LINQ's `.Skip(1)`
-outside a test body. In any test file it reports a type named `Task`, `Trait` or `Exception`, an
-assembly attribute such as `[assembly: CollectionBehavior]`, and `#if`. Each finding says what to do, and
-the known lists are where a name is added once someone has looked at it. No real test source draws one
-today.
+What survives from those rounds: the syntax tree, the choice of files (every `.cs` file in any letter
+case), UTF-8, the pinned language version, and one reading of each file. They protect the one decision the
+scan still makes.
 
 ### What changed during the work
 
@@ -793,12 +667,10 @@ Against the first version of this plan (c96fd95):
 - `Credentials.TestSupport` references `Xunit.SkippableFact` as well as `NetCrypto`, because the helper now
   performs the skip.
 - `tasks/lessons.md` has an entry for what this taught.
-- **A convention test checks the test sources**: on text after round 1 of the external review, on a syntax
-  tree after round 2. Round 3 made it refuse any test source file that can be read two ways, and added the
-  rules on skips before the call, on the names the scan trusts and on attributes.
-- **The smoke test of the `Bbs2023` sample is a class of its own**, `Bbs2023SampleSmokeTests`, since round
-  3. Round 2 had made `SampleSmokeTests` partial to keep the other samples out of the scan's scope; a
-  partial class is now a finding in a `bbs-2023` test file.
+- **A convention check exists at all**: asked for by the external review. It read the sources for three
+  rounds and runs the tests without the library since the re-plan of 2026-11-24.
+- **The smoke test of the `Bbs2023` sample is a class of its own**, `Bbs2023SampleSmokeTests`, so that the
+  other thirteen samples are not `bbs-2023` tests.
 
 ### Follow-ups, none in this PR
 
