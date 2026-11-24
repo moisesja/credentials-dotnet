@@ -25,6 +25,33 @@ through things a syntax tree has no way to resolve. **Rules:**
 - My own mutants covered what I had thought of. The reviewer's first idea was one I had not. Ask an
   independent agent for breadth before trusting a check of this kind, and then mutate the checker too.
 
+Round 3 of the same review (2026-11-24). The reviewer wrapped a whole test file in `#if NET10_0`. The scan
+parses without symbols, so it read an empty file, found nothing of the suite in it, and dropped the file
+before any rule ran, the rule that reports conditional compilation among them. Three adversarial rounds
+followed, each with a fresh agent, and none came back empty: a file pattern matched by letter case on
+Linux, a parser one language version ahead of the compiler, a skip in a constructor, a string in the place
+of a type name, an `enum Task` with its own method builder, a `ValueTask` that xUnit 2 never awaits, a
+verbatim `@method:` target, an alias named `global`. **More rules:**
+
+- An out-of-scope decision made before the rules run is itself a rule, and needs its own fixtures. List
+  every such exit: which files are read, how they are decoded and parsed, what puts a file, a class or a
+  method in scope. For each, say why it cannot leave out code the build compiles, and put a fixture at its
+  boundary.
+- Whatever could make the checker's reading of a file differ from the build's goes before the scope
+  decision and is reported in every file, not only in the files already in scope.
+- Don't mirror the build's inputs in the checker (its symbols, its globs, its language version). Refuse the
+  case where the two could differ, or compare with what the build itself recorded: the compiler writes its
+  language version and symbols into the PDB.
+- Compare syntax by kind, not by text. The value of a string token is the text of a name, `@method` has the
+  value of a keyword, and `@global::` spells the global namespace.
+- Every name the checker trusts is a rule too (`Task`, `TheoryData`, `Trait`): say where a declaration of
+  that name is reported, and trust nothing the framework does without running it. I had listed
+  `ValueTask` as a legitimate return type in a fixture; xUnit 2 drops what such a test throws.
+- An allow-list entry is a claim. Each one needs a fixture that fails when the entry is removed, or it goes.
+- Run a fresh adversarial round after the fixes, not only before, and say plainly when the last round
+  still found something: three rounds here, and the third found ten. A syntactic guard of this kind does
+  not converge; the complete check is to run the tests without the library.
+
 ## A gate in one test process does not protect the others, and every exemption needs a detector someone can fool (2026-11-23)
 
 For #57 my first design had one availability test, in `Credentials.Rdfc.Tests`, fail when the native BBS
@@ -87,6 +114,12 @@ stopped it: "add the current work to the existing PR … no, one PR only". The s
 round before (the all-latest update was folded into #21). **Rule:** while a release PR is open, every
 change for that release goes onto it. Don't branch or stack; propose folding and only ask if the change
 would make the PR unreviewable. Keep the folded PR's description current for each addition.
+
+**2026-11-24, the same rule from the other side.** The convention guard was added to PR #72 in response
+to its review, and the review kept finding ways past it. The orchestrator offered to split the guard out
+into a sub-issue of its own so that the rest of the PR could merge. The owner declined: "no, I want to
+include the fix in this PR". **Rule:** work added to a PR in response to its review is finished in that
+PR; do not offer to split it out to get the rest merged.
 
 ## A count-based gate that drops after a dependency change is fixed by naming the failures, never by lowering the count (2026-10-29)
 
