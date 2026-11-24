@@ -1,0 +1,5 @@
+// An attribute of the assembly that the scan does not know, in a file that names nothing of bbs-2023. xUnit
+// runs one that derives from BeforeAfterTestAttribute before every test of the assembly, where it can skip
+// the test before the call. Reported in any file.
+// expect: unknown-attribute (assembly)
+[assembly: Fixtures.RequiresTheNativeLibrary]

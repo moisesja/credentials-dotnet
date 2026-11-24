@@ -1,0 +1,27 @@
+// A limit of the scan, kept here so that it is stated by a test and not only in words. Nothing in the code
+// of this file names the suite: no identifier, no string that the scan takes for its name, no category. The
+// scan decides by names, so to it this is not a bbs-2023 test file, and it reports nothing. Both tests do
+// reach the suite, the first through a helper in another file, the second by reflection on a type name put
+// together when it runs, and neither begins with the call. Only a run without the native library shows it.
+// expect: nothing
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class DerivedProofRoundTripTests
+{
+    [Fact]
+    public void Through_a_helper_in_another_file()
+    {
+        var suite = Suites.SelectiveDisclosure();
+        if (!suite.IsAvailable) return;
+    }
+
+    [Fact]
+    public void Through_a_name_put_together_at_run_time()
+    {
+        var type = Type.GetType("DataProofsDotnet.Rdfc.DataIntegrity.Bb" + "s2023Cryptosuite, DataProofsDotnet.Rdfc", throwOnError: true)!;
+        var suite = Activator.CreateInstance(type, [null])!;
+        if (!(bool)type.GetProperty("IsAvailable")!.GetValue(suite)!) return;
+    }
+}

@@ -1,4 +1,8 @@
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Text;
 using FluentAssertions;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace Credentials.ArchitectureTests;
@@ -49,9 +53,14 @@ public sealed class BbsTestConventionTests
             "reflects over the public surface; it names a bbs-2023 type and calls nothing",
         [Self + nameof(Every_test_in_a_bbs_2023_test_file_begins_with_the_helper_call_or_is_listed)] = "this scan",
         [Self + nameof(A_fixture_is_reported_exactly_as_its_header_says)] = "this scan, over its fixtures",
-        [Self + nameof(The_fixtures_hold_both_cases_of_the_review_and_the_legitimate_forms)] = "this scan's fixtures",
+        [Self + nameof(The_fixtures_hold_the_cases_of_the_review_and_the_legitimate_forms)] = "this scan's fixtures",
         [Self + nameof(The_first_case_of_the_review_is_reported_on_the_real_test_file)] = "this scan, over an altered copy",
-        [Self + nameof(Only_the_build_output_of_a_project_is_left_out_of_the_scan)] = "this scan's choice of files",
+        [Self + nameof(The_third_case_of_the_review_is_reported_on_the_real_test_file)] = "this scan, over an altered copy",
+        [Self + nameof(The_third_case_of_the_review_is_reported_whatever_the_condition)] = "this scan, over an altered fixture",
+        [Self + nameof(Every_source_file_but_the_build_output_of_a_project_is_scanned)] = "this scan's choice of files",
+        [Self + nameof(The_scan_reads_the_files_a_project_compiles_by_default)] = "this scan's choice of files, on disk",
+        [Self + nameof(The_scan_parses_at_the_language_version_of_the_build)] = "this scan's parse options",
+        [Self + nameof(The_attribute_the_test_sources_declare_is_accepted_only_as_a_plain_attribute)] = "this scan's one exemption",
     };
 
     private static string FixtureDirectory =>
@@ -60,7 +69,7 @@ public sealed class BbsTestConventionTests
     [Fact]
     public void Every_test_in_a_bbs_2023_test_file_begins_with_the_helper_call_or_is_listed()
     {
-        var result = BbsTestConvention.Scan(TestSources(), [.. NeedNoNativeLibrary.Keys]);
+        var result = BbsTestConvention.Scan(BbsTestConvention.ReadSources(LibrarySurface.RepoRoot), [.. NeedNoNativeLibrary.Keys]);
 
         result.Findings.Should().BeEmpty(
             "every test in a bbs-2023 test file must begin with BbsNativeLibrary.RequireOrSkip(); under "
@@ -74,7 +83,7 @@ public sealed class BbsTestConventionTests
             Rdfc + "Bbs2023SelectiveDisclosureTests.Bbs_malformed_reveal_pointer_maps_to_credential_format_exception", // a theory
             Rdfc + "BbsNativeLibraryTests.Bbs_native_library_loads_wherever_it_has_to",
             "Credentials.InteropTests.Bbs2023InteropTests.Bbs_derived_proof_pins_the_vc_di_bbs_wire_format_and_verifies",
-            "Credentials.SampleSmokeTests.SampleSmokeTests.Bbs2023", // the trait is on the method
+            "Credentials.SampleSmokeTests.Bbs2023SampleSmokeTests.Bbs2023", // the trait is on the method
         ]);
         result.ListedTests.Should().BeEquivalentTo(NeedNoNativeLibrary.Keys);
     }
@@ -97,7 +106,7 @@ public sealed class BbsTestConventionTests
     }
 
     [Fact]
-    public void The_fixtures_hold_both_cases_of_the_review_and_the_legitimate_forms()
+    public void The_fixtures_hold_the_cases_of_the_review_and_the_legitimate_forms()
     {
         var fixtures = Fixtures().Select(row => (string)row[0]).ToList();
 
@@ -105,6 +114,7 @@ public sealed class BbsTestConventionTests
         [
             "review-1-call-in-a-block-comment.cs.txt",
             "review-2-trait-before-the-test-attribute-and-an-early-return.cs.txt",
+            ThirdCaseOfTheReview,
         ]);
 
         // Both directions are covered: fixtures that must be reported, and fixtures that must not be.
@@ -123,7 +133,7 @@ public sealed class BbsTestConventionTests
     {
         const string call = "BbsNativeLibrary.RequireOrSkip();";
         var listed = NeedNoNativeLibrary.Keys.ToList();
-        var sources = TestSources();
+        var sources = BbsTestConvention.ReadSources(LibrarySurface.RepoRoot);
         var target = sources.Single(s => s.Path.EndsWith("Bbs2023SelectiveDisclosureTests.cs", StringComparison.Ordinal));
         var guardedThere = BbsTestConvention.Scan(sources, listed).GuardedTests
             .Where(id => id.StartsWith(Rdfc + "Bbs2023SelectiveDisclosureTests.", StringComparison.Ordinal))
@@ -138,26 +148,176 @@ public sealed class BbsTestConventionTests
             guardedThere.Select(id => $"{BbsTestConvention.Rules.UnguardedTest} {id}"));
     }
 
-    [Theory]
-    [InlineData("Credentials.Rdfc.Tests/obj/Release/net10.0/Generated.cs", true)]
-    [InlineData("Credentials.Rdfc.Tests/bin/Release/net10.0/Copied.cs", true)]
-    [InlineData("Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs", false)]
-    [InlineData("Credentials.Rdfc.Tests/Vectors/obj/Bbs2023VectorTests.cs", false)] // compiled: only the project's own obj is not
-    [InlineData("Credentials.Rdfc.Tests/Vectors/bin/Bbs2023VectorTests.cs", false)]
-    public void Only_the_build_output_of_a_project_is_left_out_of_the_scan(string pathUnderTests, bool leftOut)
+    private const string ThirdCaseOfTheReview = "review-3-whole-file-under-a-condition.cs.txt";
+
+    /// <summary>
+    /// The third case of the review of PR #72 on the real <c>Bbs2023SelectiveDisclosureTests</c>: the whole
+    /// file under a symbol the build defines. The scan defines no symbols, so it read an empty file, took it
+    /// for one that has nothing to do with <c>bbs-2023</c> and reported nothing.
+    /// </summary>
+    [Fact]
+    public void The_third_case_of_the_review_is_reported_on_the_real_test_file()
     {
-        BbsTestConvention.IsProjectBuildOutput(pathUnderTests).Should().Be(leftOut);
-        BbsTestConvention.IsProjectBuildOutput(pathUnderTests.Replace('/', '\\')).Should().Be(leftOut);
+        var listed = NeedNoNativeLibrary.Keys.ToList();
+        var sources = BbsTestConvention.ReadSources(LibrarySurface.RepoRoot);
+        var target = sources.Single(s => s.Path.EndsWith("Bbs2023SelectiveDisclosureTests.cs", StringComparison.Ordinal));
+        var listedThere = listed.Where(id => id.StartsWith(Rdfc + "Bbs2023SelectiveDisclosureTests.", StringComparison.Ordinal)).ToList();
+        listedThere.Should().NotBeEmpty();
+
+        var altered = target with { Text = $"#if NET10_0\n{target.Text}\n#endif\n" };
+        var result = BbsTestConvention.Scan([.. sources.Where(s => s != target), altered], listed);
+
+        // The condition is reported on the file. Its tests are in text the scan does not read, so the
+        // ones on the list are reported as not found, too.
+        result.Findings.Select(f => $"{f.Rule} {f.Subject} in {f.File}").Should().BeEquivalentTo(
+        [
+            $"{BbsTestConvention.Rules.ConditionalCompilation} (file) in {target.Path}",
+            .. listedThere.Select(id => $"{BbsTestConvention.Rules.StaleListing} {id} in (list)"),
+        ]);
     }
 
-    private static List<BbsTestConvention.Source> TestSources()
+    /// <summary>
+    /// The same case under other conditions. The scan does not work out which of them a build meets: the
+    /// build's symbols come from the SDK, the project files and the command line.
+    /// </summary>
+    [Theory]
+    [InlineData("NET")]
+    [InlineData("NET10_0_OR_GREATER")]
+    [InlineData("NETCOREAPP")]
+    [InlineData("DEBUG")]
+    [InlineData("RELEASE")]
+    [InlineData("TRACE")]
+    [InlineData("!NETFRAMEWORK")]
+    [InlineData("NET && !NETFRAMEWORK")]
+    [InlineData("(DEBUG || RELEASE)")]
+    [InlineData("true")]
+    [InlineData("false")]
+    public void The_third_case_of_the_review_is_reported_whatever_the_condition(string condition)
     {
-        var testsRoot = Path.Combine(LibrarySurface.RepoRoot, "tests");
-        return Directory.EnumerateFiles(testsRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(file => !BbsTestConvention.IsProjectBuildOutput(Path.GetRelativePath(testsRoot, file)))
-            .Select(file => new BbsTestConvention.Source(Path.GetRelativePath(LibrarySurface.RepoRoot, file), File.ReadAllText(file)))
-            .ToList();
+        var (_, listed, text) = ReadFixture(ThirdCaseOfTheReview);
+        var altered = text.Replace("#if NET10_0", "#if " + condition, StringComparison.Ordinal);
+        altered.Should().NotBe(text);
+
+        var result = BbsTestConvention.Scan([new BbsTestConvention.Source(ThirdCaseOfTheReview, altered)], listed);
+
+        result.Findings.Select(f => $"{f.Rule} {f.Subject}").Should().Contain($"{BbsTestConvention.Rules.ConditionalCompilation} (file)");
     }
+
+    [Theory]
+    [InlineData("Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs", true)]
+    [InlineData("Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.CS", true)] // the build matches the extension in any case
+    [InlineData("Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.Cs", true)]
+    [InlineData("Credentials.Rdfc.Tests/.Bbs2023SelectiveDisclosureTests.cs", true)] // a hidden file is compiled
+    [InlineData("Credentials.Rdfc.Tests/Vectors/obj/Bbs2023VectorTests.cs", true)] // compiled: only the project's own obj is not
+    [InlineData("Credentials.Rdfc.Tests/Vectors/bin/Bbs2023VectorTests.cs", true)]
+    [InlineData("Credentials.Rdfc.Tests/Bin/Bbs2023VectorTests.cs", true)] // on Linux a folder of its own, and compiled
+    [InlineData("Credentials.Rdfc.Tests/.hidden/Bbs2023VectorTests.cs", true)] // not compiled, and scanned all the same
+    [InlineData("Credentials.Rdfc.Tests/obj/Release/net10.0/Generated.cs", false)]
+    [InlineData("Credentials.Rdfc.Tests/bin/Release/net10.0/Copied.cs", false)]
+    [InlineData("Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs.txt", false)]
+    [InlineData("Credentials.Rdfc.Tests/Credentials.Rdfc.Tests.csproj", false)]
+    [InlineData("Credentials.Rdfc.Tests/Vectors/bbs.cs/vector.json", false)]
+    public void Every_source_file_but_the_build_output_of_a_project_is_scanned(string pathUnderTests, bool scanned)
+    {
+        BbsTestConvention.IsTestSource(pathUnderTests).Should().Be(scanned);
+        BbsTestConvention.IsTestSource(pathUnderTests.Replace('/', '\\')).Should().Be(scanned);
+    }
+
+    /// <summary>
+    /// The files are found on disk as the build finds them, on the platform this runs on: a pattern for
+    /// the extension is matched by letter case on Linux, where the build matches it without. A file with
+    /// bytes that are not UTF-8 is read, and reported.
+    /// </summary>
+    [Fact]
+    public void The_scan_reads_the_files_a_project_compiles_by_default()
+    {
+        var root = Directory.CreateTempSubdirectory("bbs-test-convention-");
+        try
+        {
+            void Write(string path, params byte[] bytes)
+            {
+                var file = Path.Combine(root.FullName, "tests", "Some.Tests", path);
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllBytes(file, [.. "// a source file\n"u8, .. bytes]);
+            }
+
+            Write("Lower.cs");
+            Write("Upper.CS");
+            Write("Mixed.Cs");
+            Write(".Hidden.cs");
+            Write("Vectors/bin/Nested.cs");
+            Write("NotUtf8.cs", [.. "// caf"u8, 0xE9, (byte)'\n']);
+            Write("bin/Release/net10.0/Copied.cs");
+            Write("obj/Release/net10.0/Generated.cs");
+            Write("Notes.cs.txt");
+            Write("Some.Tests.csproj");
+
+            var sources = BbsTestConvention.ReadSources(root.FullName);
+
+            sources.Select(s => s.Path.Replace('\\', '/')).Should().BeEquivalentTo(
+            [
+                "tests/Some.Tests/Lower.cs", "tests/Some.Tests/Upper.CS", "tests/Some.Tests/Mixed.Cs",
+                "tests/Some.Tests/.Hidden.cs", "tests/Some.Tests/Vectors/bin/Nested.cs", "tests/Some.Tests/NotUtf8.cs",
+            ]);
+            BbsTestConvention.Scan(sources, []).Findings.Select(f => $"{f.Rule} {f.Subject} in {f.File.Replace('\\', '/')}")
+                .Should().Equal($"{BbsTestConvention.Rules.NotUtf8} (file) in tests/Some.Tests/NotUtf8.cs");
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// The scan knows <c>[FrTag]</c>, which the test sources declare themselves, so the declaration is the
+    /// one type that may be named like an attribute the scan knows. Only as what it is: in its own file,
+    /// with <c>Attribute</c> as its one base. With <c>FactAttribute</c> as its base, every method under
+    /// <c>[FrTag]</c> would be a test the scan does not see.
+    /// </summary>
+    [Theory]
+    [InlineData("tests/Some.Tests/FrTagAttribute.cs", "public sealed class FrTagAttribute : Attribute { }", null)]
+    [InlineData("tests/Some.Tests/FrTagAttribute.cs", "public sealed class FrTagAttribute : Xunit.FactAttribute { }", "name-shadowed FrTagAttribute")]
+    [InlineData("tests/Some.Tests/FrTagAttribute.cs", "public sealed class FrTagAttribute : Attribute, Xunit.Sdk.ITraitAttribute { }", "name-shadowed FrTagAttribute")]
+    [InlineData("tests/Some.Tests/FrTagAttribute.cs", "public sealed class FrTagAttribute { }", "name-shadowed FrTagAttribute")]
+    [InlineData("tests/Some.Tests/Tags.cs", "public sealed class FrTagAttribute : Attribute { }", "name-shadowed FrTagAttribute")]
+    [InlineData("tests/Some.Tests/FrTagAttribute.cs", "public sealed class FrTagAttribute : Attribute { } public class Attribute { }", "name-shadowed Attribute")]
+    public void The_attribute_the_test_sources_declare_is_accepted_only_as_a_plain_attribute(string path, string declaration, string? finding)
+    {
+        var result = BbsTestConvention.Scan([new BbsTestConvention.Source(path, "namespace Some.Tests;\n" + declaration)], []);
+
+        result.Findings.Select(f => $"{f.Rule} {f.Subject}").Should().Equal(finding is null ? [] : [finding]);
+    }
+
+    /// <summary>
+    /// The scan parses at one language version, and it has to be the one the build compiles at. The
+    /// compiler records the version it used in the symbols of every assembly it builds, this one included.
+    /// </summary>
+    [Fact]
+    public void The_scan_parses_at_the_language_version_of_the_build()
+    {
+        var assembly = typeof(BbsTestConventionTests).Assembly.Location;
+        using var image = new PEReader(File.OpenRead(assembly));
+        image.TryOpenAssociatedPortablePdb(assembly, path => File.Exists(path) ? File.OpenRead(path) : null, out var symbols, out _)
+            .Should().BeTrue("the symbols of {0} say which language version the build compiled at", assembly);
+
+        using (symbols)
+        {
+            var reader = symbols!.GetMetadataReader();
+            var options = reader.GetCustomDebugInformation(EntityHandle.ModuleDefinition)
+                .Select(reader.GetCustomDebugInformation)
+                .Where(information => reader.GetGuid(information.Kind) == CompilationOptions)
+                .Select(information => Encoding.UTF8.GetString(reader.GetBlobBytes(information.Value)).Split('\0'))
+                .Single();
+            var built = options[Array.IndexOf(options, "language-version") + 1];
+
+            built.Should().Be(BbsTestConvention.Language.ToDisplayString(),
+                "the scan must parse the test sources at the language version the build compiles them at. "
+                + "Set BbsTestConvention.Language to it, with a Microsoft.CodeAnalysis.CSharp that knows it");
+        }
+    }
+
+    // The kind of the record in portable symbols that holds the compiler's options, as pairs of names and values.
+    private static readonly Guid CompilationOptions = new("B5FEEC05-8CD0-4A83-96DA-466284BB4BD8");
 
     // A fixture says what the scan must find in it, in comment lines before the code:
     //   // expect: <rule> <subject>     one line for each finding

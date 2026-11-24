@@ -1,13 +1,31 @@
-// The body of a partial method, in a bbs-2023 test file. Its other half, with the [Fact], can be in a file
-// that names nothing of bbs-2023, which the scan would not check.
-// expect: partial-method Fixtures.Bbs2023PartialTests.Derives
+// Partial types in a bbs-2023 test file. Another part of each can be in a file that names nothing of
+// bbs-2023, which the scan would not check: with a constructor that skips before the first test here, or
+// with the [Fact] of the property accessor whose body is here.
+// expect: partial-type Bbs2023PartialTests
+// expect: partial-type Bbs2023PartialPropertyTests
+using Credentials.TestSupport;
+using Xunit;
+
 namespace Fixtures;
 
+[Trait("Category", "Bbs")]
 public sealed partial class Bbs2023PartialTests
 {
-    public async partial Task Derives()
+    [SkippableFact]
+    public void Derives()
     {
-        if (!new Bbs2023Cryptosuite().IsAvailable) return;
-        await Task.CompletedTask;
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+public sealed partial class Bbs2023PartialPropertyTests
+{
+    public partial int Derives
+    {
+        get
+        {
+            Derive();
+            return 0;
+        }
     }
 }

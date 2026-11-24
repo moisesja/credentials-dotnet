@@ -1,0 +1,5 @@
+// A global static import, in a file that names nothing of bbs-2023. Every file of the project can then call
+// Xunit.Skip's methods by their bare names, If and IfNot, which the scan does not take for a skip. Reported
+// in any file.
+// expect: static-import Xunit.Skip
+global using static Xunit.Skip;

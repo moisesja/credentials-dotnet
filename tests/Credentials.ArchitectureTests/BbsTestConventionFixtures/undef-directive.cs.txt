@@ -1,0 +1,15 @@
+// A symbol of the build removed in the file. Reported like #define.
+// expect: conditional-compilation (file)
+#undef DEBUG
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class UndefinedSymbolTests
+{
+    [Fact]
+    public void Adds()
+    {
+        Assert.Equal(2, 1 + 1);
+    }
+}

@@ -121,16 +121,24 @@ library, on every host and every leg, and pins the rule and where its inputs com
 A test that used `bbs-2023` and left the call out would not be covered. `BbsTestConventionTests` (in
 `Credentials.ArchitectureTests`) parses the test sources to prevent that. In every test file whose code
 names anything of `bbs-2023`, each test must be a `[SkippableFact]` or `[SkippableTheory]` that begins with
-the call and is in the `Bbs` category, unless it is on a short named list of tests that need no native
-library. What a parser cannot resolve, a custom test attribute or a base class for example, is reported in
-such a file and not passed over. The ways of getting past the check that were found are kept as fixtures
-beside it, and each must still be reported.
+the call, returns `void` or `Task` and is in the `Bbs` category, in a sealed class that is not partial,
+unless it is on a short named list of tests that need no native library. Nothing in such a file may skip
+outside the body of a test, where a skip would come before the call. What a parser cannot resolve, a custom
+attribute or a base class for example, is reported in such a file and not passed over. Some things are
+reported in any test source file, because they could hide a test from the check or change what a name
+means to it: conditional compilation (`#if`, `#define`, `#undef`), bytes that are not UTF-8, a type named
+like one the check trusts, an attribute of the assembly that it does not know, a global static import. The
+ways of getting past the check that were found are kept as fixtures beside it, and each must still be
+reported.
 
-That check has limits. It reads the C# sources under `tests/`, and it reads names, not what they resolve
-to. It does not see a test that reaches `bbs-2023` only through code in another file, such as a shared
-provider factory or a stored credential, in a file that names nothing of the suite. It does not see what
-the build takes from elsewhere: a project file, a source outside `tests/`, another assembly. Only a CI run
-with the library removed would cover those, and there is none today.
+That check has limits. It reads the files under `tests/` that a test project compiles by default, and it
+reads names, not what they resolve to. It does not see a test in a file that names nothing of the suite,
+whether the test reaches `bbs-2023` through code in another file, such as a shared provider factory or a
+stored credential, or by reflection on a name it puts together when it runs. It does not see a skip before
+the call that comes from code in another file or is made by reflection. Two fixtures record those cases as
+not reported. It does not see what the build takes from elsewhere: a project file, a source outside
+`tests/`, another assembly. Only a CI run with the library removed would cover those, and there is none
+today.
 
 The same class pins the first column of the table against the NetCrypto package the build resolved. That
 test fails when NetCrypto drops, adds or renames a platform's library, until the list in `BbsNativeLibrary`

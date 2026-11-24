@@ -4,10 +4,10 @@ using Xunit;
 namespace Credentials.SampleSmokeTests;
 
 /// <summary>
-/// The smoke test of the <c>bbs-2023</c> sample, in a file of its own (see the remarks on the other part of
-/// this class).
+/// The smoke test of the <c>bbs-2023</c> sample, in a class and a file of its own (see the remarks on
+/// <see cref="SampleSmokeTests"/>).
 /// </summary>
-public sealed partial class SampleSmokeTests
+public sealed class Bbs2023SampleSmokeTests
 {
     // The bbs-2023 sample needs NetCrypto's native BBS library and throws without it. Without the library this
     // test fails where the library has to load and is skipped, with a reason, elsewhere; it is never reported
@@ -17,6 +17,6 @@ public sealed partial class SampleSmokeTests
     public Task Bbs2023()
     {
         BbsNativeLibrary.RequireOrSkip();
-        return Run(Samples.Bbs2023.Program.RunAsync);
+        return SampleSmokeTests.Run(Samples.Bbs2023.Program.RunAsync);
     }
 }

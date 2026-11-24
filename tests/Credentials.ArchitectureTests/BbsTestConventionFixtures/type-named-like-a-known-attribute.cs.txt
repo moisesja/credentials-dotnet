@@ -1,6 +1,6 @@
 // A type named like an attribute the scan knows. This TraitAttribute derives from FactAttribute, so the
 // method below is a test, and the scan sees a trait. The type is reported, and so is its base.
-// expect: attribute-shadowed TraitAttribute
+// expect: name-shadowed TraitAttribute
 // expect: base-type TraitAttribute
 using Xunit;
 

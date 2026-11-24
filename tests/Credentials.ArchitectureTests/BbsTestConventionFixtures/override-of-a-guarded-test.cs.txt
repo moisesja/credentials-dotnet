@@ -1,6 +1,8 @@
 // The guarded test is virtual, and a class in the same file overrides it without the call. xUnit runs the
-// override under the inherited attribute. The base type of the derived class is the finding.
+// override under the inherited attribute. The base type of the derived class is a finding, and so is the
+// class of the test, which is open to being derived from.
 // expect: base-type Bbs2023OverridingTests
+// expect: unsealed-test-class Bbs2023Contract
 using Credentials.TestSupport;
 using Xunit;
 

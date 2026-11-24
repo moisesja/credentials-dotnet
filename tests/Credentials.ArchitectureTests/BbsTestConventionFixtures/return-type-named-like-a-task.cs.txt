@@ -1,0 +1,36 @@
+// The test begins with the real call and returns a Task: an enum of that name, nested in the class, with a
+// method builder of its own that drops the exception the call throws. The type is reported for its name,
+// and its attribute because the scan does not know it.
+// expect: name-shadowed Task
+// expect: unknown-attribute Task
+using System.Runtime.CompilerServices;
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023QuietTaskTests
+{
+    [SkippableFact]
+    public async Task Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        await System.Threading.Tasks.Task.Yield();
+    }
+
+    [AsyncMethodBuilder(typeof(Quiet))]
+    public enum Task
+    {
+        Done,
+    }
+
+    public struct Quiet
+    {
+        public static Quiet Create() => default;
+
+        public Task Task => Task.Done;
+
+        public void SetException(Exception exception) => _ = exception;
+    }
+}

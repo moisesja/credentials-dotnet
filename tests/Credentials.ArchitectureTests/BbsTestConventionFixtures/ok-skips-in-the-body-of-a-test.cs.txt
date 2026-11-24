@@ -1,0 +1,47 @@
+// Skips that cannot come before the call: after it in the body of a guarded test, and in a test that is on
+// the list. So can the helper's Enforce be named there, and a method that is only called Skip, as LINQ's
+// is. Outside a body, reading a member that is named Skip, an outcome of the helper here, skips nothing.
+// The scan must report none.
+// expect: nothing
+// listed: Fixtures.Bbs2023SkipInTheBodyTests.Reads_the_declared_assets
+// listed: Fixtures.Bbs2023SkipInTheBodyTests.Carries_out_an_outcome
+// listed: Fixtures.Bbs2023SkipInTheBodyTests.Maps_an_outcome
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipInTheBodyTests
+{
+    [SkippableFact]
+    public void Derives_on_a_portable_build()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Skip.If(IsRuntimeSpecificBuild(), "a portable build only");
+        Derive(Rows().Skip(1).ToArray());
+    }
+
+    [SkippableFact]
+    public void Reads_the_declared_assets()
+    {
+        Skip.If(IsRuntimeSpecificBuild(), "a portable build only");
+        var skipped = () => throw new SkipException("never thrown");
+    }
+
+    private static readonly BbsNativeLibrary.Outcome Elsewhere = BbsNativeLibrary.Outcome.Skip;
+
+    [Theory]
+    [InlineData(false, false, false, BbsNativeLibrary.Outcome.Skip)]
+    public void Maps_an_outcome(bool available, bool shipped, bool onGitHubActions, BbsNativeLibrary.Outcome expected)
+    {
+        Assert.Equal(expected, BbsNativeLibrary.OutcomeFor(available, shipped, onGitHubActions));
+    }
+
+    [Fact]
+    public void Carries_out_an_outcome()
+    {
+        var skip = () => BbsNativeLibrary.Enforce(BbsNativeLibrary.Outcome.Skip);
+        Assert.Throws<SkipException>(skip);
+    }
+}

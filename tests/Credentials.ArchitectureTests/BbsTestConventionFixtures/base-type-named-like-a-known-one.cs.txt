@@ -1,0 +1,11 @@
+// A class of the project's own named like a base type the scan knows, in a file that names nothing of
+// bbs-2023. A test class that derives from it looks as if it derived from xUnit's TheoryData, and this
+// constructor runs before each of its tests. Reported in any file.
+// expect: name-shadowed TheoryData
+namespace Fixtures.Hosting;
+
+public abstract class TheoryData
+{
+    protected TheoryData() =>
+        Xunit.Skip.If(Environment.GetEnvironmentVariable("GITHUB_ACTIONS") is not null, "runs on developer machines");
+}

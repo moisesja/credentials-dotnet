@@ -1,0 +1,18 @@
+// Only the category trait is under the condition, and nothing else in the file names the suite: the test
+// reaches it through a helper in another file.
+// expect: conditional-compilation (file)
+using Xunit;
+
+namespace Fixtures;
+
+#if NET10_0
+[Trait("Category", "Bbs")]
+#endif
+public sealed class DerivedProofCategoryTests
+{
+    [Fact]
+    public void Derives()
+    {
+        if (!Suites.SelectiveDisclosure().IsAvailable) return;
+    }
+}

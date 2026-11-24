@@ -1,0 +1,23 @@
+// The attribute list names its target with a verbatim identifier. To the compiler that is the method, and
+// the method is a test; a check for the keyword did not take it for one. Neither test begins with the call.
+// expect: unguarded-test Fixtures.Bbs2023VerbatimTargetTests.Under_a_verbatim_target
+// expect: unguarded-test Fixtures.Bbs2023VerbatimTargetTests.Skippable_under_a_verbatim_target
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023VerbatimTargetTests
+{
+    [@method: Fact]
+    public void Under_a_verbatim_target()
+    {
+        Derive();
+    }
+
+    [@method: SkippableFact]
+    public void Skippable_under_a_verbatim_target()
+    {
+        Derive();
+    }
+}

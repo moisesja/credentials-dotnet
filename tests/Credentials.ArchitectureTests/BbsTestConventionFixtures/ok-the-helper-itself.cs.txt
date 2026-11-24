@@ -1,0 +1,16 @@
+// The helper is the one place outside the body of a test that skips. A file like its own, with the one type
+// of that name and no tests, is not reported.
+// expect: nothing
+using Xunit;
+
+namespace Credentials.TestSupport;
+
+public static class BbsNativeLibrary
+{
+    public static void RequireOrSkip() => Enforce(available: false);
+
+    public static void Enforce(bool available)
+    {
+        Skip.If(!available, "The BBS native library did not load on this host.");
+    }
+}

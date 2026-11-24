@@ -9,13 +9,13 @@ namespace Credentials.SampleSmokeTests;
 /// narration" is the assertion. Under coverlet this run also drives the api-coverage gate.
 /// </summary>
 /// <remarks>
-/// The <c>bbs-2023</c> sample has its test in <c>SampleSmokeTests.Bbs2023.cs</c>. The convention test for
-/// <c>bbs-2023</c> tests checks every test of a file that names anything of <c>bbs-2023</c>; this file names
-/// none, so the other samples stay outside that rule.
+/// The <c>bbs-2023</c> sample has its test in <see cref="Bbs2023SampleSmokeTests"/>. The convention test for
+/// <c>bbs-2023</c> tests checks every test of a file that names anything of <c>bbs-2023</c>, and does not
+/// accept a partial class there; this file names none, so the other samples stay outside that rule.
 /// </remarks>
-public sealed partial class SampleSmokeTests
+public sealed class SampleSmokeTests
 {
-    private static async Task Run(Func<TextWriter, IServiceProvider?, Task> sample)
+    internal static async Task Run(Func<TextWriter, IServiceProvider?, Task> sample)
     {
         var buffer = new StringWriter();
         await sample(buffer, null);

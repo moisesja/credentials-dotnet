@@ -26,13 +26,6 @@ public sealed class Bbs2023AcceptedTests : IDisposable, IClassFixture<SuiteFixtu
     }
 
     [SkippableFact]
-    public async ValueTask A_value_task()
-    {
-        BbsNativeLibrary.RequireOrSkip();
-        await DeriveAsync();
-    }
-
-    [SkippableFact]
     public async System.Threading.Tasks.Task A_task_named_in_full()
     {
         BbsNativeLibrary.RequireOrSkip();
@@ -48,6 +41,24 @@ public sealed class Bbs2023AcceptedTests : IDisposable, IClassFixture<SuiteFixtu
         Derive(pointer);
     }
 
+    [SkippableTheory]
+    [MemberData(nameof(Pointers))]
+    public void A_theory_with_member_data(string pointer)
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive(pointer);
+    }
+
+    [SkippableTheory]
+    [ClassData(typeof(Rows))]
+    public void A_theory_with_class_data(string pointer)
+    {
+        BbsNativeLibrary.RequireOrSkip();
+        Derive(pointer);
+    }
+
+    public static TheoryData<string> Pointers => new() { "/a", "/b" };
+
     [SkippableFactAttribute]
     public void Attribute_suffix()
     {
@@ -56,10 +67,10 @@ public sealed class Bbs2023AcceptedTests : IDisposable, IClassFixture<SuiteFixtu
     }
 
     [Xunit.SkippableFact(DisplayName = "a display name", Timeout = 5000)]
-    public void Qualified_attribute_with_named_arguments()
+    public async Task Qualified_attribute_with_named_arguments()
     {
         BbsNativeLibrary.RequireOrSkip();
-        Derive();
+        await DeriveAsync();
     }
 
     [SkippableFact]
@@ -97,7 +108,7 @@ public sealed class Bbs2023AcceptedTests : IDisposable, IClassFixture<SuiteFixtu
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [return: NotNullIfNotNull(nameof(pointer))]
-    private static string? Derive(string? pointer = null) => pointer;
+    private static string? Derive(string? pointer = null, [CallerMemberName] string caller = "") => pointer;
 
     private static JsonObject Subject() => new();
 
@@ -166,4 +177,20 @@ public sealed class Bbs2023MethodCategoryTests
     {
         @BbsNativeLibrary.RequireOrSkip();
     }
+}
+
+// A static class cannot be derived from, and a class without tests need not be sealed.
+public static class Bbs2023StaticTests
+{
+    [SkippableFact]
+    [Trait("Category", "Bbs")]
+    public static void In_a_static_class()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+public class Bbs2023Vector
+{
+    public string Pointer { get; init; } = "/credentialSubject";
 }

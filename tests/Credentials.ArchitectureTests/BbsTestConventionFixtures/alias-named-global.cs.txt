@@ -1,0 +1,28 @@
+// The first statement reads like the call with the full name of the helper. Its first word is a verbatim
+// identifier, the alias declared above, not the keyword: the call goes to whatever that namespace holds
+// under those names, here a dynamic object that does nothing.
+// expect: unguarded-test Fixtures.Bbs2023GlobalAliasTests.Derives
+using Xunit;
+using @global = Fixtures.Stand;
+
+namespace Fixtures
+{
+    [Trait("Category", "Bbs")]
+    public sealed class Bbs2023GlobalAliasTests
+    {
+        [SkippableFact]
+        public void Derives()
+        {
+            @global::Credentials.TestSupport.BbsNativeLibrary.RequireOrSkip();
+            Derive();
+        }
+    }
+}
+
+namespace Fixtures.Stand
+{
+    internal static class Credentials
+    {
+        public static readonly dynamic TestSupport = new System.Dynamic.ExpandoObject();
+    }
+}

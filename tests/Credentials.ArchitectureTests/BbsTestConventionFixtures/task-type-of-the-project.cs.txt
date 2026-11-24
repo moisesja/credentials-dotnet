@@ -1,0 +1,20 @@
+// Types named like the one a test may return, in a file that names nothing of bbs-2023: every test of the
+// namespace that returns Task then returns one of these. A delegate can carry a method builder as well as
+// a class can. Reported in any file.
+// expect: name-shadowed Task
+// expect: name-shadowed Task
+using System.Runtime.CompilerServices;
+
+namespace Fixtures
+{
+    [AsyncMethodBuilder(typeof(QuietBuilder))]
+    public sealed class Task
+    {
+    }
+}
+
+namespace Fixtures.Other
+{
+    [AsyncMethodBuilder(typeof(QuietBuilder))]
+    public delegate void Task();
+}

@@ -1,0 +1,47 @@
+// The first statement reads like the call, and what stands before the dot is a string: the call goes to an
+// extension method on string that does nothing. The helper type has to be written as a name.
+// expect: unguarded-test Fixtures.Bbs2023StringReceiverTests.A_string
+// expect: unguarded-test Fixtures.Bbs2023StringReceiverTests.A_verbatim_string
+// expect: unguarded-test Fixtures.Bbs2023StringReceiverTests.A_string_with_the_full_name
+// expect: unguarded-test Fixtures.Bbs2023StringReceiverTests.The_name_of_the_type
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023StringReceiverTests
+{
+    [SkippableFact]
+    public void A_string()
+    {
+        "BbsNativeLibrary".RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    public void A_verbatim_string()
+    {
+        @"BbsNativeLibrary".RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    public void A_string_with_the_full_name()
+    {
+        "global::Credentials.TestSupport.BbsNativeLibrary".RequireOrSkip();
+        Derive();
+    }
+
+    [SkippableFact]
+    public void The_name_of_the_type()
+    {
+        nameof(BbsNativeLibrary).RequireOrSkip();
+        Derive();
+    }
+}
+
+internal static class Names
+{
+    public static void RequireOrSkip(this string name) => _ = name;
+}

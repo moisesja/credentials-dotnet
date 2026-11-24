@@ -1,0 +1,22 @@
+// An attribute of the class that the scan does not know. xUnit runs one that derives from
+// BeforeAfterTestAttribute before each test of the class, where it can skip the test before the call. The
+// same attribute on the assembly is reported once, as it is in any file.
+// expect: unknown-attribute Bbs2023ClassAttributeTests
+// expect: unknown-attribute (assembly)
+using Credentials.TestSupport;
+using Xunit;
+
+[assembly: Fixtures.RequiresTheNativeLibrary]
+
+namespace Fixtures;
+
+[RequiresTheNativeLibrary]
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023ClassAttributeTests
+{
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}

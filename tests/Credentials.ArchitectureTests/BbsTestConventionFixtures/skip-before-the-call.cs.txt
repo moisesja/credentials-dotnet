@@ -1,0 +1,139 @@
+// Every test here begins with the call, and every class skips before the test is reached: in its
+// constructor, in a field initializer, in InitializeAsync, in the data of a theory. Where the library has to
+// load, the call would fail the test; the skip comes first, and the test is reported as skipped. Two skip
+// without naming Xunit.Skip: through a method of another file that is itself named Skip, and through the
+// helper, by handing its Enforce an outcome made up for the purpose. The last two name the skip in an
+// attribute of the test itself, which is not its body: one hands the exception's type to its data, the
+// other takes Xunit.Skip.If for its data.
+// expect: skip-outside-a-test Bbs2023SkipInTheConstructorTests
+// expect: skip-outside-a-test Bbs2023SkipInAnInitializerTests
+// expect: skip-outside-a-test Bbs2023SkipInInitializeAsyncTests
+// expect: skip-outside-a-test Bbs2023SkipInTheoryDataTests
+// expect: skip-outside-a-test Bbs2023SkipThroughAMethodNamedSkipTests
+// expect: skip-outside-a-test Bbs2023SkipThroughTheHelperTests
+// expect: skip-outside-a-test Bbs2023SkipHandedToTheDataTests
+// expect: skip-outside-a-test Bbs2023SkipAsTheDataTests
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipInTheConstructorTests
+{
+    public Bbs2023SkipInTheConstructorTests()
+    {
+        Skip.IfNot(BbsNativeLibrary.IsAvailable, "needs the native library");
+    }
+
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipInAnInitializerTests
+{
+    private readonly bool _ready = Ready();
+
+    private static bool Ready()
+    {
+        Xunit.Skip.If(!BbsNativeLibrary.IsAvailable, "needs the native library");
+        return true;
+    }
+
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipInInitializeAsyncTests : IAsyncLifetime
+{
+    public Task InitializeAsync() =>
+        BbsNativeLibrary.IsAvailable ? Task.CompletedTask : throw new SkipException("needs the native library");
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipInTheoryDataTests
+{
+    public static IEnumerable<object[]> Rows()
+    {
+        global::Xunit.Skip.IfNot(BbsNativeLibrary.IsAvailable, "needs the native library");
+        yield return [1];
+    }
+
+    [SkippableTheory]
+    [MemberData(nameof(Rows))]
+    public void Derives(int row)
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipThroughAMethodNamedSkipTests
+{
+    public Bbs2023SkipThroughAMethodNamedSkipTests()
+    {
+        this.Skip(!BbsNativeLibrary.IsAvailable, "needs the native library");
+    }
+
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipThroughTheHelperTests
+{
+    public Bbs2023SkipThroughTheHelperTests()
+    {
+        BbsNativeLibrary.Enforce(BbsNativeLibrary.OutcomeFor(BbsNativeLibrary.IsAvailable, shippedForHost: false, onGitHubActions: false));
+    }
+
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipHandedToTheDataTests
+{
+    [SkippableTheory]
+    [MemberData(nameof(Rows), typeof(SkipException))]
+    public void Derives(int row)
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+
+    public static IEnumerable<object[]> Rows(Type whenUnavailable) =>
+        BbsNativeLibrary.IsAvailable ? [[1]] : throw (Exception)Activator.CreateInstance(whenUnavailable, "needs the native library")!;
+}
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023SkipAsTheDataTests
+{
+    [SkippableTheory]
+    [MemberData(nameof(Skip.If), true, "not today", MemberType = typeof(Skip))]
+    public void Derives(int row)
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}

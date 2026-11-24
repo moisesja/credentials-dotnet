@@ -1,0 +1,16 @@
+// A symbol defined in the file. It is reported like a condition: it is of use only with one, or with a
+// [Conditional] method, whose calls are compiled only where the symbol is defined.
+// expect: conditional-compilation (file)
+#define FAST
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class DefinedSymbolTests
+{
+    [Fact]
+    public void Adds()
+    {
+        Assert.Equal(2, 1 + 1);
+    }
+}

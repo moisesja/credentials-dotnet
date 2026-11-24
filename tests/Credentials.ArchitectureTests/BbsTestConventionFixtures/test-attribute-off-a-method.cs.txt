@@ -1,0 +1,52 @@
+// A test attribute the scan does not know by name, on something that is not a method. xUnit runs a
+// property accessor, an operator and the accessors of an event as it runs a method. [Runs] is a class of
+// the project that derives from FactAttribute; [Check] is an alias for xUnit's own. None of the bodies has
+// the call. Every attribute in a bbs-2023 test file has to be one the scan knows, wherever it sits.
+// expect: unknown-attribute [Runs]
+// expect: unknown-attribute [Check]
+// expect: unknown-attribute [Runs]
+// expect: unknown-attribute [Check]
+// expect: unknown-attribute [Check]
+// expect: unknown-attribute [Runs]
+using Xunit;
+using Check = Xunit.FactAttribute;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023AccessorTests
+{
+    public bool On_a_getter
+    {
+        [Runs]
+        get
+        {
+            Derive();
+            return true;
+        }
+    }
+
+    public Task On_a_getter_through_an_alias
+    {
+        [Check]
+        get
+        {
+            Derive();
+            return Task.CompletedTask;
+        }
+    }
+
+    [Runs]
+    public static Bbs2023AccessorTests operator !(Bbs2023AccessorTests tests) => tests.Derive();
+
+    [method: Check]
+    public event Action? Derived;
+
+    public void In_a_method()
+    {
+        [Check]
+        void Local() => Derive();
+
+        var lambda = [Runs] () => Derive();
+    }
+}

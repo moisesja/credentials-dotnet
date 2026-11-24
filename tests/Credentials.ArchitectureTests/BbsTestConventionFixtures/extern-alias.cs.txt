@@ -1,0 +1,19 @@
+// An extern alias, which gives a referenced assembly a name of the file's choosing: any name in the file
+// can then be made to mean something from that assembly. The test looks guarded; the alias is the finding.
+// expect: alias Other
+extern alias Other;
+
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023ExternAliasTests
+{
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+    }
+}
