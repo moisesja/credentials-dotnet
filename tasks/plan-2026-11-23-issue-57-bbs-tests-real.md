@@ -256,7 +256,7 @@ Considered and not taken:
 - [x] 9. Adversarial pass: the gate (three rounds) and the product; findings handled
 - [x] 10. `docs/conformance.md`
 - [x] 11. `CHANGELOG.md`
-- [ ] 12. PR opened; CI evidence from the four legs recorded in the Review
+- [x] 12. PR opened; CI evidence from the four legs recorded in the Review
 - [x] 13. Review section written
 
 ## How each "Done when" bullet is proven
@@ -355,8 +355,9 @@ orchestrator and into no commit, PR or issue.
 
 ## Review
 
-Written on 2026-11-24, before the PR was opened. "Run" means I ran it and read the output. All numbers
-are for the code as committed; earlier revisions are named where they matter.
+Written on 2026-11-24. Everything but the last section was written before the PR was opened. "Run" means
+I ran it and read the output. All numbers are for the code as committed (386da36); earlier revisions are
+named where they matter.
 
 ### Results with the library
 
@@ -435,8 +436,9 @@ got past the three musl detectors; the committed code has no detector to get pas
 
 ### Mutation checks
 
-- **The helper**, sixteen mutants, each built in a scratch copy and run against `BbsNativeLibraryTests` with
-  the library present, which is the CI situation, with `GITHUB_ACTIONS` unset and set.
+- **The helper**, fifteen mutants, each built in a scratch copy and run against `BbsNativeLibraryTests` with
+  the library present, which is the CI situation, with `GITHUB_ACTIONS` unset and set. Thirteen are killed;
+  the two that survive behave like the original on every host the tests run on.
 
   | Mutant | Killed by |
   |---|---|
@@ -465,8 +467,8 @@ got past the three musl detectors; the committed code has no detector to get pas
   load-context test runs the failing path of the helper, and the rest is the same managed code on every OS.
 - **`osx-x64`** in the committed revision. An earlier revision ran under Rosetta during the second
   adversarial round (all three assemblies passed, and failed with the library deleted). It is not in CI.
-- **A GitHub runner.** Everything above ran on the development machine and in containers; the four legs are
-  recorded under "CI on the PR".
+- **A GitHub runner, without the library.** Everything above ran on the development machine and in
+  containers. The four legs ran with the library; see "CI on the PR".
 
 ### Adversarial pass: the test gate
 
@@ -573,4 +575,25 @@ Against the first version of this plan (c96fd95):
 
 ### CI on the PR
 
-To be recorded here when the checks of the PR have finished.
+PR #72, run 45334260764 on 386da36, the implementation commit. All eight checks passed, read from the logs:
+
+| Check | Runner image | Platform | Tests |
+|---|---|---|---|
+| `build + test (ubuntu-latest)` | `ubuntu-26.04` | `linux-x64` | 477 passed, 0 skipped (48 s) |
+| `build + test (windows-latest)` | `windows-2025-vs2026` | `win-x64` | 477 passed, 0 skipped (83 s) |
+| `build + test (macos-latest)` | `macos-26-arm64` | `osx-arm64` | 477 passed, 0 skipped (42 s) |
+| `build + test (ubuntu-24.04-arm)` | `ubuntu-24.04-arm` | `linux-arm64` | 477 passed, 0 skipped (41 s) |
+| `no-Newtonsoft consumer closure` | | | passed |
+| `API compatibility (semver)` | | | passed |
+| `API coverage (samples exercise the surface)` | | | passed |
+| `W3C VCDM 2.0 suite` (Conformance) | | | passed |
+
+- On every leg `Credentials.Rdfc.Tests` has 51 passed, `Credentials.InteropTests` 5 and
+  `Credentials.SampleSmokeTests` 14, each with 0 skipped: the `bbs-2023` tests ran on all four platforms.
+  The two new legs are the first CI runs of this library on macOS and on arm64 Linux.
+- Two of the 51 say more than "the library loaded". The inputs test requires a GitHub Actions leg to be on
+  one of the five platforms, so each runner was identified as the table says. The load-context test ran the
+  helper's failing path on each leg, Windows included, which is the Windows proof the one-off runs lack.
+- The platform column is not printed by the logs; it follows from the runner image and from the inputs
+  test passing.
+- This section was added in a later commit, which runs CI again; the PR shows that run.
