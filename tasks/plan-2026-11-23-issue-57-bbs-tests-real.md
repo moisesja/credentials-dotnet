@@ -137,6 +137,11 @@ Who decided what:
      fail (or, on a platform outside the five and off CI, to skip).
    - Every `bbs-2023` test class and the sample's smoke test carry `[Trait("Category", "Bbs")]`, which only
      the interop tests had. `dotnet test --filter "Category=Bbs"` now selects them all.
+   - **A test that forgets the call is caught by an architecture test** (added after the external review,
+     as the epic's decision: eleven more sub-issues will add `bbs-2023` tests). `BbsTestConventionTests`
+     reads the test sources, in the style of `FrCoverageGateTests`. Every test in the `Bbs` category must be
+     skippable and make the call, unless it is on a named list of tests that need no native library; and a
+     test file that calls `UseBbs2023(` or constructs the cryptosuite must have the category on its class.
    - `TestSupport` is the existing shared test library. It must not reference `Credentials.Rdfc` (the
      architecture tests keep the RDF stack out of their host), so the helper asks NetCrypto's provider, which
      is already in every test project's graph through `Credentials.Core`. It gains two package references:
@@ -201,8 +206,9 @@ Who decided what:
      a broken helper while the library is present.
    - Ruling of the epic orchestrator: the one-off is enough; no standing CI step. There is none.
    - Alternative: a standing CI step on every leg that hides the library file and requires the tests to fail
-     (about 20 s per leg, one more script). It would also catch a test that needs the library and forgets
-     the helper call; the in-suite test cannot.
+     (about 20 s per leg, one more script). It checks behaviour, so it would also catch what the source scan
+     of decision 3 cannot see: a test that reaches `bbs-2023` only through code in another file and carries
+     no category.
 
 10. **`FrCoverageGateTests` does not change.** It stays a static scan of `[FrTag]` attributes. What changes
     is that a tagged `bbs-2023` test can no longer pass without running, and cannot be skipped on CI.
@@ -215,11 +221,14 @@ Considered and not taken:
 - **CI declares the expected platform per leg in an environment variable, and a test checks it.** It would
   catch a runner label that silently changes architecture. The GitHub Actions rule already keeps any leg from
   skipping, whatever its platform.
-- **An architecture test that forbids hand-written availability guards in test sources**, or that requires
-  the helper call in every test that touches `bbs-2023`. On CI such a test still runs, because the library
-  is there. The gap is on a host without the library: a test that forgets the call fails there if it expects
-  success, but passes if all it expects is an exception, because the missing library throws too. No such
-  test exists today. Left to review, and said in the helper's documentation.
+- **An architecture test that forbids hand-written availability guards in test sources.** On CI a test with
+  such a guard still runs, because the library is there, and off CI the helper call that the convention test
+  requires fails or skips before the guard is reached.
+- **Checking the convention by behaviour, not by reading sources.** The convention test reads text. It does
+  not see a test that reaches `bbs-2023` only through code in another file and carries no category, and it
+  does not check that the call comes before the first use. Reflection over the test assemblies would not
+  see the call either, and the architecture tests must not load `Credentials.Rdfc`. The standing CI step of
+  decision 9 is the behavioural check.
 - **Treating BLS key generation like the BBS library.** `Bbs_issuance_is_gated` needs no BBS call, but it
   generates a BLS key, which needs NetCrypto's second native library (`blst`). Where that is missing the test
   fails loudly with `DllNotFoundException`. NetCrypto has no availability check for it (crypto-dotnet#34),
@@ -232,6 +241,7 @@ Considered and not taken:
 | `tests/Credentials.TestSupport/BbsNativeLibrary.cs` (new) | The helper: `RequireOrSkip()`, made of `OutcomeFor` (the rule, a pure function) and `Enforce` (what an outcome does to the calling test); `IsAvailable`; the list of five runtime identifiers; the host's identifier, from a pure function of operating system and architecture. |
 | `tests/Credentials.TestSupport/Credentials.TestSupport.csproj` | Versionless `NetCrypto` and `Xunit.SkippableFact` package references (both already pinned centrally). Header comment updated. |
 | `tests/Credentials.Rdfc.Tests/BbsNativeLibraryTests.cs` (new) | Seven tests. (a) The named check that the library is there, with the agreement assertion of decision 3. (b) A theory that pins the rule of decisions 1 and 2, all eight cases. (c) What each outcome does to a test: return, fail, skip. (d) Where the rule's inputs come from on this host. (e) The real call against a copy of NetCrypto that is refused the library. (f) A theory that pins the platform mapping. (g) The declaration test of decision 5. |
+| `tests/Credentials.ArchitectureTests/BbsTestConventionTests.cs` (new, review round 1) | Three tests over the test sources: every `Bbs`-category test is skippable and calls the helper, or is on the named list; every file that wires `bbs-2023` is in the category; the named list has no stale or contradictory entry. |
 | `tests/Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs` | The 11 guards become `BbsNativeLibrary.RequireOrSkip()`; 10 `[Fact]` become `[SkippableFact]` and the theory becomes `[SkippableTheory]`. The `BbsAvailable` field and the "COVERAGE NOTE" go; the class summary is corrected; the class gains the `Bbs` category. Test bodies do not change. |
 | `tests/Credentials.Rdfc.Tests/Credentials.Rdfc.Tests.csproj` | `Xunit.SkippableFact` reference. |
 | `tests/Credentials.InteropTests/Bbs2023InteropTests.cs` and its `.csproj` | The two tests call `RequireOrSkip()` in place of their own `Skip.IfNot`. "IsAvailable-gated" reworded. The file now imports `Credentials.TestSupport`, so its two `[TestSupport.FrTag]` attributes are written `[FrTag]`, the form the FR gate's scan recognises. |
@@ -258,6 +268,7 @@ Considered and not taken:
 - [x] 11. `CHANGELOG.md`
 - [x] 12. PR opened; CI evidence from the four legs recorded in the Review
 - [x] 13. Review section written
+- [x] 14. External review, round 1: observations 1, 2, 4 and 5 addressed; 3 left as it is
 
 ## How each "Done when" bullet is proven
 
@@ -506,7 +517,7 @@ against `main` (nothing removed).
 | 4 | Weakness. musl was recognised on Alpine and not on Void Linux, where the tests failed instead. | Real. | Moot: musl is no longer exempt. |
 | 5 | Weakness. The GitHub Actions rule holds only if the variable reaches the test process. | True. | Documented. |
 | 6 | Weakness. On GitHub Actions a build for one runtime failed the declaration test with a misleading message. | Real. | **Fixed**: the message says CI has to test the portable build. |
-| 7 | Weakness. A future test that expects an exception from `bbs-2023` and forgets the helper call would pass without the library. | True; no such test exists. | Said in the helper's documentation; see "Considered and not taken". |
+| 7 | Weakness. A future test that expects an exception from `bbs-2023` and forgets the helper call would pass without the library. | True; no such test exists. | Said in the helper's documentation at first. **Covered** after the external review by `BbsTestConventionTests`; see "External review, round 1". |
 | 8 | Ten statements in the docs, CHANGELOG and comments that were false, too strong or unverifiable. | Each checked. | Corrected, except "exercised in CI: yes" for the two new legs, which the PR's CI run settles. |
 
 Held in round 2, each run: the library deleted, empty, of the wrong architecture or operating system; the
@@ -544,6 +555,49 @@ without, in two processes.
 - `ISecuringCapabilities` still lists `bbs-2023` and reports it supported.
 - The full table went to the epic orchestrator for #59. Nothing under `src/` changes in this PR.
 
+### External review, round 1
+
+The review of PR #72 (on 386da36) approved, with five optional observations. Each was checked against the
+code before anything changed. The work is in the commit after 1d17c74.
+
+| # | Observation | Checked | Done |
+|---|---|---|---|
+| 1 | The load-context test depends on how NetCrypto loads the library. A release that used an absolute path or its own import resolver would bypass the context; the failure would be loud. | True: NetCrypto uses an ordinary P/Invoke, and an import resolver set on the assembly is asked before the load context. | The test's remarks now say why it works and what that failure would mean. |
+| 2 | A test that forgets the helper call. Suggested: an architecture test that every non-skippable test in a `Category=Bbs` class is one of the three named registration tests. | The gap is real. The suggestion as worded would fail today: `BbsNativeLibraryTests` is in the category too and has five plain tests of its own, and one skippable test that rightly makes no call. | **`BbsTestConventionTests`**, which also covers the omitted call the suggestion left open. See below. |
+| 3 | The sample exits with a stack trace. | True; decision 6 weighed it. | No change, as the review agrees. |
+| 4 | `docs/conformance.md` hard-coded "NetCrypto 1.7.1". | True; nothing ties that string to the pin. | The text now refers to the version `Directory.Packages.props` pins. |
+| 5 | A local `act` run sets `GITHUB_ACTIONS=true` too. | True (read in act's source). | One clause in the docs, where they say what counts as GitHub Actions. No code change. |
+
+**The convention test.** It reads the test sources and holds three things:
+
+- every test in the `Bbs` category is a `[SkippableFact]` or `[SkippableTheory]` that calls
+  `BbsNativeLibrary.RequireOrSkip()`, unless it is on a named list of nine tests that need no native library,
+  each with its reason (the three registration and gate tests, and six of `BbsNativeLibraryTests`);
+- every test file that calls `UseBbs2023(` or constructs the cryptosuite has the category on its class, so
+  a new test file cannot stay outside the rule;
+- the named list has no entry that no longer exists, and none that calls the helper.
+
+Mutation check, each mutant made in a scratch copy of the test sources and the convention test run against
+it. Unaltered sources pass.
+
+| Mutant | Result |
+|---|---|
+| A plain `[Fact]` added to a `Bbs`-category class (a negative test that expects an exception) | **Fails**, naming the test |
+| The same test as a `[SkippableFact]` without the call | **Fails**, naming the test |
+| The call removed from an existing test; the call commented out | **Fails** |
+| `[SkippableFact]` turned into `[Fact]`, or into `[Fact(Skip = "...")]`, on a test that calls the helper | **Fails** |
+| A plain `[Fact]` added to `BbsNativeLibraryTests`; a `[SkippableTheory]` without the call added to the interop tests | **Fails** |
+| A new test file that calls `UseBbs2023()` and has no category | **Fails** (the second test) |
+| The category removed from the interop class | **Fails** (the first and second tests) |
+| The category removed from the sample's smoke test | **Fails**: the scan must find that test among those that call the helper |
+| The category attribute moved above the test attribute (the same meaning, written differently) | Passes, as it should |
+
+What it does not cover is under "Considered and not taken": it reads text, so a test that reaches `bbs-2023`
+only through code in another file and carries no category is not seen.
+
+With the convention test the suite is **480 passed, 0 skipped** on `osx-arm64` (477 and the three new tests
+in `Credentials.ArchitectureTests`). The CI results for this commit are in the round-1 comment on the PR.
+
 ### What changed during the work
 
 Against the first version of this plan (c96fd95):
@@ -564,6 +618,7 @@ Against the first version of this plan (c96fd95):
 - `Credentials.TestSupport` references `Xunit.SkippableFact` as well as `NetCrypto`, because the helper now
   performs the skip.
 - `tasks/lessons.md` has an entry for what this taught.
+- **A convention test reads the test sources** (external review, round 1).
 
 ### Follow-ups, none in this PR
 

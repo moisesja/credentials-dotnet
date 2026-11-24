@@ -21,7 +21,9 @@ namespace Credentials.TestSupport;
 /// subset of the tests. On GitHub Actions, which sets <c>GITHUB_ACTIONS=true</c> in the environment the
 /// tests run in, no such test can be skipped: a green run means each of them ran.</para>
 /// <para>A test that uses <c>bbs-2023</c> without this call is not covered: without the library it fails if
-/// it expects success, but it can pass if all it expects is an exception.</para>
+/// it expects success, but it can pass if all it expects is an exception. <c>BbsTestConventionTests</c> (in
+/// <c>Credentials.ArchitectureTests</c>) reads the test sources and fails when a <c>bbs-2023</c> test lacks
+/// the call.</para>
 /// </remarks>
 public static class BbsNativeLibrary
 {

@@ -82,7 +82,8 @@ The no-Newtonsoft consumer-closure guarantee (NFR-002) is asserted separately by
 here, and issuing once [#43](https://github.com/moisesja/credentials-dotnet/issues/43) lands. Where the
 library does not load, `IBbsDeriver.DeriveAsync` throws `NotSupportedException`.
 
-NetCrypto 1.7.1 ships the library for five runtime identifiers. CI exercises four of them:
+NetCrypto, in the version `Directory.Packages.props` pins, ships the library for five runtime identifiers.
+CI exercises four of them:
 
 | Runtime identifier | Library shipped | `bbs-2023` exercised in CI |
 |---|---|---|
@@ -108,13 +109,19 @@ reported as passed:
   whatever the platform. GitHub sets `GITHUB_ACTIONS=true` on every runner, and the tests read it. A green CI
   leg therefore means the `bbs-2023` tests ran on it, and a leg on a platform outside the five cannot go
   green without the library. (A job that runs the tests inside a container of its own has to pass the
-  variable on.)
+  variable on. Anything else that sets it, a local run under `act` for example, counts as GitHub Actions
+  too.)
 - It is **skipped**, with a reason that names the platform, on any other host: `win-arm64`, for example.
 
 The decision is taken in each test process, so it holds for a single test project and for a filtered run as
 much as for the whole solution. On CI the library is always there, so the failing branch would never run;
 `BbsNativeLibraryTests` therefore runs the call against a second copy of NetCrypto that is refused the
 library, on every host and every leg, and pins the rule and where its inputs come from.
+
+A test that used `bbs-2023` and left the call out would not be covered. `BbsTestConventionTests` (in
+`Credentials.ArchitectureTests`) reads the test sources to prevent that: every test in the `Bbs` category
+must be skippable and make the call, unless it is on a short named list of tests that need no native
+library, and every test file that wires `bbs-2023` must be in that category.
 
 The same class pins the first column of the table against the NetCrypto package the build resolved. That
 test fails when NetCrypto drops, adds or renames a platform's library, until the list in `BbsNativeLibrary`

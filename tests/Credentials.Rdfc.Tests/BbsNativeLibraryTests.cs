@@ -100,6 +100,14 @@ public sealed class BbsNativeLibraryTests
     /// loads a second copy of NetCrypto and of the helper into a load context that refuses to load
     /// <c>zkryptium_ffi</c>. To that copy the library is missing, as it is on a host without it.
     /// </summary>
+    /// <remarks>
+    /// This works because NetCrypto reaches the library through an ordinary P/Invoke, which the runtime
+    /// resolves by asking the load context of the calling assembly (<c>LoadUnmanagedDll</c>). If a NetCrypto
+    /// release loads the library another way, by an absolute path or through an import resolver of its own,
+    /// the context is no longer asked, the copy finds the library, and the <c>IsAvailable</c> assertion below
+    /// fails. That failure says this test needs another way to withhold the library. It does not say
+    /// <c>bbs-2023</c> is broken.
+    /// </remarks>
     [Fact]
     public void Without_the_library_the_call_fails_or_skips_and_never_returns()
     {
