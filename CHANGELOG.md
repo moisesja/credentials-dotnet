@@ -45,6 +45,16 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ### Changed
 
+- **PRD: `bbs-2023` decisions of 2026-11-23** (epic [#25](https://github.com/moisesja/credentials-dotnet/issues/25)).
+  Documentation only; no code implements these yet.
+  - New targets: the `bbs-2023` optional features, anonymous holder binding and pseudonyms (FR-017, FR-036,
+    FR-047, risk R-4, [#66](https://github.com/moisesja/credentials-dotnet/issues/66)), and binding a derived
+    credential to a verifier through the presentation header (FR-035, FR-046,
+    [#61](https://github.com/moisesja/credentials-dotnet/issues/61)). The header encoding is open question OQ-5.
+  - FR-015 now covers signing through a `crypto-dotnet` key store, which `bbs-2023` issuance needs
+    ([#67](https://github.com/moisesja/credentials-dotnet/issues/67)).
+  - FR-031 states that a revocable `bbs-2023` credential is linkable through its status entry, an accepted
+    limit ([#62](https://github.com/moisesja/credentials-dotnet/issues/62)).
 - **DataProofs 2.1.0: SD-JWT VC verification refuses more.** Its API only adds, and nothing in Credentials
   changed to consume it. These credentials verified before and are now Rejected, each by the proof check:
   - **An SD-JWT VC whose top-level `exp` has passed or whose `nbf` is still ahead**

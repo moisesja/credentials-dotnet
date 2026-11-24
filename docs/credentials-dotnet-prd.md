@@ -72,8 +72,9 @@ Requirements use MUST / SHOULD / MAY per RFC 2119. Each is testable; acceptance 
 - **FR-012** — The Issuer MUST produce an enveloping VC-JOSE-COSE credential in both the JOSE and COSE serializations.
 - **FR-013** — The Issuer MUST produce an SD-JWT VC credential (`application/dc+sd-jwt`), marking caller-selected claims as selectively disclosable and optionally establishing a holder key-binding reference.
 - **FR-014** — The Issuer MUST be able to issue a `bbs-2023` base credential that supports later holder-side selective disclosure.
-- **FR-015** — The Issuer MUST sign using an issuer key obtained through `net-did`'s signer abstraction; it MUST NOT handle raw private key material directly.
+- **FR-015** — The Issuer MUST sign through a key abstraction and MUST NOT handle raw private key material directly. For single-message signatures the abstraction is the signer obtained through `net-did`. For `bbs-2023`, whose signature covers many messages and cannot be produced by a single-message signer, it is a `crypto-dotnet` key-store handle.
 - **FR-016** — The Issuer MUST be able to set `credentialStatus` referencing a Bitstring Status List entry.
+- **FR-017** — The Issuer MUST be able to issue a `bbs-2023` base credential with each optional feature of the cryptosuite: anonymous holder binding, a per-verifier pseudonym, and both together.
 
 ### 6.3 Status (Bitstring Status List v1.0)
 
@@ -84,10 +85,12 @@ Requirements use MUST / SHOULD / MAY per RFC 2119. Each is testable; acceptance 
 ### 6.4 Holder
 
 - **FR-030** — The Holder MUST ingest and inspect credentials in all three forms — exposing claims, validity window, status, and schema references — without altering the document core.
-- **FR-031** — The Holder MUST derive a minimally disclosing credential from a `bbs-2023` base credential, producing an unlinkable derived proof revealing only chosen claims.
+- **FR-031** — The Holder MUST derive a minimally disclosing credential from a `bbs-2023` base credential, producing an unlinkable derived proof revealing only chosen claims. Unlinkability is a property of the derived proof value. The derived credential also carries whatever the issuer made mandatory, and a credential with a Bitstring Status List entry is linkable through that entry, which is unique to the credential. This is an accepted limit.
 - **FR-032** — The Holder MUST produce an SD-JWT VC presentation revealing caller-chosen disclosures, with a Key Binding JWT.
 - **FR-033** — The Holder MUST build a Verifiable Presentation from one or more credentials.
 - **FR-034** — The Holder MUST bind a presentation to a holder key (VP proof or Key Binding JWT), with the key obtained through `net-did`.
+- **FR-035** — The Holder MUST be able to bind a `bbs-2023` derived credential to a verifier-supplied value through the presentation header, without a holder key.
+- **FR-036** — The Holder MUST be able to create the commitment an issuer needs for the `bbs-2023` optional features, and to derive from such a credential: proving possession of the holder secret, and presenting a pseudonym for a given verifier.
 
 ### 6.5 Verifier
 
@@ -97,6 +100,8 @@ Requirements use MUST / SHOULD / MAY per RFC 2119. Each is testable; acceptance 
 - **FR-043** — The Verifier MUST return a structured verification result: an overall decision plus per-check outcomes and human-readable reasons. (D11)
 - **FR-044** — The Verifier MUST accept and verify VCDM 1.1 credentials; issuance remains VCDM 2.0 only. (D8)
 - **FR-045** — Verification MUST be side-effect free and MUST report a failed check through the structured result rather than throwing; exceptions are reserved for malformed input and programming errors.
+- **FR-046** — The Verifier MUST be able to require that a `bbs-2023` derived credential is bound to an expected value, and MUST reject one that is bound to a different value or to none.
+- **FR-047** — The Verifier MUST verify `bbs-2023` derived proofs that use the optional features, report whether holder binding was proven, and return the verified pseudonym.
 
 ### 6.6 Securing-mechanism integration
 
@@ -155,15 +160,19 @@ Requirements use MUST / SHOULD / MAY per RFC 2119. Each is testable; acceptance 
 
 D1 three securing families · D2 RDFC + JCS canonicalization · D3 `bbs-2023` embedded selective disclosure, `ecdsa-sd-2023` deferred · D4 Bitstring Status List v1.0 · D5 three substrates (`crypto-dotnet`, `dataproofs-dotnet`, `net-did`) · D6 protocol-agnostic · D7 .NET 10 / `System.Text.Json` · D8 verify VCDM 1.1, issue 2.0 only · D9 JSON Schema 2020-12, SHACL deferred · D10 document-centric core + typed layer · D11 `IIssuerTrustPolicy` (structured result, no built-in lists) · D12 SD-JWT VC pinned to `draft-ietf-oauth-sd-jwt-vc-16`.
 
+**PRD-level decisions (2026-11-23).** PD-1 the `bbs-2023` optional features are in scope (FR-017, FR-036, FR-047) · PD-2 a revocable `bbs-2023` credential is linkable through its status entry, an accepted limit (FR-031) · PD-3 replay protection for a `bbs-2023` derived credential through the presentation header (FR-035, FR-046) · PD-4 `bbs-2023` issuance signs through a key store (FR-015).
+
 ## 11. Open questions and risks (PRD-level)
 
 - **OQ-1** — Exact `IIssuerTrustPolicy` signature and the shape of the structured trust result.
 - **OQ-2** — The precise SD-JWT VC validation surface, and the process for bumping past `draft-16` as the draft evolves.
 - **OQ-3** — How the strongly-typed views project over the document core (ergonomics vs. fidelity trade-offs).
 - **OQ-4** — Whether to prioritize the JOSE or COSE serialization first within VC-JOSE-COSE.
+- **OQ-5** — The encoding of the `bbs-2023` presentation header: opaque bytes supplied by the caller, or an encoding of challenge and domain defined by this library.
 - **Risk R-1** — `bbs-2023` is a W3C Candidate Recommendation Draft (not final); interop depends on `dataproofs-dotnet`'s `bbs-2023` wiring and the zkryptium draft alignment. Track and re-verify on each draft movement.
 - **Risk R-2** — SD-JWT VC is a moving Internet-Draft; pinning (D12) contains but does not eliminate churn.
 - **Risk R-3** — `credentials-dotnet` now depends directly on `crypto-dotnet`; `architectural-path.md` (§5.7 and the diagram) must be updated to match, and the same direct-dependency question resolved for `zcap-dotnet`/`didcomm-dotnet`.
+- **Risk R-4** — The `bbs-2023` optional features are marked at risk in the Candidate Recommendation Draft: they are removed unless the IETF documents they rest on reach RFC on the same timeline and each has two independent implementations. If the specification drops a feature, the matching part of FR-017 / FR-036 / FR-047 is withdrawn. NFR-005 keeps the features behind a stable API.
 
 ---
 
@@ -175,15 +184,15 @@ Maps each concept-document capability (concept §6) to the functional requiremen
 |---|---|---|
 | Issuer — build a VCDM 2.0 credential | FR-001, FR-005, FR-010 | wallet issuer flows; direct issuers |
 | Issuer — secure as embedded / enveloping / SD-JWT VC | FR-011, FR-012, FR-013, FR-050, FR-051 | wallet; issuers |
-| Issuer — issue a `bbs-2023` base credential | FR-014 | holders performing selective disclosure |
+| Issuer — issue a `bbs-2023` base credential | FR-014, FR-017 | holders performing selective disclosure |
 | Issuer — publish/update status; set credential status | FR-016, FR-020, FR-021 | verifiers; status infrastructure |
 | Issuer — sign via issuer key | FR-015, FR-080 | `net-did` key stores |
 | Holder — hold and inspect credentials | FR-003, FR-030 | wallet holder storage |
-| Holder — derive minimally disclosing credential | FR-031, FR-032 | verifiers receiving presentations |
+| Holder — derive minimally disclosing credential | FR-031, FR-032, FR-035, FR-036 | verifiers receiving presentations |
 | Holder — build a Verifiable Presentation | FR-002, FR-033 | verifiers |
 | Holder — holder/key binding | FR-034, FR-080 | verifiers; `net-did` |
 | Verifier — verify credential / presentation | FR-040, FR-041, FR-043, FR-045 | wallet verifier flows; relying parties |
-| Verifier — verify selective disclosure | FR-042 | relying parties |
+| Verifier — verify selective disclosure | FR-042, FR-046, FR-047 | relying parties |
 | Verifier — issuer-trust policy | FR-043, FR-082 | deployment trust policy |
 | Cross-cutting — DID/key resolution | FR-080 | `net-did` |
 | Cross-cutting — schema validation | FR-070 | issuers; verifiers |

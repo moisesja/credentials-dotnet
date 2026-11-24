@@ -1,6 +1,6 @@
 # Plan: record the bbs-2023 decisions of 2026-11-23 in the PRD
 
-**Status:** for approval. No PRD edit has been made.
+**Status:** approved by the owner on 2026-11-23 and applied (see Review).
 **Date:** 2026-11-23
 **Scope:** `docs/credentials-dotnet-prd.md` only (documentation). No source, no tests.
 **Tracking:** epic #25; sub-issues #61, #62, #66 (with #69, #70), #67.
@@ -97,10 +97,26 @@ D1–D12 come from the concept document and are not re-opened. D3 already scopes
 
 ## Steps
 
-- [ ] Owner approves the wording above (E1 to E6) and the reading of PD-3.
-- [ ] Branch `docs/prd-bbs-2023-decisions` off `origin/main`.
-- [ ] Apply E1 to E6.
-- [ ] Check: every new id is unique and referenced consistently in §6, §10, §11 and Appendix A; `dotnet test tests/Credentials.ArchitectureTests` is still green.
-- [ ] `CHANGELOG.md`: one documentation line.
-- [ ] Pull request that references #25, #61, #62, #66 and #67. Commit and push only on the owner's word.
-- [ ] Review section added to this file.
+- [x] Owner approves the wording above (E1 to E6) and the reading of PD-3.
+- [x] ~~Branch `docs/prd-bbs-2023-decisions` off `origin/main`.~~ Worked on `main`, as the owner directed for this plan's own commit.
+- [x] Apply E1 to E6.
+- [x] Check: every new id is unique and referenced consistently in §6, §10, §11 and Appendix A; `dotnet test tests/Credentials.ArchitectureTests` is still green.
+- [x] `CHANGELOG.md`: one documentation line.
+- [ ] Commit on `main` (and push) on the owner's word. No pull request, since the work is on `main`.
+- [x] Review section added to this file.
+
+## Review (2026-11-23)
+
+**Done.** E1 to E6 are applied to `docs/credentials-dotnet-prd.md` with the approved wording (14 lines added, 5 changed), plus one entry under Unreleased → Changed in `CHANGELOG.md`.
+
+**Checks.**
+- Each new id is defined once: FR-017, FR-035, FR-036, FR-046, FR-047, OQ-5, R-4.
+- No FR or NFR id is duplicated, and the FR ids in §6.2, §6.4 and §6.5 stay in ascending order.
+- FR-017, FR-035, FR-036, FR-046 and FR-047 each appear in §6, the §10 decision record and Appendix A. FR-015 and FR-031 appear in §6 and §10.
+- `dotnet test tests/Credentials.ArchitectureTests -c Release`: 9 passed, 0 failed. The requirement-coverage gate reads `RequirementIds`, not the PRD, so the new ids do not need tests yet.
+
+**Deviation.** No branch or pull request. The owner had the plan committed on `main`, so this change follows it there.
+
+**Follow-ups.**
+- Add the new ids to `tests/Credentials.TestSupport/RequirementIds.cs` together with their first tagged test, in the PRs for #61 (FR-035, FR-046) and #69 / #70 (FR-017, FR-036, FR-047).
+- OQ-5, the presentation-header encoding, is decided in #61.
