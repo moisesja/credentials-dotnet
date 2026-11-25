@@ -43,3 +43,4 @@ Credentials.ArchitectureTests.NoLibraryGateTests.The_run_without_the_library_has
 Credentials.ArchitectureTests.NoLibraryGateTests.The_list_is_read_as_tests_and_reasons | the gate's list
 Credentials.ArchitectureTests.NoLibraryGateTests.A_test_project_of_the_solution_without_results_is_found | the gate's check of its input
 Credentials.ArchitectureTests.NoLibraryGateTests.A_result_file_is_read_by_test_and_row | the gate's reading of result files
+Credentials.ArchitectureTests.GateArgumentsTests.A_wrong_call_exits_with_2_and_touches_nothing | runs the gate program with wrong arguments; it never gets to a test
