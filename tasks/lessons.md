@@ -2,6 +2,27 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A tool that deletes: check everything before the first write, and delete only what this run made (2026-11-25)
+
+The gate for #57 took a `--work` folder, deleted it recursively "to start clean", and only then looked at
+the rest of its arguments. The reviewer of PR #72 pointed `--work` at a folder beside the repository and
+left a required option out: the program said the option was required, and the folder was gone. A header
+comment said the folder "has to be inside the repository"; nothing checked it. **Rules:**
+
+- A tool that deletes never deletes a path it was given. It makes a folder of its own, under a name that
+  is new, and that folder is the only thing it removes. "Start clean" is a new folder, not an emptied one.
+- "Its own" begins after the folder has been made, not when the name is chosen. My first fix assigned the
+  name, then checked that it was free, and the clean-up in `finally` deleted the folder that was already
+  there when it was not.
+- Every argument is checked before the first write, and the order of the checks is the order in which a
+  wrong call should be explained. A check that comes after a write is a clean-up problem.
+- A sentence in a comment that says what a path "has to be" is a check that is missing.
+- Paths are compared whole. "Begins with two dots" is not "outside", a path joined to an absolute path is
+  that path, and on a file system that folds letters another spelling is the same folder: where the answer
+  matters, mark the folder and look for the mark instead of comparing names.
+- Test a wrong call by what it leaves on disk: snapshot a sandbox, run the tool as a process, compare. And
+  write the red test first; fourteen of seventeen wrong calls failed on the code I had shipped.
+
 ## A guard that reads source must parse it, fail closed, and keep its mutants in the suite (2026-11-24)
 
 For #57 I wrote a test that scanned the test sources as text, to make sure every `bbs-2023` test called the

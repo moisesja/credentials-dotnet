@@ -337,6 +337,8 @@ Considered and not taken:
   adversarial rounds, with what they found closed or recorded as a limit
 - [x] 17. External review, round 4 (re-plan): the no-library gate on every leg, the scan cut down to scope,
   committed coverage of what the gate must report, two adversarial rounds on the whole design
+- [x] 18. Round 5: the four holes of the independent pass on a275ccd, each with coverage in CI
+- [x] 19. External review, round 6: the gate checks its arguments first and deletes only its own folder
 
 ## How each "Done when" bullet is proven
 
@@ -710,6 +712,46 @@ of the first four was reproduced before it was fixed, and each has coverage that
 | 5 to 9 | The message for a failure that is not the helper's says what else can cause it; a test is matched by the full name of a class of its own assembly; files directly in `tests/` are copied; the message and the docs name the filter as a cause of a missing result file; the docs say how to park a test | Unit tests for the matching |
 
 The self-test expects 15 findings. Four mutants of the new code each fail a test.
+
+### External review, round 6: the gate deleted a folder before it had checked its arguments
+
+**Found** by the reviewer on b3aa49b, after it confirmed its three earlier findings resolved: the gate
+program deleted whatever `--work` named, recursively, before it had looked at the rest of its arguments. A
+folder outside the repository, with `--solution` left out, was gone by the time the program said that
+`--solution` is required. The script never passes `--work`, so CI was not affected; a call by hand was.
+
+**Red first.** `GateArgumentsTests` (7034361, committed before the fix) runs the program as a process in a
+sandbox that is compared before and after. On b3aa49b's program fourteen of its seventeen wrong calls
+failed, the reviewer's among them.
+
+**The rule now:** the gate never deletes, overwrites or truncates anything it did not create in the same
+run.
+
+- Every argument is checked before the first write: an unknown option, an option without a value or
+  given twice, a path that is not there or is the wrong kind of thing, results that are not result files
+  or are not of the solution, and a work folder that is not there, not inside the repository, under
+  `tests/`, in the folder of a test assembly, or reached through a link. Each ends with exit code 2.
+- The gate then makes one new folder with a random name, in `--work` or in `artifacts/bbs-gate`, and a
+  name that is taken stops it. Every path it writes to or deletes is checked to be inside that folder.
+  Nothing is overwritten. The folder carries a file with a name of its own, so the gate knows it by
+  whatever path, and never copies it into itself.
+- At the end it deletes that folder and nothing else. With `--work`, a run that reached its verdict keeps
+  it. A run that is killed leaves its folder; nothing removes it later, and the docs say so.
+
+**Item 4 of the orchestrator** (a test output on another drive on Windows): not run, there is no Windows
+here. At b3aa49b the "copy" would have been the real output folder. The new code does not ask whether a
+relative path begins with two dots: "inside" is by full paths, and a test with that case runs on the
+Windows leg.
+
+**One adversarial pass on this change** (a fresh sub-agent, about 190 runs). The program never touched
+what it had not made, but for one path it showed with a one-line patch: a random name equal to that of a
+folder already there made the `finally` delete that folder. Fixed: the folder is the gate's only once it
+has made it. It also found wrong calls that wrote before failing or ended with 0, 1 or 134 (another
+spelling of `tests` where letter case is not told apart, a link through a link, a result file that is not
+one, an assembly in the repository root, a solution that is not one, a filter that cannot be read, extra
+arguments to the script), and a marker file the self-test could leave. All fixed, each with a case in
+`GateArgumentsTests` or a check in the self-test. Not fixed: the script reached through a link to it, and
+a `TMPDIR` that does not exist, both of which end with 1 and change nothing.
 
 ### What changed during the work
 
