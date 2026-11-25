@@ -658,7 +658,7 @@ scan of that commit lists both as guarded, their four rows pass with the library
 appears in the results.
 
 **Built:** the "Re-plan" at the head of this file. `Credentials.ArchitectureTests` lost the convention
-scanner, its tests and 63 of its 78 fixtures; 15 fixtures of the scope scan stayed and 16 were written.
+scanner, its tests and 63 of its 78 fixtures; 15 fixtures of the scope scan stayed and 14 were written.
 
 **Adversarial pass: two rounds on the new design, and neither was clean.** Each was a fresh sub-agent with
 the code and a goal; every case was reproduced (the script exits 0; the test passes or is skipped on a
