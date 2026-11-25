@@ -696,6 +696,21 @@ round was not clean.
 - Not run locally: Windows. CI is the first run of the gate there, and the first run anywhere of these
   tests on Windows without the library.
 
+### External review, round 5: what an independent pass found on a275ccd
+
+The orchestrator's independent pass found no hole in an ordinary form, and nine things to put right. Each
+of the first four was reproduced before it was fixed, and each has coverage that runs on every leg.
+
+| Item | Fix | Coverage |
+|---|---|---|
+| 1. A derived class is missed when a class between it and the `bbs-2023` class is in an assembly without results | The gate reads the assemblies beside a test assembly that hold a base class | `Credentials.GateFixtures.Support` and `ThroughASupportAssemblyTests`, in the self-test |
+| 2. The check that every test project has results assumed the assembly is named after the project | It goes by the output folder | `NoLibraryGateTests.A_test_project_of_the_solution_without_results_is_found` |
+| 3. `--results` without a folder printed an error and exited 0 under bash 3.2 (1 under bash 5) | Checked by hand; exit 2 | The self-test calls the script wrongly four ways and requires 2 |
+| 4. A class nested in a `bbs-2023` class, written in a part of it that names nothing, was out of scope | Nested classes are in scope, read from the assembly | `PartialOuterTests`, in the self-test; a unit test |
+| 5 to 9 | The message for a failure that is not the helper's says what else can cause it; a test is matched by the full name of a class of its own assembly; files directly in `tests/` are copied; the message and the docs name the filter as a cause of a missing result file; the docs say how to park a test | Unit tests for the matching |
+
+The self-test expects 15 findings. Four mutants of the new code each fail a test.
+
 ### What changed during the work
 
 Against the first version of this plan (c96fd95):
