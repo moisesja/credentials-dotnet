@@ -51,10 +51,12 @@ try
     // would otherwise take its tests out of both runs.
     // The results have to cover every test project of the solution. A result file that went missing
     // would otherwise take its tests out of both runs.
-    foreach (var missing in TestRun.TestAssembliesWithoutResults(Required("--solution"), with.Assemblies))
+    foreach (var project in TestRun.TestProjectsWithoutResults(Required("--solution"), with.Assemblies))
     {
-        Problem($"{Path.GetFileName(missing)} is a test assembly of the solution and has no result file among those "
-            + "of the normal run, so its tests would be in neither run.");
+        Problem($"{project} is a test project of the solution and none of the result files of the normal run is from it, "
+            + "so its tests would be in neither run. Either a result file went missing, or the filter excludes "
+            + "every test of the project, in which case none is written: keep at least one test of each test "
+            + "project in the filtered run.");
     }
 
     // The run without the library: every test assembly of the normal run, from a copy with the library's
@@ -62,6 +64,12 @@ try
     // same paths under the work folder as under the repository: a test that reads a file beside its
     // project or in the one next to it, or looks for the repository above it, finds what it finds in the
     // normal run. GITHUB_ACTIONS=true, so that a missing library has to fail a guarded test on any host.
+    Directory.CreateDirectory(Path.Combine(work, "tests"));
+    foreach (var file in Directory.EnumerateFiles(Path.Combine(repository, "tests")))
+    {
+        File.Copy(file, Path.Combine(work, "tests", Path.GetFileName(file)));
+    }
+
     foreach (var folder in Directory.EnumerateDirectories(Path.Combine(repository, "tests")))
     {
         CopyDirectory(folder, Path.Combine(work, "tests", Path.GetFileName(folder)), skip: ["bin", "obj"]);
@@ -123,13 +131,13 @@ try
 
     var without = TestRun.Read(Path.Combine(work, "results"));
     var scope = BbsScope.Scan(BbsScope.ReadSources(repository));
-    string[] bbsClasses = [.. scope.Classes, .. TestTypes.DerivedFrom(with.Assemblies, scope.Classes)];
+    var classes = TestClasses.Read(with.Assemblies, scope.Classes);
     var listFile = options.GetValueOrDefault("--list", Path.Combine(repository, "tests", "Credentials.BbsGate", "need-no-native-library.txt"));
     var list = NoLibraryGate.ReadList(File.ReadLines(listFile));
     var check = options.GetValueOrDefault(
         "--availability-check", "Credentials.Rdfc.Tests.BbsNativeLibraryTests.Bbs_native_library_loads_wherever_it_has_to");
 
-    findings.AddRange(NoLibraryGate.Compare(with.Results, without.Results, scope.Findings, bbsClasses, list, check)
+    findings.AddRange(NoLibraryGate.Compare(with.Results, without.Results, scope.Findings, classes, list, check)
         .Select(finding => (finding.Key, finding.ToString())));
     if (!keep)
     {
@@ -146,7 +154,7 @@ try
     }
 
     Console.WriteLine($"bbs-2023 gate: {with.Assemblies.Count} test assemblies, {with.Results.Count} results with the library and "
-        + $"{without.Results.Count} without it ({removed} library files removed); {bbsClasses.Length} bbs-2023 classes, "
+        + $"{without.Results.Count} without it ({removed} library files removed); {classes.InScope.Count} bbs-2023 classes, "
         + $"{list.Count} tests on the list; {clock.Elapsed.TotalSeconds:F0} s.");
 
     // One verdict, read two ways. The gate passes when it has no finding. The self-test passes when the

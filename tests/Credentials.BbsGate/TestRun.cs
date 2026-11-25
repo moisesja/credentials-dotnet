@@ -35,22 +35,22 @@ internal sealed record TestRun(IReadOnlyList<TestResult> Results, IReadOnlyList<
     }
 
     /// <summary>
-    /// The test assemblies of a solution that are built and are not among those the results came from. A
-    /// test project is one whose output folder has the test host in it; the output folder is looked for
-    /// where the assemblies with results have theirs (<c>bin/Release/net10.0</c>, say).
+    /// The test projects of a solution that are built and have no results: by the name of the project. A
+    /// test project is one whose output folder has the test host in it, and it has results when one of the
+    /// assemblies the results came from is in that folder, whatever the assembly is called. The output
+    /// folder is looked for where the assemblies with results have theirs (<c>bin/Release/net10.0</c>, say).
     /// </summary>
-    public static List<string> TestAssembliesWithoutResults(string solutionFile, IReadOnlyList<string> assembliesWithResults)
+    public static List<string> TestProjectsWithoutResults(string solutionFile, IReadOnlyList<string> assembliesWithResults)
     {
-        var known = assembliesWithResults.Select(Path.GetFullPath).ToList();
-        var output = Path.GetDirectoryName(known[0])!;
-        var layout = Path.GetRelativePath(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(output)))!, output);
+        var outputs = assembliesWithResults.Select(assembly => Path.GetDirectoryName(Path.GetFullPath(assembly))!).ToList();
+        var layout = Path.GetRelativePath(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(outputs[0])))!, outputs[0]);
         var root = Path.GetDirectoryName(Path.GetFullPath(solutionFile))!;
         return File.ReadLines(solutionFile)
             .Select(line => line.Split('"')).Where(parts => parts.Length > 5 && parts[5].EndsWith(".csproj", StringComparison.Ordinal))
             .Select(parts => Path.Combine(root, parts[5].Replace('\\', Path.DirectorySeparatorChar)))
-            .Select(project => Path.Combine(Path.GetDirectoryName(project)!, layout, Path.GetFileNameWithoutExtension(project) + ".dll"))
-            .Where(assembly => File.Exists(assembly) && File.Exists(Path.Combine(Path.GetDirectoryName(assembly)!, "testhost.dll")))
-            .Where(assembly => !known.Contains(assembly, StringComparer.OrdinalIgnoreCase))
+            .Where(project => File.Exists(Path.Combine(Path.GetDirectoryName(project)!, layout, "testhost.dll")))
+            .Where(project => !outputs.Contains(Path.Combine(Path.GetDirectoryName(project)!, layout), StringComparer.OrdinalIgnoreCase))
+            .Select(project => Path.GetFileNameWithoutExtension(project))
             .ToList();
     }
 

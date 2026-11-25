@@ -15,8 +15,8 @@ namespace Credentials.BbsGate;
 /// <para><b>Scope.</b> A file names <c>bbs-2023</c> when its code, not its comments, has an identifier
 /// that contains "bbs" in any letter case, or a string that names the suite or one of its types (the
 /// <c>Bbs</c> category is such a string). Every type declared in such a file is a <c>bbs-2023</c> class.
-/// A class that derives from one of them is one too, since it inherits their tests; the gate reads that
-/// from the test assemblies (<see cref="TestTypes"/>), not from source.</para>
+/// A class that derives from one of them, or is nested in one, is one too; the gate reads that from the
+/// test assemblies (<see cref="TestClasses"/>), not from source.</para>
 /// <para><b>One reading of a file.</b> The decision is read off the syntax tree, so the tree has to be the
 /// one the build compiles. Three things could make it another, and each is a finding in any test source
 /// file: a syntax error, bytes that are not UTF-8, and <c>#if</c>. The scan defines no symbols and does not

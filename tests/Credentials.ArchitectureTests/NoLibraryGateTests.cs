@@ -18,7 +18,7 @@ public sealed class NoLibraryGateTests
     private const string Failed = TestResult.Failed;
     private const string Skipped = "NotExecuted";
     private const string ByTheHelper = "System.InvalidOperationException : NetCrypto ships the BBS native library (zkryptium_ffi) for osx-arm64, but it did not load in this process";
-    private static readonly string[] BbsClasses = ["Some.Tests.Bbs2023Tests", "Some.Tests.Bbs2023Tests+Nested"];
+    private static readonly TestClasses Classes = new(["Some.Tests.Bbs2023Tests", "Some.Tests.Bbs2023Tests+Nested"]);
 
     // One line for each case: the outcomes of a test with the library, its outcomes without, whether it is
     // on the list, and the finding the gate has to make of it (none when that is null). A failure here is
@@ -47,7 +47,7 @@ public sealed class NoLibraryGateTests
     public void A_test_is_judged_by_what_it_does_without_the_library(string test, string with, string without, bool listed, string? finding)
     {
         var findings = NoLibraryGate.Compare(
-            [R(Check, Passed), .. Results(test, with)], [R(Check, Failed), .. Results(test, without)], [], BbsClasses, listed ? [test] : [], Check);
+            [R(Check, Passed), .. Results(test, with)], [R(Check, Failed), .. Results(test, without)], [], Classes, listed ? [test] : [], Check);
 
         findings.Select(f => f.Key).Should().Equal(finding is null ? [] : [$"{finding} {test}"]);
     }
@@ -68,7 +68,7 @@ public sealed class NoLibraryGateTests
         TestResult[] with = [R(Check, Passed), R(test, Passed, "(row: 1)"), R(test, Passed, "(row: 2)")];
         TestResult[] without = [R(Check, Failed), R(test, Failed, "(row: 1)"), R(test, Failed, "(row: 2)") with { Message = message }];
 
-        var findings = NoLibraryGate.Compare(with, without, [], BbsClasses, [], Check);
+        var findings = NoLibraryGate.Compare(with, without, [], Classes, [], Check);
 
         findings.Select(f => f.Key).Should().Equal($"{NoLibraryGate.Rules.FailedOtherwise} {test}");
     }
@@ -85,8 +85,8 @@ public sealed class NoLibraryGateTests
         TestResult[] same = [R(Check, Failed), R(test, Skipped, "(nativeProofs: False)"), R(test, Passed, "(nativeProofs: True)")];
         TestResult[] traded = [R(Check, Failed), R(test, Skipped, "(nativeProofs: True)"), R(test, Passed, "(nativeProofs: False)")];
 
-        NoLibraryGate.Compare(with, same, [], BbsClasses, [], Check).Should().BeEmpty();
-        NoLibraryGate.Compare(with, traded, [], BbsClasses, [], Check).Select(f => f.Key)
+        NoLibraryGate.Compare(with, same, [], Classes, [], Check).Should().BeEmpty();
+        NoLibraryGate.Compare(with, traded, [], Classes, [], Check).Select(f => f.Key)
             .Should().Equal($"{NoLibraryGate.Rules.ChangedOutsideScope} {test}");
     }
 
@@ -107,9 +107,36 @@ public sealed class NoLibraryGateTests
     [InlineData("Some.Tests.Derives", false)]
     public void A_test_of_a_bbs_2023_class_is_known_by_its_full_name(string test, bool inScope)
     {
-        var findings = NoLibraryGate.Compare([R(Check, Passed), R(test, Passed)], [R(Check, Failed), R(test, Passed)], [], BbsClasses, [], Check);
+        var findings = NoLibraryGate.Compare([R(Check, Passed), R(test, Passed)], [R(Check, Failed), R(test, Passed)], [], Classes, [], Check);
 
         findings.Select(f => f.Key).Should().Equal(inScope ? [$"{NoLibraryGate.Rules.Passed} {test}"] : []);
+    }
+
+    /// <summary>
+    /// When the classes of the test's assembly are known, a test belongs to the one whose full name begins
+    /// its name: a class of the same name in another namespace is another class, and so is a class in a
+    /// namespace named like a <c>bbs-2023</c> class. Only a test whose name begins with no class of its
+    /// assembly, as under some display names, is matched by the class's own name.
+    /// </summary>
+    [Theory]
+    [InlineData("Some.Tests.Bbs2023Tests.Derives", true)]
+    [InlineData("Other.Tests.Bbs2023Tests.Derives", false)] // the same name, another namespace
+    [InlineData("Some.Bbs2023Tests.OrdinaryTests.Adds", false)] // a namespace named like the class
+    [InlineData("Some.Tests.dll.Bbs2023Tests.Derives", true)] // no class begins this name: by the class's own name
+    [InlineData("Bbs2023Tests.Derives", true)]
+    public void A_test_belongs_to_the_class_of_its_assembly_that_begins_its_name(string test, bool inScope)
+    {
+        var classes = new TestClasses(
+            ["Some.Tests.Bbs2023Tests"],
+            new Dictionary<string, IReadOnlyCollection<string>>
+            {
+                ["Some.Tests.dll"] = ["Some.Tests.Bbs2023Tests", "Other.Tests.Bbs2023Tests", "Some.Bbs2023Tests.OrdinaryTests"],
+            });
+
+        var findings = NoLibraryGate.Compare([R(Check, Passed), R(test, Passed)], [R(Check, Failed), R(test, Passed)], [], classes, [], Check);
+
+        findings.Select(f => f.Key).Where(key => !key.StartsWith(NoLibraryGate.Rules.NotANoLibraryRun, StringComparison.Ordinal))
+            .Should().Equal(inScope ? [$"{NoLibraryGate.Rules.Passed} {test}"] : []);
     }
 
     /// <summary>
@@ -124,8 +151,8 @@ public sealed class NoLibraryGateTests
         TestResult[] without = [R(Check, Failed), R(test, Passed, "(id: 77aa)"), R(test, Passed, "(id: 03d2)")];
         TestResult[] oneFails = [R(Check, Failed), R(test, Passed, "(id: 77aa)"), R(test, Failed, "(id: 03d2)")];
 
-        NoLibraryGate.Compare(with, without, [], BbsClasses, [], Check).Should().BeEmpty();
-        NoLibraryGate.Compare(with, oneFails, [], BbsClasses, [], Check).Select(f => f.Key)
+        NoLibraryGate.Compare(with, without, [], Classes, [], Check).Should().BeEmpty();
+        NoLibraryGate.Compare(with, oneFails, [], Classes, [], Check).Select(f => f.Key)
             .Should().Equal($"{NoLibraryGate.Rules.ChangedOutsideScope} {test}");
     }
 
@@ -136,7 +163,7 @@ public sealed class NoLibraryGateTests
         TestResult[] with = [R(Check, Passed), R("Some.Tests.Bbs2023Tests.Registers", Passed), R("Some.Tests.Bbs2023Tests.Registers_and_derives", Passed)];
         TestResult[] without = [R(Check, Failed), R("Some.Tests.Bbs2023Tests.Registers", Passed), R("Some.Tests.Bbs2023Tests.Registers_and_derives", Passed)];
 
-        var findings = NoLibraryGate.Compare(with, without, [], BbsClasses, ["Some.Tests.Bbs2023Tests.Registers"], Check);
+        var findings = NoLibraryGate.Compare(with, without, [], Classes, ["Some.Tests.Bbs2023Tests.Registers"], Check);
 
         findings.Select(f => f.Key).Should().Equal($"{NoLibraryGate.Rules.Passed} Some.Tests.Bbs2023Tests.Registers_and_derives");
     }
@@ -150,7 +177,7 @@ public sealed class NoLibraryGateTests
     {
         var unreadable = new BbsScope.Finding(BbsScope.Rules.ConditionalCompilation, "tests/Some.Tests/Bbs2023Tests.cs", "'#if NET10_0'");
 
-        var findings = NoLibraryGate.Compare([R(Check, Passed)], [R(Check, Failed)], [unreadable], BbsClasses, [], Check);
+        var findings = NoLibraryGate.Compare([R(Check, Passed)], [R(Check, Failed)], [unreadable], Classes, [], Check);
 
         findings.Select(f => f.Key).Should().Equal($"{BbsScope.Rules.ConditionalCompilation} tests/Some.Tests/Bbs2023Tests.cs");
     }
@@ -163,7 +190,7 @@ public sealed class NoLibraryGateTests
         TestResult[] with = [R(Check, Passed), R(test, Passed), R(test, Passed) with { Assembly = "Other.Tests.dll" }];
         TestResult[] without = [R(Check, Failed), R(test, Passed), R(test, Passed) with { Assembly = "Other.Tests.dll" }];
 
-        var findings = NoLibraryGate.Compare(with, without, [], BbsClasses, [test], Check);
+        var findings = NoLibraryGate.Compare(with, without, [], Classes, [test], Check);
 
         findings.Select(f => f.Key).Should().Equal($"{NoLibraryGate.Rules.SameNameInTwoAssemblies} {test}");
     }
@@ -177,7 +204,7 @@ public sealed class NoLibraryGateTests
         TestResult[] with = [R(Check, Passed), R("Some.Tests.OrdinaryTests.Adds", Passed)];
         TestResult[] without = [R(Check, Failed), R("Some.Tests.OrdinaryTests.Adds", Passed)];
 
-        var findings = NoLibraryGate.Compare(with, without, [], BbsClasses, [entry], Check);
+        var findings = NoLibraryGate.Compare(with, without, [], Classes, [entry], Check);
 
         findings.Select(f => f.Key).Should().Equal($"{NoLibraryGate.Rules.StaleListing} {entry}");
     }
@@ -192,7 +219,7 @@ public sealed class NoLibraryGateTests
     [InlineData("Failed", "Failed")] // the library was missing all along
     public void The_run_without_the_library_has_to_be_one(string with, string without)
     {
-        var findings = NoLibraryGate.Compare(Results(Check, with), Results(Check, without), [], BbsClasses, [], Check);
+        var findings = NoLibraryGate.Compare(Results(Check, with), Results(Check, without), [], Classes, [], Check);
 
         findings.Select(f => f.Rule).Should().Contain(NoLibraryGate.Rules.NotANoLibraryRun);
     }
@@ -282,12 +309,14 @@ public sealed class NoLibraryGateTests
             var withoutResults = Output("Other.Tests", "Other.Tests.dll", "testhost.dll");
             Output("Some.Tool", "Some.Tool.dll"); // not a test project: no test host
             Output("Unbuilt.Tests"); // not built
+            // A project whose assembly is not named after it: found by its folder, not by a name.
+            var renamed = Path.Combine(Path.GetDirectoryName(Output("Renamed.Tests", "Another.Name.dll", "testhost.dll"))!, "Another.Name.dll");
             var solution = Path.Combine(root.FullName, "Some.sln");
-            File.WriteAllLines(solution, ((string[])["Some.Tests", "Other.Tests", "Some.Tool", "Unbuilt.Tests"]).Select(project =>
+            File.WriteAllLines(solution, ((string[])["Some.Tests", "Other.Tests", "Some.Tool", "Unbuilt.Tests", "Renamed.Tests"]).Select(project =>
                 $"Project(\"{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}\") = \"{project}\", \"tests\\{project}\\{project}.csproj\", \"{{{Guid.NewGuid()}}}\""));
 
-            TestRun.TestAssembliesWithoutResults(solution, [withResults]).Should().Equal(withoutResults);
-            TestRun.TestAssembliesWithoutResults(solution, [withResults, withoutResults]).Should().BeEmpty();
+            TestRun.TestProjectsWithoutResults(solution, [withResults]).Should().Equal("Other.Tests", "Renamed.Tests");
+            TestRun.TestProjectsWithoutResults(solution, [withResults, withoutResults, renamed]).Should().BeEmpty();
         }
         finally
         {

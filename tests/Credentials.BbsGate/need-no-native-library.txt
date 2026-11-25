@@ -23,7 +23,7 @@ Credentials.Rdfc.Tests.BbsNativeLibraryTests.Netcrypto_declares_the_bbs_native_l
 Credentials.Rdfc.Tests.RdfcSurfaceConfinementTests.Public_surface_exposes_no_substrate_or_rdf_stack_type | reflects over the public surface; names a bbs-2023 type and calls nothing
 Credentials.ArchitectureTests.BbsScopeTests.Every_test_source_has_one_reading_and_the_bbs_2023_classes_are_found | the scope scan, over the real sources
 Credentials.ArchitectureTests.BbsScopeTests.A_fixture_is_read_exactly_as_its_header_says | the scope scan, over its fixtures
-Credentials.ArchitectureTests.BbsScopeTests.A_class_that_derives_from_a_bbs_2023_class_is_found_in_the_assembly | reads the classes of this assembly
+Credentials.ArchitectureTests.BbsScopeTests.A_class_that_derives_from_a_bbs_2023_class_or_is_nested_in_one_is_found_in_the_assembly | reads the classes of this assembly
 Credentials.ArchitectureTests.BbsScopeTests.The_third_case_of_the_review_is_reported_on_the_real_test_file | the scope scan, over an altered copy
 Credentials.ArchitectureTests.BbsScopeTests.The_third_case_of_the_review_is_reported_whatever_the_condition | the scope scan, over an altered fixture
 Credentials.ArchitectureTests.BbsScopeTests.Every_source_file_but_the_build_output_of_a_project_is_scanned | the scan's choice of files
@@ -33,6 +33,7 @@ Credentials.ArchitectureTests.NoLibraryGateTests.A_test_is_judged_by_what_it_doe
 Credentials.ArchitectureTests.NoLibraryGateTests.A_failure_has_to_be_the_helpers | the gate's comparison, on made-up results
 Credentials.ArchitectureTests.NoLibraryGateTests.Any_other_test_does_the_same_in_both_runs_row_for_row | the gate's comparison, on made-up results
 Credentials.ArchitectureTests.NoLibraryGateTests.A_test_of_a_bbs_2023_class_is_known_by_its_full_name | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.A_test_belongs_to_the_class_of_its_assembly_that_begins_its_name | the gate's comparison, on made-up results
 Credentials.ArchitectureTests.NoLibraryGateTests.A_test_name_in_two_assemblies_is_reported | the gate's comparison, on made-up results
 Credentials.ArchitectureTests.NoLibraryGateTests.Rows_made_at_run_time_are_compared_by_their_outcomes | the gate's comparison, on made-up results
 Credentials.ArchitectureTests.NoLibraryGateTests.An_entry_of_the_list_covers_the_one_test_it_names | the gate's comparison, on made-up results

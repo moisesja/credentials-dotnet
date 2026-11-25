@@ -66,26 +66,32 @@ public sealed class BbsScopeTests
     }
 
     /// <summary>
-    /// A class that derives from a <c>bbs-2023</c> class inherits its tests, and a result names the class
-    /// that ran a test. Which class derives from which is read from the assembly, where no alias and no
-    /// base list can give a base another name; here, from this assembly, for the three classes below.
+    /// A class that derives from a <c>bbs-2023</c> class inherits its tests, and a class nested in one is
+    /// part of it. Both are read from the assembly, where no alias and no partial declaration can hide
+    /// them; here, from this assembly, for the classes below.
     /// </summary>
     [Fact]
-    public void A_class_that_derives_from_a_bbs_2023_class_is_found_in_the_assembly()
+    public void A_class_that_derives_from_a_bbs_2023_class_or_is_nested_in_one_is_found_in_the_assembly()
     {
         const string here = "Credentials.ArchitectureTests.BbsScopeTests+";
 
-        var derived = TestTypes.DerivedFrom([typeof(BbsScopeTests).Assembly.Location], [here + "Contract`1"]);
+        var classes = TestClasses.Read([typeof(BbsScopeTests).Assembly.Location], [here + "Contract`1"]);
 
-        derived.Should().Equal(here + "DefaultWiring", here + "FurtherWiring");
-        TestTypes.DerivedFrom([typeof(BbsScopeTests).Assembly.Location], [here + "DefaultWiring"]).Should().Equal(here + "FurtherWiring");
+        classes.InScope.Should().BeEquivalentTo(
+            here + "Contract`1", here + "Contract`1+Rows", here + "DefaultWiring", here + "FurtherWiring", here + "FurtherWiring+Inner");
     }
 
-    internal abstract class Contract<T>;
+    internal abstract class Contract<T>
+    {
+        private sealed class Rows;
+    }
 
     private class DefaultWiring : Wiring;
 
-    private sealed class FurtherWiring : DefaultWiring;
+    private sealed class FurtherWiring : DefaultWiring
+    {
+        private sealed class Inner;
+    }
 
     /// <summary>
     /// The third case of the review of PR #72, on the real <c>Bbs2023SelectiveDisclosureTests</c>: the whole

@@ -28,3 +28,7 @@ passed-without-the-library Credentials.GateFixtures.Bbs2023NamedTests.Named_by_c
 # A test of a class without a namespace, under a display name for which a result file gives the name of
 # the assembly as the class.
 passed-without-the-library Credentials.GateFixtures.Bbs2023ShortNameTests.Named_from_inside_the_class_name
+# A test inherited through a class in a support assembly, which has no test results of its own.
+passed-without-the-library Credentials.GateFixtures.ThroughASupportAssemblyTests.Inherited_through_a_support_assembly
+# A test class nested in a bbs-2023 class, written in the part of it that names nothing of the suite.
+passed-without-the-library Credentials.GateFixtures.PartialOuterTests+Inner.In_a_class_nested_in_the_other_part

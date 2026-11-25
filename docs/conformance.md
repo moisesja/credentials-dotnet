@@ -126,12 +126,26 @@ again from copies that have the native library removed, and compares the two run
 - A test of a `bbs-2023` test class has to **fail** without the library, and by the failure of
   `RequireOrSkip()`. A test that passes there, is skipped, fails for another reason or produces no result
   at all is reported by name. A `bbs-2023` test class is a type declared in a test source file whose code
-  names anything of `bbs-2023`, or a class that derives from one.
+  names anything of `bbs-2023`, or a class that derives from one or is nested in one; the last two are
+  read from the test assemblies.
 - A test named in `tests/Credentials.BbsGate/need-no-native-library.txt` has to **pass** without it. That
   list has each test of such a class that needs no native library, with the reason.
 - Any other test has to do the same thing in both runs.
 - The second run has to be a run without the library: the availability check passes in the first run and
   fails in the second, or the gate fails.
+- Every test project of the solution has to have results in the first run. A project whose tests are all
+  excluded by the filter of the CI test step writes no result file, and the gate fails and says so: keep at
+  least one test of each test project in the filtered run.
+
+Three things follow for whoever writes a `bbs-2023` test:
+
+- Setup that uses the library has to call the helper before its first use as well: the constructor of the
+  test class, `InitializeAsync`, a fixture, the rows of a theory. Otherwise the test fails without the
+  library before it reaches its own call, and the gate reports `failed-for-another-reason`.
+- To switch such a test off for a while, keep the call first and skip after it:
+  `BbsNativeLibrary.RequireOrSkip(); Skip.If(true, "why");`. A `[Fact(Skip = "...")]` is reported, because a
+  test that never runs shows nothing about its guard.
+- A test of a `bbs-2023` class that needs no native library goes on the list, with the reason.
 
 The script also tests itself on every leg. `tests/Credentials.GateFixtures` is a project of tests that are
 wrong in each of those ways; it is not part of the solution. The gate has to fail on it, with exactly the
@@ -151,6 +165,11 @@ What the gate does not see:
   path, can behave differently there.
 - Whether a test on the list is worth having: the gate checks that it passes without the library, and the
   list is kept by review.
+- Which classes of a test project outside `tests/` are `bbs-2023` classes: its tests are compared like any
+  others, but only the sources under `tests/` are read.
+- The class of a test under a display name of its own, when the result file does not give it. Such a test
+  is matched by the class's own name among the classes of its assembly, which can bring a test of another
+  class of that name into scope. Every other test is matched by the full name of its class.
 - A test project that is not in the solution, and anything else outside what `dotnet test Credentials.sln`
   runs.
 

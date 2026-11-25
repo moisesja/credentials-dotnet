@@ -9,7 +9,8 @@
 #   - A test of a bbs-2023 class has to FAIL without the library, and by the failure of the helper,
 #     BbsNativeLibrary.RequireOrSkip(). Passed, skipped, "no result" and failed for another reason are each
 #     reported by name. A bbs-2023 class is a type declared in a test source file whose code names anything
-#     of bbs-2023, or one that derives from such a type (tests/Credentials.BbsGate/BbsScope.cs).
+#     of bbs-2023 (tests/Credentials.BbsGate/BbsScope.cs), or one that derives from such a type or is
+#     nested in one (read from the test assemblies, tests/Credentials.BbsGate/TestClasses.cs).
 #   - A test on the list tests/Credentials.BbsGate/need-no-native-library.txt has to PASS without it.
 #   - A test of any other class has to do the same in both runs, row for row.
 #   - The run has to be a no-library run: the availability check passes with the library and fails
@@ -60,9 +61,23 @@ case "${1:-}" in
       cat "$TEMPORARY/gate.log"; echo "on a project of deliberately wrong tests the gate has to exit with 1; it exited with $CODE" >&2; exit 1
     fi
     "${FIXTURE_GATE[@]}" --expect "$FIXTURES/expected-findings.txt"
+    # The script's own exits: called wrongly it has to end with 2, under every bash it runs on.
+    for ARGUMENTS in "--results" "--results $TEMPORARY/no-such-folder" "--no-such-mode"; do
+      CODE=0; "$0" $ARGUMENTS > /dev/null 2>&1 || CODE=$?
+      if [ "$CODE" -ne 2 ]; then echo "'$0 $ARGUMENTS' has to exit with 2; it exited with $CODE" >&2; exit 1; fi
+    done
+    CODE=0; "$0" --results "" > /dev/null 2>&1 || CODE=$?
+    if [ "$CODE" -ne 2 ]; then echo "'$0 --results \"\"' has to exit with 2; it exited with $CODE" >&2; exit 1; fi
+    echo "bbs-2023 gate self-test OK: called wrongly, the script exits with 2."
     ;;
   --results)
-    "${GATE[@]}" --repo "$ROOT" --solution "$ROOT/Credentials.sln" --with-library-results "${2:?--results needs a folder}" --filter "$FILTER"
+    # Checked by hand, not by ${2:?...}: under bash 3.2 that ends the script with the status of the
+    # EXIT trap, which is 0.
+    if [ -z "${2:-}" ] || [ ! -d "$2" ]; then
+      echo "--results needs the folder with the result files of the normal run" >&2
+      exit 2
+    fi
+    "${GATE[@]}" --repo "$ROOT" --solution "$ROOT/Credentials.sln" --with-library-results "$2" --filter "$FILTER"
     ;;
   "")
     dotnet test "$ROOT/Credentials.sln" -c "$CONFIGURATION" --no-build --filter "$FILTER" \

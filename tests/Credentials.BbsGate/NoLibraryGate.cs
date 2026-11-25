@@ -84,14 +84,14 @@ internal static class NoLibraryGate
     /// <param name="with">The results of the run with the library.</param>
     /// <param name="without">The results of the run without it.</param>
     /// <param name="unreadable">The test source files without a single reading, from <see cref="BbsScope"/>.</param>
-    /// <param name="bbsClasses">The <c>bbs-2023</c> classes, from <see cref="BbsScope"/> and <see cref="TestTypes"/>.</param>
+    /// <param name="classes">The classes in scope, and the class of each result.</param>
     /// <param name="needNoNativeLibrary">The tests that have to pass without the library.</param>
     /// <param name="availabilityCheck">The test that passes exactly when the library loads.</param>
     public static List<Finding> Compare(
         IReadOnlyCollection<TestResult> with,
         IReadOnlyCollection<TestResult> without,
         IReadOnlyCollection<BbsScope.Finding> unreadable,
-        IReadOnlyCollection<string> bbsClasses,
+        TestClasses classes,
         IReadOnlyCollection<string> needNoNativeLibrary,
         string availabilityCheck)
     {
@@ -108,12 +108,8 @@ internal static class NoLibraryGate
         static bool All(IEnumerable<TestResult> results, string outcome) =>
             results.Any() && results.All(result => result.Outcome == outcome);
 
-        // A test of a bbs-2023 class: the class's own name, after its namespace, is a part of the test's
-        // name before the method. Namespaces are left out of it, because a result file does not give the
-        // class reliably: for a test with a display name of its own it can give the namespace, or the
-        // name of the assembly. A class of the same name in another namespace is taken in with it.
-        var ownNames = bbsClasses.Select(@class => @class[(@class.LastIndexOf('.') + 1)..]).ToHashSet(StringComparer.Ordinal);
-        bool IsInScope(string test) => test.Split('.').SkipLast(1).Any(ownNames.Contains);
+        // A test of a class in scope: any of its results, in either run, is one.
+        bool IsInScope(string test) => before[test].Concat(after[test]).Any(classes.Contains);
 
         // The second run has to be what it claims to be, or everything below would pass for nothing.
         if (!All(before[availabilityCheck], TestResult.Passed) || !All(after[availabilityCheck], TestResult.Failed))
@@ -181,8 +177,11 @@ internal static class NoLibraryGate
             else if (after[test].FirstOrDefault(result => !HelperFailure.All(part => result.Message.Contains(part, StringComparison.Ordinal))) is { } other)
             {
                 findings.Add(new Finding(Rules.FailedOtherwise, test, "without the library it failed, but not by the failure "
-                    + $"of BbsNativeLibrary.RequireOrSkip(): '{other.Message.Split('\n')[0].Trim()}'. That proves nothing about "
-                    + "the library: the test may pass on a host without it. Begin it with the call."));
+                    + $"of BbsNativeLibrary.RequireOrSkip(): '{other.Message.Split('\n')[0].Trim()}'. Either the test does not "
+                    + "begin with the call, or something that runs before the test used the library first: the "
+                    + "constructor of its class, InitializeAsync, a fixture, the rows of a theory. Put the call there "
+                    + "too, before the first use of the library. A failure of another kind proves nothing: the test "
+                    + "may pass on a host without the library."));
             }
         }
 
