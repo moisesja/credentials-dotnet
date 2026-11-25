@@ -8,9 +8,15 @@ namespace Credentials.SampleSmokeTests;
 /// (e.g. a credential that should verify but doesn't), so "completes without throwing + produced
 /// narration" is the assertion. Under coverlet this run also drives the api-coverage gate.
 /// </summary>
+/// <remarks>
+/// The <c>bbs-2023</c> sample has its test in <see cref="Bbs2023SampleSmokeTests"/>, a class of its own. The
+/// no-library gate (<c>tools/check-bbs-tests-without-library.sh</c>) requires every test of a class whose
+/// file names anything of <c>bbs-2023</c> to fail without the native library. This file names none, so the
+/// other samples are not such tests.
+/// </remarks>
 public sealed class SampleSmokeTests
 {
-    private static async Task Run(Func<TextWriter, IServiceProvider?, Task> sample)
+    internal static async Task Run(Func<TextWriter, IServiceProvider?, Task> sample)
     {
         var buffer = new StringWriter();
         await sample(buffer, null);
@@ -23,7 +29,6 @@ public sealed class SampleSmokeTests
     [Fact] public Task CoseEnvelope() => Run(Samples.CoseEnvelope.Program.RunAsync);
     [Fact] public Task SdJwtVc() => Run(Samples.SdJwtVc.Program.RunAsync);
     [Fact] public Task SdJwtPresentation() => Run(Samples.SdJwtPresentation.Program.RunAsync);
-    [Fact] public Task Bbs2023() => Run(Samples.Bbs2023.Program.RunAsync);
     [Fact] public Task PresentationDataIntegrity() => Run(Samples.PresentationDataIntegrity.Program.RunAsync);
     [Fact] public Task PresentationJose() => Run(Samples.PresentationJose.Program.RunAsync);
     [Fact] public Task StatusList() => Run(Samples.StatusList.Program.RunAsync);

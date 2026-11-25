@@ -1,0 +1,15 @@
+// The string is written with an escape for one of its letters. Its value is "bbs-2023".
+// expect: nothing
+// scope: Fixtures.EscapedStringTests
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class EscapedStringTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var suite = Suites.ByName("b\u0062s-2023");
+    }
+}

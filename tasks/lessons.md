@@ -2,6 +2,125 @@
 
 Patterns learned while building credentials-dotnet. Reviewed at session start.
 
+## A tool that deletes: check everything before the first write, and delete only what this run made (2026-11-25)
+
+The gate for #57 took a `--work` folder, deleted it recursively "to start clean", and only then looked at
+the rest of its arguments. The reviewer of PR #72 pointed `--work` at a folder beside the repository and
+left a required option out: the program said the option was required, and the folder was gone. A header
+comment said the folder "has to be inside the repository"; nothing checked it. **Rules:**
+
+- A tool that deletes never deletes a path it was given. It makes a folder of its own, under a name that
+  is new, and that folder is the only thing it removes. "Start clean" is a new folder, not an emptied one.
+- "Its own" begins after the folder has been made, not when the name is chosen. My first fix assigned the
+  name, then checked that it was free, and the clean-up in `finally` deleted the folder that was already
+  there when it was not.
+- Every argument is checked before the first write, and the order of the checks is the order in which a
+  wrong call should be explained. A check that comes after a write is a clean-up problem.
+- A sentence in a comment that says what a path "has to be" is a check that is missing.
+- Paths are compared whole. "Begins with two dots" is not "outside", a path joined to an absolute path is
+  that path, and on a file system that folds letters another spelling is the same folder: where the answer
+  matters, mark the folder and look for the mark instead of comparing names.
+- Test a wrong call by what it leaves on disk: snapshot a sandbox, run the tool as a process, compare. And
+  write the red test first; fourteen of seventeen wrong calls failed on the code I had shipped.
+
+## A guard that reads source must parse it, fail closed, and keep its mutants in the suite (2026-11-24)
+
+For #57 I wrote a test that scanned the test sources as text, to make sure every `bbs-2023` test called the
+native-library helper. I mutation-checked it with twelve altered copies made in a scratch directory, and it
+caught them all. The reviewer of PR #72 then put every call inside a `/* */` comment, and wrote a test
+attribute second in its attribute list; the scan passed both. Nine more forms of the same kind followed when
+I looked. The rebuild on a syntax tree was attacked in turn, and thirteen tests got past it, most of them
+through things a syntax tree has no way to resolve. **Rules:**
+
+- A check on source code works on a syntax tree. Text has comments, strings, attribute lists and line
+  breaks in it, and a regular expression for one of them is wrong about the next.
+- Start from what must be proven, not from what is recognised. The text scan looked for test attributes it
+  knew and dropped a file in which it found none, so an unfamiliar spelling was a pass. The scan now starts
+  from "this file names the suite" and reports whatever in it the scan cannot classify.
+- Say what the check cannot see, where its users will read it. A syntactic check reads names, not what they
+  resolve to, and only the files it is given. The complete check here is behavioural, running the tests
+  without the library, and that it is not in CI is a decision, written down as one.
+- Mutants belong in the suite. Twelve mutants in a scratch copy proved the scan once, to me. Kept as
+  fixtures that each name the finding they expect, they prove it on every run, show a reader what is
+  covered, and make the next evasion a file to add.
+- My own mutants covered what I had thought of. The reviewer's first idea was one I had not. Ask an
+  independent agent for breadth before trusting a check of this kind, and then mutate the checker too.
+
+Round 3 of the same review (2026-11-24). The reviewer wrapped a whole test file in `#if NET10_0`. The scan
+parses without symbols, so it read an empty file, found nothing of the suite in it, and dropped the file
+before any rule ran, the rule that reports conditional compilation among them. Three adversarial rounds
+followed, each with a fresh agent, and none came back empty: a file pattern matched by letter case on
+Linux, a parser one language version ahead of the compiler, a skip in a constructor, a string in the place
+of a type name, an `enum Task` with its own method builder, a `ValueTask` that xUnit 2 never awaits, a
+verbatim `@method:` target, an alias named `global`. **More rules:**
+
+- An out-of-scope decision made before the rules run is itself a rule, and needs its own fixtures. List
+  every such exit: which files are read, how they are decoded and parsed, what puts a file, a class or a
+  method in scope. For each, say why it cannot leave out code the build compiles, and put a fixture at its
+  boundary.
+- Whatever could make the checker's reading of a file differ from the build's goes before the scope
+  decision and is reported in every file, not only in the files already in scope.
+- Don't mirror the build's inputs in the checker (its symbols, its globs, its language version). Refuse the
+  case where the two could differ, or compare with what the build itself recorded: the compiler writes its
+  language version and symbols into the PDB.
+- Compare syntax by kind, not by text. The value of a string token is the text of a name, `@method` has the
+  value of a keyword, and `@global::` spells the global namespace.
+- Every name the checker trusts is a rule too (`Task`, `TheoryData`, `Trait`): say where a declaration of
+  that name is reported, and trust nothing the framework does without running it. I had listed
+  `ValueTask` as a legitimate return type in a fixture; xUnit 2 drops what such a test throws.
+- An allow-list entry is a claim. Each one needs a fixture that fails when the entry is removed, or it goes.
+- Run a fresh adversarial round after the fixes, not only before, and say plainly when the last round
+  still found something: three rounds here, and the third found ten. A syntactic guard of this kind does
+  not converge; the complete check is to run the tests without the library.
+
+Round 4 (2026-11-24), the re-plan. An independent pass on the result found a hole no source rule covers:
+a theory whose rows come up empty without the library runs nothing and reports nothing. It also listed
+what the scan had come to reject: `[Collection]`, any base class, `using static`, `partial`. The owner
+chose a gate that runs the tests again on every CI leg with the library removed, and a scan cut down to
+one job. **More rules:**
+
+- A property about what happens at run time is checked by running. Four passes of a source scan each
+  found a new way round it; the first no-library run on CI would have shown every one without a rule
+  that names it.
+- The standing check was on the table from the start, as the "alternative" to decision 9, and the
+  orchestrator's default was that one-off runs were enough. A one-off run proves the code as it was that
+  day. When the property is about every future test, the default is the standing check, and the cost of
+  it (here some tens of seconds a leg) is measured before it is argued about.
+- A rule that makes ordinary code a finding has a cost that grows with every contributor. Count what a
+  check rejects, not only what it catches, before adding the next rule.
+- A check that runs a copy has to make the copy faithful and say where it is not: the first version of
+  the gate copied only the output folder, and a test that read a file beside its project failed there for
+  that reason and looked guarded. "It failed" is not "it failed for the reason I am testing": the gate now
+  requires the helper's own failure.
+- The checker's self-test has to go through the path CI uses. The first self-test compared findings and
+  never reached the exit code; deleting the line that feeds the verdict left it green.
+- Two adversarial rounds on the gate were not clean either. What was left after them are limits of
+  running on four platforms from a copy, and they are written where a contributor will read them.
+
+## A gate in one test process does not protect the others, and every exemption needs a detector someone can fool (2026-11-23)
+
+For #57 my first design had one availability test, in `Credentials.Rdfc.Tests`, fail when the native BBS
+library was missing, while every other test that needed it skipped visibly. The plan even listed "the
+availability test runs in one of three assemblies" as a risk and argued it away: all three resolve the same
+package. The adversarial pass removed the library from the other two assemblies' output only, and the exact CI
+command went green with three tests skipped. Three more things came out of the same pass. **Rules:**
+
+- A rule about what happens when a precondition is missing belongs in the helper every dependent test calls,
+  so each test process enforces it for any subset of the tests. One sentinel test elsewhere is only as good as
+  the assumption that every process sees the same world.
+- A risk that a plan argues away is the first thing to hand to the adversarial pass.
+- A branch that only runs when something is missing is never run by CI, where nothing is missing. With the
+  library present the helper just returned, and a helper that did nothing would have passed every test. Run
+  that branch inside the suite: here, a second copy of NetCrypto in a load context that refuses the native
+  library. Then mutate the helper and watch the test fail.
+- An exemption ("skip on musl") needs a detector, and each detector is a way in. I built three for musl (the
+  runtime identifier, the process map, asking the C library) and each was fooled on a glibc host by a
+  variable or a file. Before adding an exemption, ask what it buys. Here a musl host was red anyway, so the
+  answer was nothing, and the design without it has no skip to force.
+- Run the decision on a real host of each class it distinguishes (here glibc, old glibc and musl
+  containers). A reading of the code got one wrong: "`Bbs_issuance_is_gated` needs no native code" is false
+  on musl, where BLS key generation cannot load its own library.
+
 ## A fix that consumers need is not done at merge: `Refs`, not `Closes`, until the release ships (2026-11-20)
 
 For #52 I wrote "Closes #52", although `CredentialsVersion` stayed at 1.2.0, so every nuget.org consumer still
@@ -40,6 +159,12 @@ stopped it: "add the current work to the existing PR … no, one PR only". The s
 round before (the all-latest update was folded into #21). **Rule:** while a release PR is open, every
 change for that release goes onto it. Don't branch or stack; propose folding and only ask if the change
 would make the PR unreviewable. Keep the folded PR's description current for each addition.
+
+**2026-11-24, the same rule from the other side.** The convention guard was added to PR #72 in response
+to its review, and the review kept finding ways past it. The orchestrator offered to split the guard out
+into a sub-issue of its own so that the rest of the PR could merge. The owner declined: "no, I want to
+include the fix in this PR". **Rule:** work added to a PR in response to its review is finished in that
+PR; do not offer to split it out to get the rest merged.
 
 ## A count-based gate that drops after a dependency change is fixed by naming the failures, never by lowering the count (2026-10-29)
 

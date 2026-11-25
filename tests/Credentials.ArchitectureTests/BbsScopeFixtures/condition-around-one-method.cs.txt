@@ -1,0 +1,24 @@
+// One test of the class is under the condition. What the scan reads is an ordinary class with one ordinary
+// test.
+// expect: conditional-compilation (file)
+using Xunit;
+using DataProofsDotnet.Rdfc.DataIntegrity;
+
+namespace Fixtures;
+
+public sealed class SuiteTests
+{
+    [Fact]
+    public void Adds()
+    {
+        Assert.Equal(2, 1 + 1);
+    }
+
+#if NET10_0
+    [Fact]
+    public void Bbs_derives()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+    }
+#endif
+}

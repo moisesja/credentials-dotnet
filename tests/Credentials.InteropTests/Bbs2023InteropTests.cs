@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Credentials;
 using Credentials.Rdfc;
 using Credentials.Roles;
+using Credentials.TestSupport;
 using Credentials.Verification;
 using DataProofsDotnet;
 using DataProofsDotnet.DataIntegrity;
@@ -15,25 +16,28 @@ using Xunit;
 namespace Credentials.InteropTests;
 
 /// <summary>
-/// bbs-2023 (vc-di-bbs) interop (NFR-007), IsAvailable-gated. Derives a selective-disclosure proof with
+/// bbs-2023 (vc-di-bbs) interop (NFR-007). Derives a selective-disclosure proof with
 /// the engine and pins the wire-format drift sentinels — the <c>bbs-2023</c> cryptosuite name and a
 /// multibase-base64url (<c>u…</c>) derived <c>proofValue</c> — then confirms the derived proof verifies
 /// and that tampering a revealed value breaks the cryptographically-enforced mandatory disclosure.
 /// </summary>
+/// <remarks>
+/// Both tests need NetCrypto's native BBS library and start with <see cref="BbsNativeLibrary.RequireOrSkip"/>:
+/// without the library they fail where it has to load and are skipped, with a reason, elsewhere (issue #57).
+/// </remarks>
 [Trait("Category", "Bbs")]
 public sealed class Bbs2023InteropTests
 {
     private static readonly DefaultKeyGenerator KeyGen = new();
-    private static readonly bool Available = new Bbs2023Cryptosuite().IsAvailable;
 
     private static ServiceProvider Provider() =>
         new ServiceCollection().AddCredentials(b => b.UseNetDid().UseBbs2023()).BuildServiceProvider();
 
     [SkippableFact]
-    [TestSupport.FrTag("NFR-007")]
+    [FrTag("NFR-007")]
     public async Task Bbs_derived_proof_pins_the_vc_di_bbs_wire_format_and_verifies()
     {
-        Skip.IfNot(Available, "the native BBS library is not available on this host.");
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = Provider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();
@@ -54,10 +58,10 @@ public sealed class Bbs2023InteropTests
     }
 
     [SkippableFact]
-    [TestSupport.FrTag("NFR-007")]
+    [FrTag("NFR-007")]
     public async Task Bbs_tampered_revealed_mandatory_value_is_rejected()
     {
-        Skip.IfNot(Available, "the native BBS library is not available on this host.");
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = Provider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();

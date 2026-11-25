@@ -1,0 +1,16 @@
+// Only the category names the suite. It is a string like any other; no rule reads attributes.
+// expect: nothing
+// scope: Fixtures.SelectiveDisclosureTests
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class SelectiveDisclosureTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var proof = Suites.Derive();
+    }
+}

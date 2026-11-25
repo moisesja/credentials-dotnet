@@ -18,34 +18,33 @@ namespace Credentials.Rdfc.Tests;
 /// <summary>
 /// M5 end-to-end for the <c>bbs-2023</c> selective-disclosure cryptosuite: holder derivation (FR-031)
 /// and verification of derived proofs (FR-042) through the real <c>AddCredentials().UseBbs2023()</c>
-/// wiring. Issuance (FR-014) is gated — DataProofs exposes no key-store BBS create API — so base
-/// credentials are crafted here directly via the substrate's raw-key API (test-only; the engine never
-/// does raw-key issuance). Lives in the Rdfc test project so the dotNetRDF/Newtonsoft closure stays out
-/// of the default test path (NFR-002).
+/// wiring. Issuance (FR-014) is gated until issue #43, so base credentials are crafted here directly via
+/// the substrate's raw-key API (test-only; the engine never does raw-key issuance). Lives in the Rdfc test
+/// project so the dotNetRDF/Newtonsoft closure stays out of the default test path (NFR-002).
 /// </summary>
+/// <remarks>
+/// The tests that derive or verify need NetCrypto's native BBS library. Each starts with
+/// <see cref="BbsNativeLibrary.RequireOrSkip"/>: without the library it fails where the library has to load
+/// and is skipped, with a reason, elsewhere. It is never reported as passed (issue #57). The registration
+/// tests need neither of NetCrypto's native libraries. <see cref="Bbs_issuance_is_gated"/> makes no BBS call,
+/// but it generates a BLS key, which needs the second one (blst): where that is missing it fails.
+/// </remarks>
+[Trait("Category", "Bbs")]
 public sealed class Bbs2023SelectiveDisclosureTests
 {
     private static readonly DefaultCryptoProvider Crypto = new();
     private static readonly DefaultKeyGenerator KeyGen = new();
-
-    // The BBS native library ships in NetCrypto for every supported RID (osx-arm64/x64, linux-x64/arm64,
-    // win-x64), so on a supported host BbsAvailable is true and the crypto tests below run for real.
-    // COVERAGE NOTE: on a host that lacks the native library the `if (!BbsAvailable) { return; }` guards
-    // make those tests a silent no-op — they report Passed without exercising any BBS path. A CI audit on
-    // an unsupported RID must therefore read a green M5 crypto run as "not covered", not "verified".
-    // (The non-crypto tests — issuance gate, capabilities, surface confinement — run unconditionally.)
-    private static readonly bool BbsAvailable = new Bbs2023Cryptosuite().IsAvailable;
 
     private static ServiceProvider BuildProvider() =>
         new ServiceCollection().AddCredentials(b => b.UseNetDid().UseBbs2023()).BuildServiceProvider();
 
     // ---- derive → verify ---------------------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     [FrTag("FR-031")]
     public async Task Bbs_derive_then_verify_round_trips()
     {
-        if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();
@@ -72,10 +71,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
         result.Check(CheckKinds.Structure)!.Status.Should().Be(CheckStatus.Passed);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_mandatory_group_is_always_revealed()
     {
-        if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
 
@@ -91,11 +90,11 @@ public sealed class Bbs2023SelectiveDisclosureTests
         derived.ToElement().GetProperty("credentialSubject").TryGetProperty("gpa", out _).Should().BeFalse();
     }
 
-    [Fact]
+    [SkippableFact]
     [FrTag("FR-042")]
     public async Task Bbs_two_derivations_are_unlinkable_and_both_verify()
     {
-        if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();
@@ -116,10 +115,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
 
     // ---- security ----------------------------------------------------------------------------------
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_tampering_a_revealed_mandatory_value_is_rejected()
     {
-        if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();
@@ -140,10 +139,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
         result.Check(CheckKinds.Proof)!.Status.Should().Be(CheckStatus.Failed);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_issuer_binding_rejects_a_mismatched_verification_method()
     {
-        if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();
@@ -160,10 +159,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
         result.Check(CheckKinds.Proof)!.Diagnostics.Should().Contain(d => d.Code == "issuer_binding");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_tampered_derived_proof_is_rejected_not_thrown()
     {
-        if (!BbsAvailable) { return; } // BBS native lib ships with NetCrypto; guard a binary-less host
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();
@@ -186,14 +185,14 @@ public sealed class Bbs2023SelectiveDisclosureTests
 
     // ---- adversarial regressions (M5 adversarial pass, 2026-06-22) ---------------------------------
 
-    [Theory]
+    [SkippableTheory]
     [InlineData("credentialSubject/gpa")] // missing leading '/'
     [InlineData("not-a-pointer")]
     [InlineData(" /credentialSubject")]   // leading whitespace
     [InlineData("\t")]
     public async Task Bbs_malformed_reveal_pointer_maps_to_credential_format_exception(string pointer)
     {
-        if (!BbsAvailable) { return; }
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
@@ -204,10 +203,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
         await act.Should().ThrowAsync<CredentialFormatException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_null_reveal_pointer_element_maps_to_credential_format_exception()
     {
-        if (!BbsAvailable) { return; }
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
@@ -216,10 +215,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
         await act.Should().ThrowAsync<CredentialFormatException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_reveal_pointer_matching_nothing_is_refused_with_the_cause()
     {
-        if (!BbsAvailable) { return; }
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);
@@ -233,10 +232,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
             .WithInnerException<DataProofsDotnet.ProofGenerationException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_withheld_validity_claim_not_in_mandatory_group_is_an_inherent_issuer_side_residual()
     {
-        if (!BbsAvailable) { return; }
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var verifier = provider.GetRequiredService<IVerifier>();
@@ -261,10 +260,10 @@ public sealed class Bbs2023SelectiveDisclosureTests
         result.Check(CheckKinds.Validity)!.Status.Should().Be(CheckStatus.Failed);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task Bbs_mandatory_only_reveal_is_refused_with_the_cause()
     {
-        if (!BbsAvailable) { return; }
+        BbsNativeLibrary.RequireOrSkip();
         using var provider = BuildProvider();
         var deriver = provider.GetRequiredService<IBbsDeriver>();
         var (baseCredential, _) = await CraftBaseAsync(["/issuer", "/credentialSubject/id"]);

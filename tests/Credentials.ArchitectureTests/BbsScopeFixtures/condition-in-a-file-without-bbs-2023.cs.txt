@@ -1,0 +1,19 @@
+// A condition in a file that names nothing of the suite in either branch. It is reported all the same:
+// the scan does not read the other branch to find that out, and a rule that held only where the scan could
+// see would not hold where it mattered. No test source uses conditional compilation today.
+// expect: conditional-compilation (file)
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class OrdinaryConditionalTests
+{
+    [Fact]
+    public void Adds()
+    {
+#if DEBUG
+        Console.WriteLine("adding");
+#endif
+        Assert.Equal(2, 1 + 1);
+    }
+}

@@ -45,6 +45,27 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
 
 ### Changed
 
+- **`bbs-2023` tests fail or skip visibly without the native BBS library**
+  ([#57](https://github.com/moisesja/credentials-dotnet/issues/57)). Tests, one sample, CI and documentation;
+  no library code changes.
+  - `bbs-2023` needs NetCrypto's native BBS library. Where it did not load, eleven test methods returned early
+    and were reported as passed, and the `Bbs2023` sample printed "skipped" and exited 0, so its smoke test
+    passed too. A run on such a host was green although no `bbs-2023` test had run; only the two interop
+    tests said so, as skipped.
+  - Every test that needs the library now fails where the library has to load, which is on the five platforms
+    NetCrypto ships it for and on GitHub Actions whatever the platform, and is skipped with a reason anywhere
+    else. None is reported as passed. A new test pins the list of five against the NetCrypto package.
+  - A new gate, `tools/check-bbs-tests-without-library.sh`, runs on every CI leg after the tests: it runs
+    the same test assemblies again from copies with the library removed, and fails unless every test of a
+    `bbs-2023` test class fails there by that check. A test that passes, is skipped, fails for another
+    reason or produces no result is reported by name, and so is any other test whose outcome changes. The
+    gate also tests itself on every leg, on a project of deliberately wrong tests
+    (`tests/Credentials.GateFixtures`).
+  - CI now also runs on macOS (`osx-arm64`) and on arm64 Linux (`linux-arm64`). With `linux-x64` and `win-x64`
+    that is four of the five platforms; `osx-x64` is shipped and not exercised.
+  - The `Bbs2023` sample throws `NotSupportedException` and exits non-zero when the library does not load.
+  - [`docs/conformance.md`](docs/conformance.md) has a new section, "bbs-2023: platforms": the platforms, the
+    glibc 2.34 requirement of the Linux builds, and what the tests do on a host without the library.
 - **PRD: `bbs-2023` decisions of 2026-11-23** (epic [#25](https://github.com/moisesja/credentials-dotnet/issues/25)).
   Documentation only; no code implements these yet.
   - New targets: the `bbs-2023` optional features, anonymous holder binding and pseudonyms (FR-017, FR-036,

@@ -1,0 +1,17 @@
+// The string below holds U+FFFD, the character a decoder puts in the place of bytes that are not UTF-8.
+// The scan cannot tell it from such bytes, which the compiler reads by a code page of the machine and so
+// perhaps not as the scan does. It is a finding in any test source file. (The test of the files on disk
+// has a file with a byte that is not UTF-8.)
+// expect: not-utf-8 (file)
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class ReplacementCharacterTests
+{
+    [Fact]
+    public void Decodes()
+    {
+        Assert.Equal(1, "�".Length);
+    }
+}

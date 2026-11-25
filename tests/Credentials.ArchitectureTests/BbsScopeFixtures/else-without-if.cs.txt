@@ -1,0 +1,16 @@
+// The scan looks for #if, #define and #undef, not for #elif and #else: without an #if those do not
+// compile, and the scan reports that.
+// expect: syntax-error (file)
+using Xunit;
+
+namespace Fixtures;
+
+#else
+public sealed class AfterAnElseTests
+{
+    [Fact]
+    public void Adds()
+    {
+        Assert.Equal(2, 1 + 1);
+    }
+}

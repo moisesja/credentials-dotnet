@@ -65,11 +65,139 @@ addressable.
   matched against the issued `_sd` array, proving cross-implementation agreement on the disclosure-digest
   algorithm. The negative cases (a tampered disclosure value; an unmatched disclosure) reject, and the
   `dc+sd-jwt` media type / `typ` are drift sentinels.
-- **bbs-2023 (vc-di-bbs)** — `IsAvailable`-gated. A derived proof pins the wire-format drift sentinels
+- **bbs-2023 (vc-di-bbs)** — A derived proof pins the wire-format drift sentinels
   (the `bbs-2023` cryptosuite name and a multibase-base64url `proofValue`), verifies, and a tampered
   revealed-mandatory value is rejected (the cryptographically-enforced mandatory group). DataProofs ≥ 2.0.0
   follows the reference `bbs-2023` algorithms (its own conformance tests verify the W3C
-  `derivedRevealDocument.json` vector and cross-verify with the reference verifier).
+  `derivedRevealDocument.json` vector and cross-verify with the reference verifier). These tests need a
+  native library; see [bbs-2023: platforms](#bbs-2023-platforms).
 
 The no-Newtonsoft consumer-closure guarantee (NFR-002) is asserted separately by
 `Credentials.ConsumerProbe` (`tools/check-no-newtonsoft-closure.sh`).
+
+## bbs-2023: platforms
+
+`bbs-2023` runs on native code. NetCrypto, the cryptographic foundation, carries a native BBS library
+(`zkryptium_ffi`) inside its NuGet package, and every `bbs-2023` operation needs it: deriving and verifying
+here, and issuing once [#43](https://github.com/moisesja/credentials-dotnet/issues/43) lands. Where the
+library does not load, `IBbsDeriver.DeriveAsync` throws `NotSupportedException`.
+
+NetCrypto, in the version `Directory.Packages.props` pins, ships the library for five runtime identifiers.
+CI exercises four of them:
+
+| Runtime identifier | Library shipped | `bbs-2023` exercised in CI |
+|---|---|---|
+| `linux-x64` | yes; needs glibc 2.34 or later | yes (`ubuntu-latest`) |
+| `linux-arm64` | yes; needs glibc 2.34 or later | yes (`ubuntu-24.04-arm`) |
+| `osx-arm64` | yes | yes (`macos-latest`) |
+| `win-x64` | yes | yes (`windows-latest`) |
+| `osx-x64` | yes | no |
+| any other (musl Linux, `win-arm64`, mobile) | no | no |
+
+More platforms are requested upstream in
+[crypto-dotnet#34](https://github.com/moisesja/crypto-dotnet/issues/34).
+
+### What the tests do without the library
+
+Every test that needs the library has `BbsNativeLibrary.RequireOrSkip()` (in
+`tests/Credentials.TestSupport`) as its first statement. That covers the derive and verify tests in
+`Credentials.Rdfc.Tests`, the interop tests above, and the smoke test of the `Bbs2023` sample. They carry
+`[Trait("Category", "Bbs")]`, so `dotnet test --filter "Category=Bbs"` selects them; the trait is a
+convenience, and nothing checks that a new test has it. When the library did not load, such a test is never
+reported as passed:
+
+- It **fails** where the library has to be there: on one of the five platforms, and on GitHub Actions
+  whatever the platform. GitHub sets `GITHUB_ACTIONS=true` on every runner, and the tests read it. A green CI
+  leg therefore means the `bbs-2023` tests ran on it, and a leg on a platform outside the five cannot go
+  green without the library. (A job that runs the tests inside a container of its own has to pass the
+  variable on. Anything else that sets it, a local run under `act` for example, counts as GitHub Actions
+  too.)
+- It is **skipped**, with a reason that names the platform, on any other host: `win-arm64`, for example.
+
+The decision is taken in each test process, so it holds for a single test project and for a filtered run as
+much as for the whole solution. On CI the library is always there, so the failing branch would never run;
+`BbsNativeLibraryTests` therefore runs the call against a second copy of NetCrypto that is refused the
+library, on every host and every leg, and pins the rule and where its inputs come from.
+
+A test that used `bbs-2023` and left the call out would not be covered by it. That is checked by running.
+On every CI leg, after the tests, `tools/check-bbs-tests-without-library.sh` runs the same test assemblies
+again from copies that have the native library removed, and compares the two runs test by test:
+
+- A test of a `bbs-2023` test class has to **fail** without the library, and by the failure of
+  `RequireOrSkip()`. A test that passes there, is skipped, fails for another reason or produces no result
+  at all is reported by name. A `bbs-2023` test class is a type declared in a test source file whose code
+  names anything of `bbs-2023`, or a class that derives from one or is nested in one; the last two are
+  read from the test assemblies.
+- A test named in `tests/Credentials.BbsGate/need-no-native-library.txt` has to **pass** without it. That
+  list has each test of such a class that needs no native library, with the reason.
+- Any other test has to do the same thing in both runs.
+- The second run has to be a run without the library: the availability check passes in the first run and
+  fails in the second, or the gate fails.
+- Every test project of the solution has to have results in the first run. A project whose tests are all
+  excluded by the filter of the CI test step writes no result file, and the gate fails and says so: keep at
+  least one test of each test project in the filtered run.
+
+Three things follow for whoever writes a `bbs-2023` test:
+
+- Setup that uses the library has to call the helper before its first use as well: the constructor of the
+  test class, `InitializeAsync`, a fixture, the rows of a theory. Otherwise the test fails without the
+  library before it reaches its own call, and the gate reports `failed-for-another-reason`.
+- To switch such a test off for a while, keep the call first and skip after it:
+  `BbsNativeLibrary.RequireOrSkip(); Skip.If(true, "why");`. A `[Fact(Skip = "...")]` is reported, because a
+  test that never runs shows nothing about its guard.
+- A test of a `bbs-2023` class that needs no native library goes on the list, with the reason.
+
+The script also tests itself on every leg. `tests/Credentials.GateFixtures` is a project of tests that are
+wrong in each of those ways; it is not part of the solution. The gate has to fail on it, with exactly the
+findings listed beside it. To run the gate locally: `dotnet build Credentials.sln -c Release`, then the
+script without arguments.
+
+The gate works in a new folder that it makes under `artifacts/bbs-gate` (it makes that folder too if it is
+not there, and leaves it), and deletes its own folder and nothing else when it is done. It never deletes,
+overwrites or truncates anything it did not create in the same run, and it checks all its arguments before
+it writes anything: a call it cannot carry out ends with exit code 2 and changes nothing. A run that is
+killed leaves its folder behind, and no later run removes it; delete `artifacts/bbs-gate` by hand when it
+has grown.
+
+What the gate does not see:
+
+- A test in a file that names nothing of the suite, and not derived from a class in one, that passes both
+  with and without the library, because it returns early or expects only an exception. If such a test
+  fails or is skipped without the library, it is reported.
+- What a test does on a platform NetCrypto does not ship the library for. The second run is on the
+  platforms of the CI legs, and it ships for all four.
+- A difference between the copy the second run works on and a real host without the library. The copy is
+  of everything under `tests/`, with each output folder as the first run left it. A test that depends on a
+  file an earlier test wrote beside the assembly, or that reaches a file outside `tests/` by a relative
+  path, can behave differently there.
+- Whether a test on the list is worth having: the gate checks that it passes without the library, and the
+  list is kept by review.
+- Which classes of a test project outside `tests/` are `bbs-2023` classes: its tests are compared like any
+  others, but only the sources under `tests/` are read.
+- The class of a test under a display name of its own, when the result file does not give it. Such a test
+  is matched by the class's own name among the classes of its assembly, which can bring a test of another
+  class of that name into scope. Every other test is matched by the full name of its class.
+- A test project that is not in the solution, and anything else outside what `dotnet test Credentials.sln`
+  runs.
+
+The same class pins the first column of the table against the NetCrypto package the build resolved. That
+test fails when NetCrypto drops, adds or renames a platform's library, until the list in `BbsNativeLibrary`
+and this page are updated. It reads what the package declares, in the portable build that CI tests. Only a
+run on the platform itself shows that the binary loads, which is what the CI column records; `osx-x64` has
+the declaration check alone.
+
+The tests name a platform by its operating system and architecture. NetCrypto's Linux builds are glibc
+builds, and two kinds of Linux host are on the list by that name although the library cannot load there:
+
+- **glibc older than 2.34** (RHEL 8 and its rebuilds, for example);
+- **musl** (Alpine, for example), for which NetCrypto has no build.
+
+On both the tests fail, and the message says that the Linux builds need glibc 2.34 or later and do not load
+on musl. On a stock Alpine image `Bbs_issuance_is_gated` fails as well, for a related reason: it generates a
+BLS key, and BLS key generation needs NetCrypto's second native library (`blst`, through
+`Nethermind.Crypto.Bls`), which ships for the same five platforms and has no availability check of its own.
+Both are part of crypto-dotnet#34.
+
+The `Credentials.Sample.Bbs2023` sample follows the same line. Run on a host where the library does not
+load, it throws `NotSupportedException` and exits non-zero. It does not print a result for a path it did not
+run.

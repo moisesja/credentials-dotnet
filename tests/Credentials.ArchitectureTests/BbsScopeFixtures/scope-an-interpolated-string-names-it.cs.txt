@@ -1,0 +1,15 @@
+// The suite is named only in one string, of this kind: an interpolated string.
+// expect: nothing
+// scope: Fixtures.SuiteNameTests
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class SuiteNameTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var name = $"bbs-2023 for {holder}";
+    }
+}

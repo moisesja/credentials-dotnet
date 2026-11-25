@@ -1,0 +1,14 @@
+// A file that does not parse cannot be checked. It is reported; it is not passed over.
+// expect: syntax-error (file)
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023BrokenTests
+{
+    [SkippableFact]
+    public void Unfinished(
+    {
+        BbsNativeLibrary.RequireOrSkip();

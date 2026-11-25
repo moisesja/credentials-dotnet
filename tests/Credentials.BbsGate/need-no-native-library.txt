@@ -1,0 +1,49 @@
+# The tests of bbs-2023 test classes that need no native library, each with the reason.
+#
+# A bbs-2023 test class is a type declared in a test source file whose code names anything of bbs-2023.
+# The no-library gate (tools/check-bbs-tests-without-library.sh) runs every test again with NetCrypto's
+# native BBS library removed. A test of such a class has to FAIL there, unless it is named here; a test
+# named here has to PASS there. So an entry is checked by running, and a wrong one fails the gate.
+#
+#   <namespace>.<class>.<method> | <reason>
+#
+# One test a line (all the rows of a theory at once), so that a new test of a bbs-2023 class is never
+# covered by an entry that was written before it. The gate checks that an entry passes without the
+# library; that the test is worth having there is for whoever reviews the entry.
+#
+Credentials.Rdfc.Tests.Bbs2023SelectiveDisclosureTests.Bbs_issuance_is_gated | asserts the issuance gate, which refuses before any BBS call
+Credentials.Rdfc.Tests.Bbs2023SelectiveDisclosureTests.UseBbs2023_adds_the_suite_to_capabilities_and_registers_the_deriver | registration only
+Credentials.Rdfc.Tests.Bbs2023SelectiveDisclosureTests.UseBbs2023_is_idempotent | registration only
+Credentials.Rdfc.Tests.BbsNativeLibraryTests.A_missing_library_skips_only_off_github_actions_on_an_unshipped_platform | pins the rule, a pure function
+Credentials.Rdfc.Tests.BbsNativeLibraryTests.The_rule_is_carried_out_on_the_calling_test | pins what an outcome does to a test
+Credentials.Rdfc.Tests.BbsNativeLibraryTests.The_inputs_of_the_rule_come_from_this_host | pins where the rule's inputs come from
+Credentials.Rdfc.Tests.BbsNativeLibraryTests.Without_the_library_the_call_fails_or_skips_and_never_returns | runs the helper where the library is refused; it passes with or without it
+Credentials.Rdfc.Tests.BbsNativeLibraryTests.A_platform_maps_to_its_runtime_identifier | pins the platform mapping, a pure function
+Credentials.Rdfc.Tests.BbsNativeLibraryTests.Netcrypto_declares_the_bbs_native_library_for_exactly_the_documented_platforms | reads the .deps.json, not the library
+Credentials.Rdfc.Tests.RdfcSurfaceConfinementTests.Public_surface_exposes_no_substrate_or_rdf_stack_type | reflects over the public surface; names a bbs-2023 type and calls nothing
+Credentials.ArchitectureTests.BbsScopeTests.Every_test_source_has_one_reading_and_the_bbs_2023_classes_are_found | the scope scan, over the real sources
+Credentials.ArchitectureTests.BbsScopeTests.A_fixture_is_read_exactly_as_its_header_says | the scope scan, over its fixtures
+Credentials.ArchitectureTests.BbsScopeTests.A_class_that_derives_from_a_bbs_2023_class_or_is_nested_in_one_is_found_in_the_assembly | reads the classes of this assembly
+Credentials.ArchitectureTests.BbsScopeTests.The_third_case_of_the_review_is_reported_on_the_real_test_file | the scope scan, over an altered copy
+Credentials.ArchitectureTests.BbsScopeTests.The_third_case_of_the_review_is_reported_whatever_the_condition | the scope scan, over an altered fixture
+Credentials.ArchitectureTests.BbsScopeTests.Every_source_file_but_the_build_output_of_a_project_is_scanned | the scan's choice of files
+Credentials.ArchitectureTests.BbsScopeTests.The_scan_reads_the_files_a_project_compiles_by_default | the scan's choice of files, on disk
+Credentials.ArchitectureTests.BbsScopeTests.The_scan_parses_at_the_language_version_of_the_build | the scan's parse options
+Credentials.ArchitectureTests.NoLibraryGateTests.A_test_is_judged_by_what_it_does_without_the_library | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.A_failure_has_to_be_the_helpers | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.Any_other_test_does_the_same_in_both_runs_row_for_row | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.A_test_of_a_bbs_2023_class_is_known_by_its_full_name | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.A_test_belongs_to_the_class_of_its_assembly_that_begins_its_name | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.A_test_name_in_two_assemblies_is_reported | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.Rows_made_at_run_time_are_compared_by_their_outcomes | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.An_entry_of_the_list_covers_the_one_test_it_names | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.A_file_without_a_single_reading_fails_the_gate | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.An_entry_of_the_list_that_names_nothing_in_scope_is_reported | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.The_run_without_the_library_has_to_be_one | the gate's comparison, on made-up results
+Credentials.ArchitectureTests.NoLibraryGateTests.The_list_is_read_as_tests_and_reasons | the gate's list
+Credentials.ArchitectureTests.NoLibraryGateTests.A_test_project_of_the_solution_without_results_is_found | the gate's check of its input
+Credentials.ArchitectureTests.NoLibraryGateTests.A_result_file_is_read_by_test_and_row | the gate's reading of result files
+Credentials.ArchitectureTests.GateArgumentsTests.A_wrong_call_exits_with_2_and_touches_nothing | runs the gate program with wrong arguments; it never gets to a test
+Credentials.ArchitectureTests.GateArgumentsTests.A_path_is_inside_a_folder_only_if_it_is_below_it | the gate's check of the paths it writes to
+Credentials.ArchitectureTests.GateArgumentsTests.A_path_on_another_drive_is_not_inside | the gate's check of the paths it writes to
+Credentials.ArchitectureTests.GateArgumentsTests.The_gates_own_folder_is_never_one_that_was_there | the gate's own folder, in a temporary one

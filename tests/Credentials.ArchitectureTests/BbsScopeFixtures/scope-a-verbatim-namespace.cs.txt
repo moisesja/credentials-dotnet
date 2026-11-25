@@ -1,0 +1,16 @@
+// The namespace has a part written as a verbatim identifier. To the runtime, and so in a result file, the
+// class is Fixtures.base.DerivedProofTests; the scan names it by the value of each identifier.
+// expect: nothing
+// scope: Fixtures.base.DerivedProofTests
+using Xunit;
+
+namespace Fixtures.@base;
+
+public sealed class DerivedProofTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var suite = new Bbs2023Cryptosuite();
+    }
+}

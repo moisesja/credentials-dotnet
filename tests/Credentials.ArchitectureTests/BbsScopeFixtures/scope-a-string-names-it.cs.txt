@@ -1,0 +1,15 @@
+// Only a string names the suite: the test asks a registry for it by name.
+// expect: nothing
+// scope: Fixtures.SuiteRegistryTests
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class SuiteRegistryTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var suite = Suites.ByName("bbs-2023");
+    }
+}

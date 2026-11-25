@@ -1,0 +1,26 @@
+// Which lines are directives depends on the branch taken. The scan defines no symbols, so it reads the
+// first branch, where a comment opens and takes in everything down to its end: to the scan the two lines
+// in the middle are comment text. To a build that defines the symbol they are directives, and the class
+// between them is compiled. No reading of the text, however generous, finds every branch; the first
+// condition is what is reported.
+// expect: conditional-compilation (file)
+#if !NET10_0
+/*
+#endif
+using Xunit;
+using DataProofsDotnet.Rdfc.DataIntegrity;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023BehindACommentTests
+{
+    [Fact]
+    public void Derives()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+    }
+}
+#if !NET10_0
+*/
+#endif

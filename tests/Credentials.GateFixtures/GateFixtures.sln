@@ -1,0 +1,5 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# The fixture project on its own, for the gate's self-test: the gate requires a solution whose test
+# projects all have results. The project is not part of Credentials.sln.
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Credentials.GateFixtures", "Credentials.GateFixtures.csproj", "{6B0C2F0E-5C0B-4F2A-9A53-2D0C7B1E57A1}"
+EndProject

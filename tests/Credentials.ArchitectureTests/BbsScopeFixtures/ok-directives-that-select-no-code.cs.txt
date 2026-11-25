@@ -1,0 +1,46 @@
+// Directives that choose no code, and text that only looks like a condition: in a comment, in a verbatim
+// string and in a raw string. None of them gives the file a second reading, so the scan reports nothing,
+// and the class is a bbs-2023 class.
+// expect: nothing
+// scope: Fixtures.Bbs2023DirectiveTests
+#nullable enable
+#pragma warning disable CS0168
+using Credentials.TestSupport;
+using Xunit;
+
+namespace Fixtures;
+
+/*
+#if NET10_0
+*/
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023DirectiveTests
+{
+    #region vectors
+
+    private const string Verbatim = @"
+#if NET10_0
+#define FAST
+#endif
+";
+
+    private const string Raw = """
+#if NET10_0
+#undef DEBUG
+#endif
+""";
+
+    #endregion
+
+    [SkippableFact]
+    public void Derives()
+    {
+        BbsNativeLibrary.RequireOrSkip();
+#line hidden
+        Derive(Verbatim + Raw);
+#line default
+    }
+
+#pragma warning restore CS0168
+#nullable restore
+}

@@ -1,0 +1,20 @@
+// The test is in the #else branch of a negated symbol. The scan defines no symbols, so the branch it reads
+// is the empty one.
+// expect: conditional-compilation (file)
+#if !NET10_0
+#else
+using Xunit;
+using DataProofsDotnet.Rdfc.DataIntegrity;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023ElseBranchTests
+{
+    [Fact]
+    public void Derives()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+    }
+}
+#endif

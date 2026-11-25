@@ -1,0 +1,16 @@
+// The identifier has a zero-width joiner between its letters, which the compiler drops from a name. Read as
+// text it does not contain "bbs"; its value does.
+// expect: nothing
+// scope: Fixtures.InvisibleCharacterTests
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class InvisibleCharacterTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var suite = new Bb‍s2023Cryptosuite();
+    }
+}

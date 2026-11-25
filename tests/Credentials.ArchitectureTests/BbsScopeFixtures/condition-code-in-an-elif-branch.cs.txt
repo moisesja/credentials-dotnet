@@ -1,0 +1,20 @@
+// The test is in an #elif branch. The scan defines no symbols, so it reads neither branch.
+// expect: conditional-compilation (file)
+#if NEVER_DEFINED
+using System;
+#elif NET10_0
+using Xunit;
+using DataProofsDotnet.Rdfc.DataIntegrity;
+
+namespace Fixtures;
+
+[Trait("Category", "Bbs")]
+public sealed class Bbs2023ElifBranchTests
+{
+    [Fact]
+    public void Derives()
+    {
+        if (!new Bbs2023Cryptosuite().IsAvailable) return;
+    }
+}
+#endif

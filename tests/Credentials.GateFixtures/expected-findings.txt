@@ -1,0 +1,34 @@
+# What the no-library gate has to report for this project, and nothing else. One finding a line, as
+# "<rule> <test>"; tools/check-bbs-tests-without-library.sh --self-test compares.
+#
+# The call inside a block comment (review of PR #72, case 1) and the trait written before the test
+# attribute, with an early return (case 2): both pass without the library.
+passed-without-the-library Credentials.GateFixtures.Review1CallInABlockCommentTests.The_call_is_in_a_block_comment
+passed-without-the-library Credentials.GateFixtures.Review2TraitFirstAndAnEarlyReturnTests.Trait_first_and_an_early_return
+# A theory whose rows come up empty without the library, in two forms: no result at all.
+no-result-without-the-library Credentials.GateFixtures.RowsThatEndEarlyTests.Rows_that_end_early
+no-result-without-the-library Credentials.GateFixtures.CachedRowsTests.Rows_built_once_and_kept
+# A test that is skipped where it has to fail.
+skipped-without-the-library Credentials.GateFixtures.SkipsWhereItMustFailTests.Guarded_and_skipped_by_the_constructor
+# A test on the list that does need the library.
+listed-test-did-not-pass Credentials.GateFixtures.ListedTests.Listed_and_needs_the_library
+# A test whose file names nothing of bbs-2023 and that fails without the library.
+outcome-changed-outside-bbs-2023 Credentials.GateFixtures.OrdinaryTests.Reaches_the_suite_through_another_file
+# The same, where two rows of a theory trade places: the outcomes are the same, the rows are not.
+outcome-changed-outside-bbs-2023 Credentials.GateFixtures.HostCapabilityTests.Selective_disclosure_does_what_the_host_can_do
+# A test that fails without the library, but not by the helper's check: that proves nothing.
+failed-for-another-reason Credentials.GateFixtures.FailsForAnotherReasonTests.Fails_by_an_assertion_of_its_own
+# A test that reads a file beside its project and returns early: it passes in a faithful copy.
+passed-without-the-library Credentials.GateFixtures.FailsForAnotherReasonTests.Reads_a_vector_beside_the_project_and_returns_early
+# A test inherited from a bbs-2023 file by a class whose own file names nothing of the suite, and
+# names its base under an alias.
+passed-without-the-library Credentials.GateFixtures.DefaultWiringContractTests.A_base_proof_can_be_signed
+# A test under a display name for which a result file gives the namespace as the class.
+passed-without-the-library Credentials.GateFixtures.Bbs2023NamedTests.Named_by_class_and_method
+# A test of a class without a namespace, under a display name for which a result file gives the name of
+# the assembly as the class.
+passed-without-the-library Credentials.GateFixtures.Bbs2023ShortNameTests.Named_from_inside_the_class_name
+# A test inherited through a class in a support assembly, which has no test results of its own.
+passed-without-the-library Credentials.GateFixtures.ThroughASupportAssemblyTests.Inherited_through_a_support_assembly
+# A test class nested in a bbs-2023 class, written in the part of it that names nothing of the suite.
+passed-without-the-library Credentials.GateFixtures.PartialOuterTests+Inner.In_a_class_nested_in_the_other_part

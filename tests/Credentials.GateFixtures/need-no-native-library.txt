@@ -1,0 +1,3 @@
+# The list of this fixture project, in the form of tests/Credentials.BbsGate/need-no-native-library.txt.
+Credentials.GateFixtures.ListedTests.Listed_and_needs_the_library | wrong on purpose: it calls the helper
+Credentials.GateFixtures.ListedTests.Listed_and_needs_no_library | reads a list; calls nothing

@@ -1,0 +1,18 @@
+// Only a using is under the condition, and it is the one line of the file that names the suite: an alias
+// the test then uses. Outside the condition nothing says this is a bbs-2023 test file.
+// expect: conditional-compilation (file)
+#if NET10_0
+using Suite = DataProofsDotnet.Rdfc.DataIntegrity.Bbs2023Cryptosuite;
+#endif
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class DerivedProofTests
+{
+    [Fact]
+    public void Derives()
+    {
+        if (!new Suite().IsAvailable) return;
+    }
+}

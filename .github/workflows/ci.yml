@@ -18,7 +18,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # linux-x64, win-x64, osx-arm64 and linux-arm64: four of the five platforms NetCrypto ships the
+        # native BBS library for (osx-x64 is the fifth). On GitHub Actions a test that needs that library
+        # fails, and is never skipped, when it does not load (TestSupport's BbsNativeLibrary), so a green
+        # leg means the bbs-2023 tests ran there (issue #57). docs/conformance.md lists what is and is not
+        # exercised: keep it in step with this list. All four are standard GitHub-hosted runners.
+        os: [ubuntu-latest, windows-latest, macos-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -32,8 +37,21 @@ jobs:
         run: dotnet build Credentials.sln -c Release --no-restore
       # Exclude the W3C conformance suite (it needs the Node test suite + the ASP.NET shim; runs in
       # conformance.yml). The filter is a no-op until those tests are tagged Category=Conformance in M8c.
+      # The result files (TRX) are what the next step compares its second run with.
       - name: Test
-        run: dotnet test Credentials.sln -c Release --no-build --filter "Category!=Conformance"
+        run: dotnet test Credentials.sln -c Release --no-build --filter "Category!=Conformance" --logger trx --results-directory artifacts/test-results
+      # The no-library gate (issue #57): the same test assemblies run again from copies with NetCrypto's
+      # native BBS library removed. Every test of a bbs-2023 test class has to fail there; passed, skipped
+      # and "no result" are each reported, and so is any other test whose outcome changes. The script uses
+      # the filter of the step above.
+      - name: bbs-2023 tests fail without the native library
+        shell: bash
+        run: tools/check-bbs-tests-without-library.sh --results artifacts/test-results
+      # The gate on a project of deliberately wrong tests (tests/Credentials.GateFixtures, not in the
+      # solution): it has to report exactly the findings that project is known to have, on every platform.
+      - name: The no-library gate reports what it has to
+        shell: bash
+        run: tools/check-bbs-tests-without-library.sh --self-test
 
   no-newtonsoft:
     name: no-Newtonsoft consumer closure
