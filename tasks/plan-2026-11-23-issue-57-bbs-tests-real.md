@@ -49,33 +49,37 @@ recognising a test, an attribute or a call in source.
 **The gate** (`tools/check-bbs-tests-without-library.sh`, driving `tests/Credentials.BbsGate`):
 
 1. It runs on all four `build + test` legs after the normal test step, from that step's result files, and
-   locally by the same script. It works on copies of the test output folders, so the build output is not
+   locally by the same script. It works on copies under `artifacts/bbs-gate`, so the build output is not
    touched.
-2. In each copy it removes every `zkryptium_ffi` file, then runs the same assemblies under the same filter
-   with `GITHUB_ACTIONS=true`, so that a missing library has to fail a test on any host.
+2. It copies everything under `tests/` but `obj` and the other outputs, and each test output folder, removes
+   every `zkryptium_ffi` file from the copies, and runs the same assemblies under the same filter. Both
+   runs have `GITHUB_ACTIONS=true`, so that a missing library has to fail a test on any host.
 3. It compares the two runs test by test, by class and method name, not by row: rows may differ between
-   the runs. For a test of a `bbs-2023` class, every result without the library must be a failure; passed,
-   skipped and no result at all are each reported by name.
+   the runs. For a test of a `bbs-2023` class, every result without the library must be a failure, and by
+   the helper's own message; passed, skipped, failed for another reason and no result at all are each
+   reported by name.
 4. The named list of tests that need no native library stays, now a text file with a reason per entry, and
-   checked by running: a listed test must pass without the library. An entry may name a class.
+   checked by running: a listed test must pass without the library. One test a line.
 5. The whole suite is compared, not only the `bbs-2023` classes (my choice on the orchestrator's point 5):
-   a test of any other class must have the same outcomes in both runs. That reports a test that depends on
-   the library through another file and fails loudly, which scope by names cannot see. It costs the
-   no-library run of the other assemblies, a few seconds each.
+   a test of any other class must do the same in both runs, row for row. That reports a test that depends
+   on the library through another file and fails or skips, which scope by names cannot see. It costs the
+   no-library run of the other assemblies; the assemblies run side by side.
 6. The run has to be a no-library run: the named availability check must pass with the library and fail
    without it, and at least one library file must have been removed. Otherwise the gate fails.
 7. Test assemblies are taken from the result files of the normal run, so a new test project is covered
-   without anyone editing the script.
+   without anyone editing the script, and every built test project of the solution has to be among them.
 8. The gate is proven by committed coverage that runs on every leg: its comparison on made-up results (unit
-   tests), and `tests/Credentials.BbsGate.Fixtures`, a small project of deliberately wrong tests that is not
-   in the solution. The script's `--self-test` builds it, runs the gate on it and requires exactly the
-   findings in `expected-findings.txt`: the reviewer's case 1 (the call in a block comment) and case 2
-   (trait first, early return), both forms of the empty theory, a test that skips where it must fail, a
-   listed test that fails, a test outside the `bbs-2023` classes whose outcome changes.
+   tests), and `tests/Credentials.GateFixtures`, a small project of deliberately wrong tests that is not
+   in the solution. The script's `--self-test` builds it, runs the gate on it and requires exit code 1
+   and exactly the findings in `expected-findings.txt`: the reviewer's case 1 (the call in a block
+   comment) and case 2 (trait first, early return), both forms of the empty theory, a test that skips
+   where it must fail, a listed test that fails, a test outside the `bbs-2023` classes whose outcome
+   changes, and what the adversarial rounds on this design found.
 
 **The scan, with one job** (`BbsScope`, in `tests/Credentials.BbsGate`; its tests stay in
 `Credentials.ArchitectureTests`): the types declared in test source files whose code names anything of
-`bbs-2023`. Kept, because that one decision needs them: the syntax tree, the choice of files, UTF-8, the
+`bbs-2023`. A class that derives from one of them inherits its tests; that is read from the test
+assemblies, not from source. Kept, because that one decision needs them: the syntax tree, the choice of files, UTF-8, the
 language version held to the build's, the syntax-error rule, and one reading of each file (`#if` is a
 finding in any test source file; the reviewer's round 3 fixture and its variants stay).
 
@@ -298,7 +302,7 @@ Considered and not taken:
 | `tests/Credentials.TestSupport/Credentials.TestSupport.csproj` | Versionless `NetCrypto` and `Xunit.SkippableFact` package references (both already pinned centrally). Header comment updated. |
 | `tests/Credentials.Rdfc.Tests/BbsNativeLibraryTests.cs` (new) | Seven tests. (a) The named check that the library is there, with the agreement assertion of decision 3. (b) A theory that pins the rule of decisions 1 and 2, all eight cases. (c) What each outcome does to a test: return, fail, skip. (d) Where the rule's inputs come from on this host. (e) The real call against a copy of NetCrypto that is refused the library. (f) A theory that pins the platform mapping. (g) The declaration test of decision 5. |
 | `tools/check-bbs-tests-without-library.sh`, `tests/Credentials.BbsGate/` (new, round 4) | The no-library gate: the script, and a console project with the scope scan (`BbsScope`), the reading of result files and the comparison of the two runs. `Directory.Packages.props` and the project file gain `Microsoft.CodeAnalysis.CSharp`, for this tool alone. |
-| `tests/Credentials.BbsGate.Fixtures/` (new, round 4; not in the solution) | Deliberately wrong `bbs-2023` tests, the list and the findings the gate must report for them. Run by the script's `--self-test` on every leg. |
+| `tests/Credentials.GateFixtures/` (new, round 4; not in the solution) | Deliberately wrong `bbs-2023` tests, the list and the findings the gate must report for them. Run by the script's `--self-test` on every leg. |
 | `tests/Credentials.ArchitectureTests/BbsScopeTests.cs`, `NoLibraryGateTests.cs`, `BbsScopeFixtures/` (new, round 4; they replace the convention test of rounds 1 to 3) | Tests of the scope scan over the real sources and over fixtures, and of the comparison over made-up results. |
 | `tests/Credentials.SampleSmokeTests/Bbs2023SampleSmokeTests.cs` (new; `SampleSmokeTests.Bbs2023.cs`, a part of a partial class, in review round 2) | The `bbs-2023` smoke test, in a class and a file of its own, so that the other samples' tests stay outside the convention scan. |
 | `tests/Credentials.Rdfc.Tests/Bbs2023SelectiveDisclosureTests.cs` | The 11 guards become `BbsNativeLibrary.RequireOrSkip()`; 10 `[Fact]` become `[SkippableFact]` and the theory becomes `[SkippableTheory]`. The `BbsAvailable` field and the "COVERAGE NOTE" go; the class summary is corrected; the class gains the `Bbs` category. Test bodies do not change. |
@@ -331,8 +335,8 @@ Considered and not taken:
 - [x] 15. External review, round 2: the convention scan rebuilt on a syntax tree, with fixtures
 - [x] 16. External review, round 3: one reading for every test source file; the early exits audited; three
   adversarial rounds, with what they found closed or recorded as a limit
-- [ ] 17. External review, round 4 (re-plan): the no-library gate on every leg, the scan cut down to scope,
-  committed coverage of what the gate must report, an adversarial round on the whole design
+- [x] 17. External review, round 4 (re-plan): the no-library gate on every leg, the scan cut down to scope,
+  committed coverage of what the gate must report, two adversarial rounds on the whole design
 
 ## How each "Done when" bullet is proven
 
@@ -646,6 +650,51 @@ enumerate the ways someone had already thought of.
 What survives from those rounds: the syntax tree, the choice of files (every `.cs` file in any letter
 case), UTF-8, the pinned language version, and one reading of each file. They protect the one decision the
 scan still makes.
+
+### External review, round 4: the gate, as built
+
+**Reproduced first**, on cf28395: both forms of the empty theory compile into `Credentials.Rdfc.Tests`, the
+scan of that commit lists both as guarded, their four rows pass with the library, and without it neither
+appears in the results.
+
+**Built:** the "Re-plan" at the head of this file. `Credentials.ArchitectureTests` lost the convention
+scanner, its tests and 63 of its 78 fixtures; 15 fixtures of the scope scan stayed and 16 were written.
+
+**Adversarial pass: two rounds on the new design, and neither was clean.** Each was a fresh sub-agent with
+the code and a goal; every case was reproduced (the script exits 0; the test passes or is skipped on a
+host without the library) before it was acted on.
+
+| Round | Found | Disposition |
+|---|---|---|
+| 1 | A test that fails in the gate's copy only because a file reached by `../../../` is missing there, and passes on a real host | Closed: the copy is of everything under `tests/`, and a failure has to be the helper's |
+| 1 | A namespace written `@base`; the suite named only as `"BBS"`; a display name that makes the result file give the namespace as the class | Closed, in the scope scan and in how a test is matched to a class |
+| 1 | Tests inherited by a class in a file that names nothing; rows of a theory that trade places outside the scope | Closed: derived classes are in scope; other tests are compared row for row |
+| 1 | The same test name in a second assembly; a new test under a `Class.*` entry of the list | Closed: a finding; one test a line |
+| 1 | A results folder without one assembly's file passes; the self-test did not go through the verdict the CI step uses | Closed: every test project of the solution has to have results; the self-test requires exit code 1 from the same path |
+| 2 | A derived class that names its base through a `using` alias | Closed: inheritance is read from the assemblies |
+| 2 | A class without a namespace, or named as its namespace, under a display name | Closed: a test is matched by the class's own name |
+| 2 | NetCrypto's own exception carries the words the gate took for the helper's failure | Closed: both phrases of the helper's message are required |
+| 2 | Four faults put into the gate that no test noticed | Closed: a unit test or fixture for each; the solution is a required argument |
+| 2 | False alarms: rows named by a value made at run time; a file in the next project folder | Closed |
+| 2 | A test that skips on `IsShippedForHost` before the call: skipped on a platform outside the five, which no run of the gate is on | **Limit**, stated in the docs and in the fixture project |
+| 2 | A test that depends on a file an earlier test wrote beside the assembly: the copy has it, a fresh host does not | **Limit**, the same |
+
+No round has run since the second round's fixes. Both rounds found less natural cases than the scanner
+rounds did, and both limits need a test written to that end; but the plain statement is that the last
+round was not clean.
+
+**Proof.** All run, on `osx-arm64` unless it says otherwise.
+
+- The suite, by the CI command: 584 passed, 0 skipped. `Credentials.ArchitectureTests` has 116 tests, 123
+  before: the scanner's 114 went, and 107 came for the scope scan and the gate's comparison.
+- The gate on the real suite: 8 assemblies, 584 results in each run, 35 library files removed, 40
+  `bbs-2023` classes, 31 tests on the list. It passes, in about 9 seconds. With one result file taken
+  away, and with the candidates of the two adversarial rounds put back, it fails as the table says.
+- The self-test: on the fixture project the gate exits with 1 and reports exactly the 13 findings listed.
+- 28 mutants of the gate (the comparison, the scope scan, the reading of result files and of assemblies,
+  the program): each fails a unit test, the self-test, or both.
+- Not run locally: Windows. CI is the first run of the gate there, and the first run anywhere of these
+  tests on Windows without the library.
 
 ### What changed during the work
 

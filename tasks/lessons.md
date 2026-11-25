@@ -52,6 +52,30 @@ verbatim `@method:` target, an alias named `global`. **More rules:**
   still found something: three rounds here, and the third found ten. A syntactic guard of this kind does
   not converge; the complete check is to run the tests without the library.
 
+Round 4 (2026-11-24), the re-plan. An independent pass on the result found a hole no source rule covers:
+a theory whose rows come up empty without the library runs nothing and reports nothing. It also listed
+what the scan had come to reject: `[Collection]`, any base class, `using static`, `partial`. The owner
+chose a gate that runs the tests again on every CI leg with the library removed, and a scan cut down to
+one job. **More rules:**
+
+- A property about what happens at run time is checked by running. Four passes of a source scan each
+  found a new way round it; the first no-library run on CI would have shown every one without a rule
+  that names it.
+- The standing check was on the table from the start, as the "alternative" to decision 9, and the
+  orchestrator's default was that one-off runs were enough. A one-off run proves the code as it was that
+  day. When the property is about every future test, the default is the standing check, and the cost of
+  it (here some tens of seconds a leg) is measured before it is argued about.
+- A rule that makes ordinary code a finding has a cost that grows with every contributor. Count what a
+  check rejects, not only what it catches, before adding the next rule.
+- A check that runs a copy has to make the copy faithful and say where it is not: the first version of
+  the gate copied only the output folder, and a test that read a file beside its project failed there for
+  that reason and looked guarded. "It failed" is not "it failed for the reason I am testing": the gate now
+  requires the helper's own failure.
+- The checker's self-test has to go through the path CI uses. The first self-test compared findings and
+  never reached the exit code; deleting the line that feeds the verdict left it green.
+- Two adversarial rounds on the gate were not clean either. What was left after them are limits of
+  running on four platforms from a copy, and they are written where a contributor will read them.
+
 ## A gate in one test process does not protect the others, and every exemption needs a detector someone can fool (2026-11-23)
 
 For #57 my first design had one availability test, in `Credentials.Rdfc.Tests`, fail when the native BBS
