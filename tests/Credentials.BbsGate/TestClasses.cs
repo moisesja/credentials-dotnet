@@ -48,7 +48,16 @@ internal sealed class TestClasses
             }
 
             using var image = new PEReader(File.OpenRead(assembly));
-            var reader = image.GetMetadataReader();
+            MetadataReader reader;
+            try
+            {
+                reader = image.GetMetadataReader();
+            }
+            catch (Exception exception) when (exception is BadImageFormatException or InvalidOperationException)
+            {
+                throw new FormatException($"{assembly} is not an assembly, so the results that name it are not of a test run of this build.");
+            }
+
             var types = new List<string>();
             foreach (var handle in reader.TypeDefinitions)
             {

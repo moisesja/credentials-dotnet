@@ -152,6 +152,13 @@ wrong in each of those ways; it is not part of the solution. The gate has to fai
 findings listed beside it. To run the gate locally: `dotnet build Credentials.sln -c Release`, then the
 script without arguments.
 
+The gate works in a new folder that it makes under `artifacts/bbs-gate` (it makes that folder too if it is
+not there, and leaves it), and deletes its own folder and nothing else when it is done. It never deletes,
+overwrites or truncates anything it did not create in the same run, and it checks all its arguments before
+it writes anything: a call it cannot carry out ends with exit code 2 and changes nothing. A run that is
+killed leaves its folder behind, and no later run removes it; delete `artifacts/bbs-gate` by hand when it
+has grown.
+
 What the gate does not see:
 
 - A test in a file that names nothing of the suite, and not derived from a class in one, that passes both

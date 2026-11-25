@@ -315,8 +315,18 @@ public sealed class NoLibraryGateTests
             File.WriteAllLines(solution, ((string[])["Some.Tests", "Other.Tests", "Some.Tool", "Unbuilt.Tests", "Renamed.Tests"]).Select(project =>
                 $"Project(\"{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}\") = \"{project}\", \"tests\\{project}\\{project}.csproj\", \"{{{Guid.NewGuid()}}}\""));
 
-            TestRun.TestProjectsWithoutResults(solution, [withResults]).Should().Equal("Other.Tests", "Renamed.Tests");
-            TestRun.TestProjectsWithoutResults(solution, [withResults, withoutResults, renamed]).Should().BeEmpty();
+            TestRun.CompareWithSolution(solution, [withResults]).WithoutResults.Should().BeEquivalentTo("Other.Tests", "Renamed.Tests");
+            TestRun.CompareWithSolution(solution, [withResults, withoutResults, renamed]).Should().BeEquivalentTo((new List<string>(), new List<string>()),
+                "every project has results and every result is of a project");
+
+            // And the other way round: results that are of no project of the solution, which is then the
+            // wrong solution, and a file that names no project at all, which is no solution.
+            var stray = Output("Stray.Tests", "Stray.Tests.dll", "testhost.dll");
+            TestRun.CompareWithSolution(solution, [withResults, stray]).NotOfTheSolution.Should().Equal(stray);
+            var readme = Path.Combine(root.FullName, "README.md");
+            File.WriteAllText(readme, "# not a solution\n");
+            var read = () => TestRun.CompareWithSolution(readme, [withResults]);
+            read.Should().Throw<FormatException>();
         }
         finally
         {

@@ -23,35 +23,61 @@ internal sealed record TestResult(string Assembly, string Test, string Row, stri
 internal sealed record TestRun(IReadOnlyList<TestResult> Results, IReadOnlyList<string> Assemblies)
 {
     /// <summary>Reads every result file in a folder.</summary>
+    /// <exception cref="FormatException">A file with the extension of a result file is not one.</exception>
     public static TestRun Read(string directory)
     {
-        var runs = Directory.Exists(directory)
+        var runs = new List<TestRun>();
+        IEnumerable<string> files = Directory.Exists(directory)
             ? Directory.EnumerateFiles(directory, "*.trx", SearchOption.AllDirectories).Order(StringComparer.Ordinal)
-                .Select(file => Parse(XDocument.Load(file))).ToList()
             : [];
+        foreach (var file in files)
+        {
+            try
+            {
+                runs.Add(Parse(XDocument.Load(file)));
+            }
+            catch (Exception exception) when (exception is System.Xml.XmlException or KeyNotFoundException or NullReferenceException or ArgumentException or InvalidOperationException)
+            {
+                throw new FormatException($"{file} is not the result file of a test run: {exception.Message}");
+            }
+        }
+
         return new TestRun(
             [.. runs.SelectMany(run => run.Results)],
             [.. runs.SelectMany(run => run.Assemblies).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
     }
 
     /// <summary>
-    /// The test projects of a solution that are built and have no results: by the name of the project. A
-    /// test project is one whose output folder has the test host in it, and it has results when one of the
-    /// assemblies the results came from is in that folder, whatever the assembly is called. The output
-    /// folder is looked for where the assemblies with results have theirs (<c>bin/Release/net10.0</c>, say).
+    /// Holds the results against the solution they are said to be of. A test project is one whose output
+    /// folder has the test host in it; it has results when one of the assemblies the results came from is
+    /// in that folder, whatever the assembly is called. The output folder is looked for where the
+    /// assemblies with results have theirs (<c>bin/Release/net10.0</c>, say).
     /// </summary>
-    public static List<string> TestProjectsWithoutResults(string solutionFile, IReadOnlyList<string> assembliesWithResults)
+    /// <returns>
+    /// The test projects of the solution that are built and have no results, by name; and the assemblies
+    /// with results that are in the output folder of no project of the solution.
+    /// </returns>
+    /// <exception cref="FormatException">The file names no project.</exception>
+    public static (List<string> WithoutResults, List<string> NotOfTheSolution) CompareWithSolution(string solutionFile, IReadOnlyList<string> assembliesWithResults)
     {
-        var outputs = assembliesWithResults.Select(assembly => Path.GetDirectoryName(Path.GetFullPath(assembly))!).ToList();
-        var layout = Path.GetRelativePath(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(outputs[0])))!, outputs[0]);
+        var assemblies = assembliesWithResults.Select(Path.GetFullPath).ToList();
+        var first = Path.GetDirectoryName(assemblies[0])!;
+        var layout = Path.GetRelativePath(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(first)))!, first);
         var root = Path.GetDirectoryName(Path.GetFullPath(solutionFile))!;
-        return File.ReadLines(solutionFile)
+        var projects = File.ReadLines(solutionFile)
             .Select(line => line.Split('"')).Where(parts => parts.Length > 5 && parts[5].EndsWith(".csproj", StringComparison.Ordinal))
             .Select(parts => Path.Combine(root, parts[5].Replace('\\', Path.DirectorySeparatorChar)))
-            .Where(project => File.Exists(Path.Combine(Path.GetDirectoryName(project)!, layout, "testhost.dll")))
-            .Where(project => !outputs.Contains(Path.Combine(Path.GetDirectoryName(project)!, layout), StringComparer.OrdinalIgnoreCase))
-            .Select(project => Path.GetFileNameWithoutExtension(project))
             .ToList();
+        if (projects.Count == 0)
+        {
+            throw new FormatException($"{solutionFile} names no project: it is not a solution.");
+        }
+
+        var outputs = projects.ToDictionary(project => Path.Combine(Path.GetDirectoryName(project)!, layout), Path.GetFileNameWithoutExtension, StringComparer.OrdinalIgnoreCase);
+        var withResults = assemblies.Select(assembly => Path.GetDirectoryName(assembly)!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return (
+            [.. outputs.Where(output => File.Exists(Path.Combine(output.Key, "testhost.dll")) && !withResults.Contains(output.Key)).Select(output => output.Value!)],
+            [.. assemblies.Where(assembly => !outputs.ContainsKey(Path.GetDirectoryName(assembly)!))]);
     }
 
     /// <summary>Reads one result file.</summary>
@@ -66,13 +92,14 @@ internal sealed record TestRun(IReadOnlyList<TestResult> Results, IReadOnlyList<
         {
             var method = methods[(string)result.Attribute("testId")!];
             return new TestResult(
-                Path.GetFileName((string)method.Attribute("codeBase")!),
+                Path.GetFileName((string?)method.Attribute("codeBase") ?? throw new InvalidOperationException("a test without the path of its assembly")),
                 TestNameOf(method),
                 (string)result.Attribute("testName")!,
                 (string)result.Attribute("outcome")!,
                 (string?)result.Descendants(ns + "Message").FirstOrDefault() ?? string.Empty);
         }).ToList();
-        var assemblies = methods.Values.Select(method => (string)method.Attribute("codeBase")!).Distinct(StringComparer.Ordinal).ToList();
+        var assemblies = methods.Values.Select(method => (string?)method.Attribute("codeBase") ?? throw new InvalidOperationException("a test without the path of its assembly"))
+            .Distinct(StringComparer.Ordinal).ToList();
         return new TestRun(results, assemblies);
     }
 

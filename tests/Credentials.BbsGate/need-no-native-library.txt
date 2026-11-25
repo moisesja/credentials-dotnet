@@ -44,3 +44,6 @@ Credentials.ArchitectureTests.NoLibraryGateTests.The_list_is_read_as_tests_and_r
 Credentials.ArchitectureTests.NoLibraryGateTests.A_test_project_of_the_solution_without_results_is_found | the gate's check of its input
 Credentials.ArchitectureTests.NoLibraryGateTests.A_result_file_is_read_by_test_and_row | the gate's reading of result files
 Credentials.ArchitectureTests.GateArgumentsTests.A_wrong_call_exits_with_2_and_touches_nothing | runs the gate program with wrong arguments; it never gets to a test
+Credentials.ArchitectureTests.GateArgumentsTests.A_path_is_inside_a_folder_only_if_it_is_below_it | the gate's check of the paths it writes to
+Credentials.ArchitectureTests.GateArgumentsTests.A_path_on_another_drive_is_not_inside | the gate's check of the paths it writes to
+Credentials.ArchitectureTests.GateArgumentsTests.The_gates_own_folder_is_never_one_that_was_there | the gate's own folder, in a temporary one
