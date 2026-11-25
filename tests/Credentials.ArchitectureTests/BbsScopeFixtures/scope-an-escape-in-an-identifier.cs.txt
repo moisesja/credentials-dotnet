@@ -1,0 +1,16 @@
+// The identifier is written with an escape for its first letter. To the compiler it is Bbs2023Cryptosuite,
+// and the scan reads the value of a token, not its spelling.
+// expect: nothing
+// scope: Fixtures.EscapedIdentifierTests
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class EscapedIdentifierTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var suite = new \u0042bs2023Cryptosuite();
+    }
+}

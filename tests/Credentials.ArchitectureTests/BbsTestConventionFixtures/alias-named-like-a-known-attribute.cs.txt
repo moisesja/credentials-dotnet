@@ -1,4 +1,0 @@
-// An alias named like an attribute the scan knows, here a global one in a file that names nothing of
-// bbs-2023. Every file of the project then has a [ClassData] that is a [Fact]. Reported in any file.
-// expect: name-shadowed ClassDataAttribute
-global using ClassDataAttribute = Xunit.FactAttribute;

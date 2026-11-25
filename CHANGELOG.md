@@ -54,11 +54,13 @@ All notable changes to `credentials-dotnet` are documented here. The format is b
     tests said so, as skipped.
   - Every test that needs the library now fails where the library has to load, which is on the five platforms
     NetCrypto ships it for and on GitHub Actions whatever the platform, and is skipped with a reason anywhere
-    else. None is reported as passed. A new test pins the list of five against the NetCrypto package, and an
-    architecture test parses the test sources and fails when a test in a `bbs-2023` test file does not
-    begin with that check, or when something in such a file could skip the test before the check runs. It
-    also fails on any test source file that uses conditional compilation or is not UTF-8, because the build
-    could then compile something the test does not read.
+    else. None is reported as passed. A new test pins the list of five against the NetCrypto package.
+  - A new gate, `tools/check-bbs-tests-without-library.sh`, runs on every CI leg after the tests: it runs
+    the same test assemblies again from copies with the library removed, and fails unless every test of a
+    `bbs-2023` test class fails there by that check. A test that passes, is skipped, fails for another
+    reason or produces no result is reported by name, and so is any other test whose outcome changes. The
+    gate also tests itself on every leg, on a project of deliberately wrong tests
+    (`tests/Credentials.GateFixtures`).
   - CI now also runs on macOS (`osx-arm64`) and on arm64 Linux (`linux-arm64`). With `linux-x64` and `win-x64`
     that is four of the five platforms; `osx-x64` is shipped and not exercised.
   - The `Bbs2023` sample throws `NotSupportedException` and exits non-zero when the library does not load.

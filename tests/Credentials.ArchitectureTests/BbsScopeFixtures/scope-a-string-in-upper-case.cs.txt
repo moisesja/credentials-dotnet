@@ -1,0 +1,16 @@
+// The suite is named only in strings, and in upper case: a category, and the reason of an assertion.
+// expect: nothing
+// scope: Fixtures.BaseProofEncodingTests
+using Xunit;
+
+namespace Fixtures;
+
+[Trait("Category", "BBS")]
+public sealed class BaseProofEncodingTests
+{
+    [Fact]
+    public void A_base_proof_value_is_multibase()
+    {
+        Assert.True(Proofs.Sign().StartsWith('u'), "a BBS base proof value is multibase base64url");
+    }
+}

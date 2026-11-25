@@ -101,11 +101,12 @@
          (11.0.0, which ships a net10.0 build) without the consumer-floor concern above. -->
     <PackageVersion Include="System.Reflection.MetadataLoadContext" Version="11.0.0" />
 
-    <!-- Architecture tests only: the C# parser, so that the bbs-2023 test convention (issue #57) is checked
-         on a syntax tree and not on text. A scan of text took a commented-out call for a call. 5.12.0 is the
-         latest stable (2026-11-24). It must not be older than the compiler of the SDK that builds the tests
-         (5.9.0 in SDK 10.0.404), or it could fail to parse what the build accepts; the scan then fails, it
-         does not skip. Test-only, so it reaches no consumer. -->
+    <!-- The no-library gate for bbs-2023 tests only (tests/Credentials.BbsGate, issue #57): the C# parser,
+         so that which test classes are bbs-2023 classes is read off a syntax tree and not off text. 5.12.0
+         is the latest stable (2026-11-24). It must not be older than the compiler of the SDK that builds the
+         tests (5.9.0 in SDK 10.0.404), or it could fail to parse what the build accepts; the scan then
+         fails, it does not skip. It parses at the build's language version, which a test holds it to.
+         A tool of the test suite, so it reaches no consumer. -->
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
 
     <!-- Testing -->

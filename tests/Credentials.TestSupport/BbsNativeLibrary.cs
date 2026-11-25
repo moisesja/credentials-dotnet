@@ -20,10 +20,10 @@ namespace Credentials.TestSupport;
 /// <para>The decision is made in each test process, so it holds for every test assembly and for any
 /// subset of the tests. On GitHub Actions, which sets <c>GITHUB_ACTIONS=true</c> in the environment the
 /// tests run in, no such test can be skipped: a green run means each of them ran.</para>
-/// <para>A test that uses <c>bbs-2023</c> without this call is not covered: without the library it fails if
-/// it expects success, but it can pass if all it expects is an exception. <c>BbsTestConventionTests</c> (in
-/// <c>Credentials.ArchitectureTests</c>) parses the test sources and fails when a test in a file that names
-/// <c>bbs-2023</c> does not begin with the call.</para>
+/// <para>A test that uses <c>bbs-2023</c> without this call is not covered by it: without the library it
+/// fails if it expects success, but it can pass if all it expects is an exception. That is found out by
+/// running: on every CI leg <c>tools/check-bbs-tests-without-library.sh</c> runs the tests again with the
+/// library removed, and every test of a test class whose file names <c>bbs-2023</c> has to fail there.</para>
 /// </remarks>
 public static class BbsNativeLibrary
 {

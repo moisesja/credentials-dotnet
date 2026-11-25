@@ -1,0 +1,27 @@
+// An identifier names the suite, so every type the file declares is a bbs-2023 class: the test class, the
+// class nested in it and the generic helper beside it. Each is named as the runtime names it, which is how
+// a result file names the class of a test.
+// expect: nothing
+// scope: Fixtures.DerivedProofTests
+// scope: Fixtures.DerivedProofTests+Rows
+// scope: Fixtures.Vectors`1
+using Xunit;
+
+namespace Fixtures;
+
+public sealed class DerivedProofTests
+{
+    [Fact]
+    public void Derives()
+    {
+        var suite = new Bbs2023Cryptosuite();
+    }
+
+    private sealed class Rows : TheoryData<string>
+    {
+    }
+}
+
+internal static class Vectors<T>
+{
+}

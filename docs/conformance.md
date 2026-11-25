@@ -101,8 +101,9 @@ More platforms are requested upstream in
 
 Every test that needs the library has `BbsNativeLibrary.RequireOrSkip()` (in
 `tests/Credentials.TestSupport`) as its first statement. That covers the derive and verify tests in
-`Credentials.Rdfc.Tests`, the interop tests above, and the smoke test of the `Bbs2023` sample;
-`dotnet test --filter "Category=Bbs"` runs them all. When the library did not load, such a test is never
+`Credentials.Rdfc.Tests`, the interop tests above, and the smoke test of the `Bbs2023` sample. They carry
+`[Trait("Category", "Bbs")]`, so `dotnet test --filter "Category=Bbs"` selects them; the trait is a
+convenience, and nothing checks that a new test has it. When the library did not load, such a test is never
 reported as passed:
 
 - It **fails** where the library has to be there: on one of the five platforms, and on GitHub Actions
@@ -118,27 +119,40 @@ much as for the whole solution. On CI the library is always there, so the failin
 `BbsNativeLibraryTests` therefore runs the call against a second copy of NetCrypto that is refused the
 library, on every host and every leg, and pins the rule and where its inputs come from.
 
-A test that used `bbs-2023` and left the call out would not be covered. `BbsTestConventionTests` (in
-`Credentials.ArchitectureTests`) parses the test sources to prevent that. In every test file whose code
-names anything of `bbs-2023`, each test must be a `[SkippableFact]` or `[SkippableTheory]` that begins with
-the call, returns `void` or `Task` and is in the `Bbs` category, in a sealed class that is not partial,
-unless it is on a short named list of tests that need no native library. Nothing in such a file may skip
-outside the body of a test, where a skip would come before the call. What a parser cannot resolve, a custom
-attribute or a base class for example, is reported in such a file and not passed over. Some things are
-reported in any test source file, because they could hide a test from the check or change what a name
-means to it: conditional compilation (`#if`, `#define`, `#undef`), bytes that are not UTF-8, a type named
-like one the check trusts, an attribute of the assembly that it does not know, a global static import. The
-ways of getting past the check that were found are kept as fixtures beside it, and each must still be
-reported.
+A test that used `bbs-2023` and left the call out would not be covered by it. That is checked by running.
+On every CI leg, after the tests, `tools/check-bbs-tests-without-library.sh` runs the same test assemblies
+again from copies that have the native library removed, and compares the two runs test by test:
 
-That check has limits. It reads the files under `tests/` that a test project compiles by default, and it
-reads names, not what they resolve to. It does not see a test in a file that names nothing of the suite,
-whether the test reaches `bbs-2023` through code in another file, such as a shared provider factory or a
-stored credential, or by reflection on a name it puts together when it runs. It does not see a skip before
-the call that comes from code in another file or is made by reflection. Two fixtures record those cases as
-not reported. It does not see what the build takes from elsewhere: a project file, a source outside
-`tests/`, another assembly. Only a CI run with the library removed would cover those, and there is none
-today.
+- A test of a `bbs-2023` test class has to **fail** without the library, and by the failure of
+  `RequireOrSkip()`. A test that passes there, is skipped, fails for another reason or produces no result
+  at all is reported by name. A `bbs-2023` test class is a type declared in a test source file whose code
+  names anything of `bbs-2023`, or a class that derives from one.
+- A test named in `tests/Credentials.BbsGate/need-no-native-library.txt` has to **pass** without it. That
+  list has each test of such a class that needs no native library, with the reason.
+- Any other test has to do the same thing in both runs.
+- The second run has to be a run without the library: the availability check passes in the first run and
+  fails in the second, or the gate fails.
+
+The script also tests itself on every leg. `tests/Credentials.GateFixtures` is a project of tests that are
+wrong in each of those ways; it is not part of the solution. The gate has to fail on it, with exactly the
+findings listed beside it. To run the gate locally: `dotnet build Credentials.sln -c Release`, then the
+script without arguments.
+
+What the gate does not see:
+
+- A test in a file that names nothing of the suite, and not derived from a class in one, that passes both
+  with and without the library, because it returns early or expects only an exception. If such a test
+  fails or is skipped without the library, it is reported.
+- What a test does on a platform NetCrypto does not ship the library for. The second run is on the
+  platforms of the CI legs, and it ships for all four.
+- A difference between the copy the second run works on and a real host without the library. The copy is
+  of everything under `tests/`, with each output folder as the first run left it. A test that depends on a
+  file an earlier test wrote beside the assembly, or that reaches a file outside `tests/` by a relative
+  path, can behave differently there.
+- Whether a test on the list is worth having: the gate checks that it passes without the library, and the
+  list is kept by review.
+- A test project that is not in the solution, and anything else outside what `dotnet test Credentials.sln`
+  runs.
 
 The same class pins the first column of the table against the NetCrypto package the build resolved. That
 test fails when NetCrypto drops, adds or renames a platform's library, until the list in `BbsNativeLibrary`

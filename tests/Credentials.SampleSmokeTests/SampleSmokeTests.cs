@@ -9,9 +9,10 @@ namespace Credentials.SampleSmokeTests;
 /// narration" is the assertion. Under coverlet this run also drives the api-coverage gate.
 /// </summary>
 /// <remarks>
-/// The <c>bbs-2023</c> sample has its test in <see cref="Bbs2023SampleSmokeTests"/>. The convention test for
-/// <c>bbs-2023</c> tests checks every test of a file that names anything of <c>bbs-2023</c>, and does not
-/// accept a partial class there; this file names none, so the other samples stay outside that rule.
+/// The <c>bbs-2023</c> sample has its test in <see cref="Bbs2023SampleSmokeTests"/>, a class of its own. The
+/// no-library gate (<c>tools/check-bbs-tests-without-library.sh</c>) requires every test of a class whose
+/// file names anything of <c>bbs-2023</c> to fail without the native library. This file names none, so the
+/// other samples are not such tests.
 /// </remarks>
 public sealed class SampleSmokeTests
 {
